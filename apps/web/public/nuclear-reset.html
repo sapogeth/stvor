@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Nuclear Reset</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #000;
+            color: #0f0;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .container {
+            max-width: 600px;
+            text-align: center;
+        }
+        h1 { color: #f00; margin-bottom: 20px; }
+        .log {
+            background: #111;
+            padding: 20px;
+            border: 2px solid #0f0;
+            text-align: left;
+            margin: 20px 0;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .log div { margin: 5px 0; }
+        .success { color: #0f0; }
+        .error { color: #f00; }
+        .info { color: #ff0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 NUCLEAR RESET</h1>
+        <div class="log" id="log"></div>
+    </div>
+    <script>
+        const log = document.getElementById('log');
+
+        function addLog(msg, type = 'info') {
+            const div = document.createElement('div');
+            div.className = type;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            log.appendChild(div);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        (async () => {
+            try {
+                addLog('=== NUCLEAR RESET STARTED ===', 'error');
+
+                // Step 1: Get all databases
+                addLog('Step 1: Scanning for databases...', 'info');
+                let allDbs = [];
+                try {
+                    allDbs = await indexedDB.databases();
+                    addLog(`Found ${allDbs.length} databases`, 'success');
+                    allDbs.forEach(db => {
+                        addLog(`  - ${db.name} (v${db.version})`, 'info');
+                    });
+                } catch (e) {
+                    addLog('databases() not supported, using known names', 'info');
+                    allDbs = [
+                        { name: 'ilyazh-keystore' },
+                        { name: 'ilyazh-keystore-v2' },
+                        { name: 'ilyazh_keystore' }
+                    ];
+                }
+
+                // Step 2: Delete ALL databases
+                addLog('Step 2: Deleting ALL databases...', 'info');
+                for (const db of allDbs) {
+                    if (db.name) {
+                        addLog(`Deleting ${db.name}...`, 'info');
+                        await new Promise((resolve) => {
+                            const req = indexedDB.deleteDatabase(db.name);
+                            req.onsuccess = () => {
+                                addLog(`✓ Deleted ${db.name}`, 'success');
+                                resolve();
+                            };
+                            req.onerror = () => {
+                                addLog(`✗ Error deleting ${db.name}`, 'error');
+                                resolve();
+                            };
+                            req.onblocked = () => {
+                                addLog(`⚠ Blocked deleting ${db.name}`, 'error');
+                                setTimeout(resolve, 2000);
+                            };
+                        });
+                    }
+                }
+
+                // Step 3: Clear localStorage (save username first)
+                addLog('Step 3: Clearing localStorage...', 'info');
+                const savedUsername = localStorage.getItem('ilyazh_username');
+                if (savedUsername) {
+                    addLog(`Saved username: ${savedUsername}`, 'success');
+                }
+                localStorage.clear();
+                if (savedUsername) {
+                    localStorage.setItem('ilyazh_username', savedUsername);
+                    addLog(`Restored username: ${savedUsername}`, 'success');
+                }
+
+                // Step 4: Clear sessionStorage
+                addLog('Step 4: Clearing sessionStorage...', 'info');
+                sessionStorage.clear();
+                addLog('✓ sessionStorage cleared', 'success');
+
+                // Step 5: Clear cookies
+                addLog('Step 5: Clearing cookies...', 'info');
+                document.cookie.split(";").forEach(c => {
+                    document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+                });
+                addLog('✓ Cookies cleared', 'success');
+
+                addLog('=== RESET COMPLETE ===', 'success');
+                addLog('Redirecting to /chat in 2 seconds...', 'info');
+
+                setTimeout(() => {
+                    window.location.href = '/chat';
+                }, 2000);
+
+            } catch (err) {
+                addLog(`FATAL ERROR: ${err.message}`, 'error');
+                addLog('Please refresh manually', 'error');
+            }
+        })();
+    </script>
+</body>
+</html>

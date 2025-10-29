@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Force Reset - Ilyazh Messenger</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            padding: 3rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 500px;
+        }
+        h1 { margin: 0 0 1.5rem 0; color: #333; font-size: 2rem; }
+        .status { color: #666; margin: 1.5rem 0; font-size: 1.1rem; line-height: 1.6; }
+        .success { color: #10b981; font-weight: bold; }
+        .error { color: #ef4444; }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 1.5rem auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .btn {
+            display: inline-block;
+            margin-top: 1rem;
+            padding: 0.75rem 2rem;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        .btn:hover {
+            background: #5568d3;
+        }
+        code {
+            background: #f3f4f6;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Force Database Reset</h1>
+        <div class="spinner" id="spinner"></div>
+        <div class="status" id="status">Deleting all databases and storage...</div>
+    </div>
+    <script>
+        (async () => {
+            const status = document.getElementById('status');
+            const spinner = document.getElementById('spinner');
+
+            try {
+                // Step 1: Clear localStorage but save username
+                status.textContent = 'Step 1/4: Clearing localStorage...';
+                const savedUsername = localStorage.getItem('username');
+                localStorage.clear();
+                if (savedUsername) {
+                    localStorage.setItem('username', savedUsername);
+                }
+                await new Promise(r => setTimeout(r, 500));
+
+                // Step 2: Clear sessionStorage
+                status.textContent = 'Step 2/4: Clearing sessionStorage...';
+                sessionStorage.clear();
+                await new Promise(r => setTimeout(r, 500));
+
+                // Step 3: Delete ALL IndexedDB databases
+                status.textContent = 'Step 3/4: Deleting IndexedDB databases...';
+
+                const deleteDB = (name) => new Promise((resolve) => {
+                    console.log('Deleting database:', name);
+                    const req = indexedDB.deleteDatabase(name);
+                    req.onsuccess = () => {
+                        console.log('Deleted:', name);
+                        resolve();
+                    };
+                    req.onerror = () => {
+                        console.log('Error deleting:', name);
+                        resolve(); // Continue anyway
+                    };
+                    req.onblocked = () => {
+                        console.log('Blocked:', name);
+                        setTimeout(resolve, 1000); // Force continue after 1s
+                    };
+                });
+
+                // Delete all possible database names
+                await Promise.all([
+                    deleteDB('ilyazh-keystore'),
+                    deleteDB('ilyazh_keystore'),
+                    deleteDB('keyval-store'),
+                    deleteDB('firebaseLocalStorageDb'),
+                ]);
+
+                await new Promise(r => setTimeout(r, 500));
+
+                // Step 4: Try to get list of all databases and delete them
+                status.textContent = 'Step 4/4: Scanning for remaining databases...';
+                try {
+                    const dbs = await indexedDB.databases();
+                    console.log('Found databases:', dbs);
+
+                    if (dbs && dbs.length > 0) {
+                        for (const db of dbs) {
+                            if (db.name) {
+                                await deleteDB(db.name);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.log('databases() not supported, skipping');
+                }
+
+                spinner.style.display = 'none';
+                status.className = 'status success';
+                status.innerHTML = '✅ <strong>All data cleared successfully!</strong><br><br>Redirecting to homepage in 2 seconds...';
+
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+
+            } catch (err) {
+                spinner.style.display = 'none';
+                status.className = 'status error';
+                status.innerHTML = `❌ <strong>Error:</strong> ${err.message}<br><br>Please manually clear your browser data:<br><br>1. Open DevTools (F12)<br>2. Go to Application tab<br>3. Click "Clear site data"<br><br><a href="/" class="btn">Go to Homepage</a>`;
+            }
+        })();
+    </script>
+</body>
+</html>

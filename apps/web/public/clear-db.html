@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Clearing Database...</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 400px;
+        }
+        h1 { margin: 0 0 1rem 0; color: #333; }
+        .status { color: #666; margin: 1rem 0; }
+        .success { color: #10b981; font-weight: bold; }
+        .error { color: #ef4444; }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 1rem auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Очистка базы данных</h1>
+        <div class="spinner" id="spinner"></div>
+        <div class="status" id="status">Удаляем старые данные...</div>
+    </div>
+    <script>
+        (async () => {
+            const status = document.getElementById('status');
+            const spinner = document.getElementById('spinner');
+
+            try {
+                // Clear localStorage (including migration flag)
+                localStorage.clear();
+                status.textContent = 'Очищаем localStorage...';
+                await new Promise(r => setTimeout(r, 300));
+
+                // Delete databases
+                const deleteDB = (name) => new Promise((resolve) => {
+                    const req = indexedDB.deleteDatabase(name);
+                    req.onsuccess = () => resolve();
+                    req.onerror = () => resolve();
+                    req.onblocked = () => resolve();
+                });
+
+                status.textContent = 'Удаляем базу данных...';
+                await deleteDB('ilyazh-keystore');
+                await deleteDB('ilyazh_keystore');
+
+                spinner.style.display = 'none';
+                status.className = 'status success';
+                status.textContent = '✅ Готово! Перенаправляем на главную...';
+
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1500);
+            } catch (err) {
+                spinner.style.display = 'none';
+                status.className = 'status error';
+                status.textContent = '❌ Ошибка: ' + err.message;
+            }
+        })();
+    </script>
+</body>
+</html>

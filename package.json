@@ -1,0 +1,28 @@
+{
+  "name": "ilyazh-messenger",
+  "version": "0.8.0",
+  "private": true,
+  "description": "Post-quantum E2E encrypted messenger implementing Ilyazh-Web3E2E protocol",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "relay": "pnpm --filter @ilyazh/relay dev",
+    "web": "pnpm --filter @ilyazh/web dev"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.0.0"
+}
