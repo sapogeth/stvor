@@ -10,8 +10,11 @@
     "clean": "rm -rf .next"
   },
   "dependencies": {
+    "@clerk/nextjs": "^6.34.1",
     "@ilyazh/crypto": "workspace:*",
+    "@openforge-sh/liboqs": "^0.14.3",
     "buffer": "^6.0.3",
+    "libsodium-wrappers": "^0.7.15",
     "next": "^15.1.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -19,6 +22,7 @@
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@types/libsodium-wrappers": "^0.7.14",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.2",

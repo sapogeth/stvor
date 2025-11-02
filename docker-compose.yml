@@ -1,50 +1,71 @@
-version: '3.8'
+version: '3.9'
 
 services:
+  # ==============================================================================
+  # PostgreSQL Database
+  # ==============================================================================
+  # Local Postgres for development/VPS deployment
+  # In production with Supabase, comment out this service and use Supabase DATABASE_URL
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME_IN_PRODUCTION}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==============================================================================
+  # Relay Server (Single Instance)
+  # ==============================================================================
+  # For horizontal scaling, see docker-compose.scale.yml
   relay:
     build:
       context: .
       dockerfile: apps/relay/Dockerfile
+    restart: unless-stopped
     ports:
       - "3001:3001"
     environment:
-      - NODE_ENV=production
-      - PORT=3001
-      - HOST=0.0.0.0
-      - DATA_DIR=/data
-      - STORAGE_TYPE=${STORAGE_TYPE:-filesystem}
-      - S3_BUCKET=${S3_BUCKET}
-      - S3_ENDPOINT=${S3_ENDPOINT}
-      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
-      - S3_SECRET_KEY=${S3_SECRET_KEY}
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-    volumes:
-      - relay-data:/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3001
+      LOG_LEVEL: info
 
-  web:
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=production
-      - NEXT_PUBLIC_RELAY_URL=${NEXT_PUBLIC_RELAY_URL:-http://relay:3001}
+      # CRITICAL: Generate with openssl rand -base64 48
+      JWT_SECRET: ${JWT_SECRET:-CHANGE_ME_MINIMUM_32_CHARS}
+
+      # STORAGE
+      STORAGE_TYPE: postgres
+
+      # LOCAL DATABASE (for docker-compose deployment)
+      # Replace with Supabase URL for cloud:
+      # DATABASE_URL=postgresql://postgres:PASSWORD@db.PROJECT.supabase.co:5432/postgres
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-CHANGE_ME_IN_PRODUCTION}@postgres:5432/postgres
+
+      # SECURITY: Comma-separated allowed origins
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3002,https://stv0r.vercel.app
+
+      # Disable dev auto-creation in production
+      ALLOW_DEV_AUTOCREATE: "0"
     depends_on:
-      - relay
-    restart: unless-stopped
+      postgres:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      test: ["CMD", "curl", "-f", "http://localhost:3001/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
 
 volumes:
-  relay-data:
+  pgdata:
     driver: local

@@ -43,27 +43,39 @@ export default function ClearDBPage() {
     setStatus('Clearing databases...');
     addLog('🗑️  Starting database cleanup...');
 
+    // Close all database connections first
+    addLog('🔒 Closing any open database connections...');
+
     const dbsToClear = databases.length > 0
       ? databases
-      : ['ilyazh-keystore-v2', 'ilyazh-keystore', 'test-crypto-db'];
+      : ['ilyazh-keystore-v2', 'ilyazh-keystore', 'ilyazh-keystore-v3', 'test-crypto-db'];
 
     for (const dbName of dbsToClear) {
       try {
         await new Promise<void>((resolve, reject) => {
           const request = indexedDB.deleteDatabase(dbName);
 
+          // Add timeout to prevent hanging forever
+          const timeout = setTimeout(() => {
+            addLog(`⏱️  Timeout deleting ${dbName} - it may be blocked by another tab`);
+            resolve(); // Resolve anyway to continue with other databases
+          }, 5000); // 5 second timeout
+
           request.onsuccess = () => {
+            clearTimeout(timeout);
             addLog(`✓ Deleted database: ${dbName}`);
             resolve();
           };
 
           request.onerror = () => {
+            clearTimeout(timeout);
             addLog(`✗ Failed to delete ${dbName}: ${request.error?.message}`);
             reject(request.error);
           };
 
           request.onblocked = () => {
-            addLog(`⚠️  Delete blocked for ${dbName} (close all other tabs)`);
+            addLog(`⚠️  Delete blocked for ${dbName} (close all other tabs using the site)`);
+            // Don't wait forever - resolve after timeout will handle this
           };
         });
       } catch (err: any) {
@@ -110,8 +122,11 @@ export default function ClearDBPage() {
             <li>All stored messages</li>
             <li>localStorage data</li>
           </ul>
-          <p className="mt-2 text-yellow-100 font-semibold">
+          <p className="mt-4 text-yellow-100 font-semibold">
             You will need to re-register after clearing.
+          </p>
+          <p className="mt-2 text-yellow-100 text-sm">
+            💡 Tip: If cleanup gets stuck, close all other tabs with localhost:3002 open, then try again.
           </p>
         </div>
 

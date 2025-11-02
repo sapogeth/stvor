@@ -6,39 +6,21 @@
 'use client';
 
 import { useState } from 'react';
+import { deriveSafetyNumber } from '@/lib/session-security';
 
 interface SafetyNumberProps {
-  sessionId: Uint8Array;
+  ourIdentityEd25519: Uint8Array;
+  theirIdentityEd25519: Uint8Array;
   peerName: string;
   onClose: () => void;
 }
 
-export function SafetyNumber({ sessionId, peerName, onClose }: SafetyNumberProps) {
+export function SafetyNumber({ ourIdentityEd25519, theirIdentityEd25519, peerName, onClose }: SafetyNumberProps) {
   const [copied, setCopied] = useState(false);
 
-  // Generate safety number from session ID
-  const generateSafetyNumber = (sid: Uint8Array): string => {
-    // Simple hash to decimal conversion
-    const bytes = Array.from(sid);
-    const digits: number[] = [];
-
-    for (let i = 0; i < Math.min(bytes.length, 20); i++) {
-      const byte = bytes[i];
-      digits.push(Math.floor(byte / 100));
-      digits.push(Math.floor((byte % 100) / 10));
-      digits.push(byte % 10);
-    }
-
-    // Group into 12 blocks of 5 digits
-    const blocks: string[] = [];
-    for (let i = 0; i < 60 && i < digits.length; i += 5) {
-      blocks.push(digits.slice(i, i + 5).join(''));
-    }
-
-    return blocks.join(' ');
-  };
-
-  const safetyNumber = generateSafetyNumber(sessionId);
+  // Derive safety number from IDENTITY KEYS (not session ID)
+  // CRITICAL: This ensures safety number stays constant across re-handshakes
+  const safetyNumber = deriveSafetyNumber(ourIdentityEd25519, theirIdentityEd25519);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(safetyNumber);

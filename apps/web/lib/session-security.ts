@@ -153,10 +153,74 @@ export function formatAge(ms: number): string {
 }
 
 /**
- * Generate safety number for TOFU verification
+ * Derive safety number from identity keys (NOT sessionId)
+ *
+ * CRITICAL: Safety numbers MUST be based on long-term identity keys to detect MITM.
+ * If we use sessionId, the number changes on every re-handshake, defeating the purpose.
+ *
+ * This function is SYMMETRICAL - both Alice and Bob will derive the SAME number
+ * when verifying each other, regardless of who initiated the handshake.
+ *
  * Format: 12 groups of 5 digits (60 digits total)
+ *
+ * @param ourIdentityEd25519 - Our Ed25519 public identity key
+ * @param theirIdentityEd25519 - Peer's Ed25519 public identity key
+ * @returns Safety number string
+ */
+export function deriveSafetyNumber(
+  ourIdentityEd25519: Uint8Array,
+  theirIdentityEd25519: Uint8Array
+): string {
+  const crypto = require('crypto');
+
+  // CRITICAL: Sort identities lexicographically to ensure symmetry
+  // Alice(A, B) must produce same result as Bob(B, A)
+  const identities = [ourIdentityEd25519, theirIdentityEd25519];
+  identities.sort((a, b) => {
+    for (let i = 0; i < Math.min(a.length, b.length); i++) {
+      if (a[i] !== b[i]) return a[i] - b[i];
+    }
+    return a.length - b.length;
+  });
+
+  // Concatenate sorted identities
+  const combined = new Uint8Array(identities[0].length + identities[1].length);
+  combined.set(identities[0], 0);
+  combined.set(identities[1], identities[0].length);
+
+  // Hash with SHA-256
+  const hash = crypto.createHash('sha256').update(combined).digest();
+
+  // Convert to decimal digits
+  const digits: number[] = [];
+  for (let i = 0; i < hash.length; i++) {
+    const byte = hash[i];
+    digits.push(Math.floor(byte / 100));
+    digits.push(Math.floor((byte % 100) / 10));
+    digits.push(byte % 10);
+  }
+
+  // Take first 60 digits and group into 12 blocks of 5
+  const blocks: string[] = [];
+  for (let i = 0; i < 60; i += 5) {
+    blocks.push(digits.slice(i, i + 5).join(''));
+  }
+
+  return blocks.join(' ');
+}
+
+/**
+ * Generate safety number from sessionId (DEPRECATED - use deriveSafetyNumber instead)
+ *
+ * This function is DEPRECATED because it derives the number from sessionId,
+ * which changes on every re-handshake. Safety numbers should be based on
+ * identity keys to detect MITM attacks.
+ *
+ * @deprecated Use deriveSafetyNumber(ourIdentity, theirIdentity) instead
  */
 export function generateSafetyNumber(sessionId: Uint8Array): string {
+  console.warn('[Security] DEPRECATED: generateSafetyNumber(sessionId) should use deriveSafetyNumber(ourIdentity, theirIdentity) instead');
+
   // Use SHA-256 of sessionId to get 32 bytes
   const crypto = require('crypto');
   const hash = crypto.createHash('sha256').update(sessionId).digest();

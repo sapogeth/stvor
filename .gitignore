@@ -12,10 +12,21 @@ out/
 # Storage (contains encrypted messages)
 storage/
 data/
+pgdata/
+docker-data/
 
-# Environment
+# Environment (CRITICAL: Never commit secrets)
 .env
+.env.local
 .env*.local
+.env.production
+apps/web/.env
+apps/web/.env.local
+apps/web/.env.production
+apps/relay/.env
+apps/relay/.env.local
+apps/relay/.env.production
+# Allow .env.example (templates only, no secrets)
 
 # Logs
 *.log
@@ -44,3 +55,9 @@ Thumbs.db
 # Misc
 *.pem
 .cache/
+
+# Backup files (DO NOT COMMIT)
+*.bak
+*.bak*
+*.final*
+*.OLD*

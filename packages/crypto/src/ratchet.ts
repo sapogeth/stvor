@@ -9,6 +9,31 @@ import * as prim from './primitives.js';
 import * as constants from './constants.js';
 import { HandshakeState } from './handshake.js';
 
+/**
+ * Special error for AAD session ID mismatch
+ * Allows distinguishing ratchet desync from other decryption errors
+ *
+ * When this error occurs, client should:
+ * 1. GET /chat/:chatId/session from relay
+ * 2. If relay has session → adopt it
+ * 3. If relay has no session → create new and PUT to relay
+ *
+ * This prevents infinite ratchet refresh loops.
+ */
+export class AADMismatchError extends Error {
+  constructor(
+    public readonly messageSessionId: string,
+    public readonly localSessionId: string
+  ) {
+    super(
+      `AAD session ID mismatch: ` +
+      `message=${messageSessionId.slice(0, 16)}..., ` +
+      `local=${localSessionId.slice(0, 16)}...`
+    );
+    this.name = 'AADMismatchError';
+  }
+}
+
 export interface EncryptedRecord {
   aad: Uint8Array;
   nonce: Uint8Array;
@@ -167,11 +192,15 @@ export async function encryptMessage(
   const sequence = BigInt(state.totalMessages);
   const aad = buildAAD(state.sessionId, sequence, state.sendRatchetId);
 
-  // Encrypt
-  const ciphertext = prim.aeadEncrypt(messageKey, nonce, plaintext, aad);
+  // Add padding to resist size correlation attacks
+  const paddedPlaintext = prim.addPadding(plaintext);
 
-  // Zeroize message key
+  // Encrypt
+  const ciphertext = prim.aeadEncrypt(messageKey, nonce, paddedPlaintext, aad);
+
+  // Zeroize message key and padded plaintext
   prim.zeroize(messageKey);
+  prim.zeroize(paddedPlaintext);
 
   // Update state
   const newState: RatchetState = {
@@ -203,18 +232,43 @@ export async function decryptMessage(
 
   // Extract sid from AAD (offset 9, length 32)
   const aadSid = record.aad.slice(9, 9 + constants.SESSION_ID_LENGTH);
+
+  // PART 4: Controlled AAD mismatch handling in dev/PQ-disabled mode
+  const allowSessionAdoption = state.devMode || state.pqEnabled === false;
+
   if (!prim.constantTimeEqual(aadSid, state.sessionId)) {
-    throw new Error('AAD session ID mismatch');
+    if (allowSessionAdoption) {
+      // In dev mode or when PQ unavailable, allow adopting the AAD sessionId
+      console.warn('[Ratchet][DEV] AAD session ID mismatch - adopting message sessionId (dev/fallback mode)');
+      console.warn('[Ratchet][DEV] State sessionId:', Array.from(state.sessionId.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(''));
+      console.warn('[Ratchet][DEV] AAD sessionId:', Array.from(aadSid.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(''));
+
+      // Create new state with adopted sessionId
+      state = {
+        ...state,
+        sessionId: aadSid.slice(), // Adopt the AAD sessionId
+      };
+    } else {
+      // In production/normal mode, strict AAD check - reject mismatch
+      // Throw special error so client can adopt relay session
+      const aadSessionIdHex = Buffer.from(aadSid).toString('hex');
+      const localSessionIdHex = Buffer.from(state.sessionId).toString('hex');
+      throw new AADMismatchError(aadSessionIdHex, localSessionIdHex);
+    }
   }
 
   // Derive message key
   const { messageKey, nextChainKey } = deriveMessageKey(state.recvChainKey, state.sessionId);
 
   // Decrypt
-  const plaintext = prim.aeadDecrypt(messageKey, record.nonce, record.ciphertext, record.aad);
+  const paddedPlaintext = prim.aeadDecrypt(messageKey, record.nonce, record.ciphertext, record.aad);
 
-  // Zeroize message key
+  // Remove padding to get original plaintext
+  const plaintext = prim.removePadding(paddedPlaintext);
+
+  // Zeroize message key and padded plaintext
   prim.zeroize(messageKey);
+  prim.zeroize(paddedPlaintext);
 
   // Update state
   const newState: RatchetState = {
@@ -240,13 +294,13 @@ export async function performRekey(
 
   // Generate new ephemeral keys
   const newX25519 = prim.generateX25519KeyPair();
-  const newMLKEM = prim.generateMLKEMKeyPair();
+  const newMLKEM = await prim.generateMLKEMKeyPair();
 
   // Perform DH
   const dhSecret = prim.x25519(newX25519.secretKey, peerEphemeralX25519);
 
   // Perform KEM encapsulation
-  const kemResult = prim.mlkemEncapsulate(peerEphemeralMLKEM);
+  const kemResult = await prim.mlkemEncapsulate(peerEphemeralMLKEM);
   const kemSecret = kemResult.sharedSecret;
 
   // Combine

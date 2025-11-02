@@ -128,7 +128,7 @@ async function warmIndexedDB(): Promise<void> {
 
     try {
       // Open the keystore database (same name as keystore.ts)
-      const request = indexedDB.open('ilyazh-keystore-v3', 1);
+      const request = indexedDB.open('ilyazh-keystore-v3', 2);
 
       request.onerror = () => {
         const err = request.error || new Error('IndexedDB open failed');
@@ -164,17 +164,19 @@ async function warmIndexedDB(): Promise<void> {
         });
 
         // Create object stores if they don't exist
-        // This matches the schema in keystore.ts
+        // IMPORTANT: This must match the schema in keystore.ts exactly!
         if (!db.objectStoreNames.contains('identity')) {
-          db.createObjectStore('identity', { keyPath: 'id' });
+          db.createObjectStore('identity', { keyPath: 'username' });  // Fixed: was 'id', should be 'username'
           console.log('[crypto-init] Created "identity" store');
         }
         if (!db.objectStoreNames.contains('sessions')) {
-          db.createObjectStore('sessions', { keyPath: 'sessionId' });
-          console.log('[crypto-init] Created "sessions" store');
+          const sessionStore = db.createObjectStore('sessions', { keyPath: 'sessionId' });
+          sessionStore.createIndex('peerUsername', 'peerUsername', { unique: false });
+          sessionStore.createIndex('lastUsed', 'lastUsed', { unique: false });
+          console.log('[crypto-init] Created "sessions" store with indexes');
         }
         if (!db.objectStoreNames.contains('prekeys')) {
-          db.createObjectStore('prekeys', { keyPath: 'id' });
+          db.createObjectStore('prekeys');  // Uses out-of-line keys (username as key)
           console.log('[crypto-init] Created "prekeys" store');
         }
       };

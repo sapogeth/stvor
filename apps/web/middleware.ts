@@ -1,51 +1,138 @@
 /**
- * Next.js Middleware for Security Headers and HTTPS Enforcement
+ * Next.js Middleware for Clerk Authentication + Security Headers
+ *
+ * SECURITY ARCHITECTURE:
+ * - Clerk handles ONLY identity and session management
+ * - Clerk NEVER sees or stores private encryption keys
+ * - E2E crypto operations remain 100% client-side
+ * - Middleware validates session but NEVER decrypts messages
  */
 
+import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
 
-export function middleware(request: NextRequest) {
-  const response = NextResponse.next();
+/**
+ * Content-Security-Policy Configuration
+ *
+ * SECURITY: Minimal whitelist of external domains required for functionality
+ * - Clerk: Authentication provider (*.clerk.accounts.dev, api.clerk.dev)
+ * - Cloudflare: CAPTCHA challenges (challenges.cloudflare.com)
+ * - Supabase: Relay backend (*.supabase.co)
+ * - Localhost: Development relay server
+ *
+ * WASM Support: 'unsafe-eval' required for PQ crypto (ML-KEM-768, ML-DSA-65)
+ * Next.js: 'unsafe-inline' required for hydration and Tailwind
+ *
+ * CAPTCHA Support: Cloudflare CAPTCHA requires:
+ * - script-src-elem: For dynamically injected <script> tags
+ * - worker-src: For Web Workers (including blob: URLs)
+ * - child-src: Fallback for older browsers (same as worker-src)
+ */
+const CSP = [
+  "default-src 'self'",
+  // Scripts: Clerk + Cloudflare CAPTCHA + WASM support
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://challenges.cloudflare.com",
+  // Script elements: CRITICAL for CAPTCHA - must include challenges.cloudflare.com
+  "script-src-elem 'self' 'unsafe-inline' https://*.clerk.accounts.dev https://challenges.cloudflare.com",
+  // Connections: Clerk API + Supabase relay + localhost dev
+  "connect-src 'self' https://*.clerk.accounts.dev https://api.clerk.com https://api.clerk.dev https://*.supabase.co https://challenges.cloudflare.com http://localhost:* ws://localhost:*",
+  // Web Workers: CRITICAL for CAPTCHA - allows blob: URLs and Cloudflare workers
+  "worker-src 'self' blob: https://*.clerk.accounts.dev https://challenges.cloudflare.com",
+  // Child contexts: Fallback for older browsers (same as worker-src)
+  "child-src 'self' blob: https://*.clerk.accounts.dev https://challenges.cloudflare.com",
+  // Images: Clerk avatars + data URIs + blobs
+  "img-src 'self' data: blob: https://img.clerk.com https://*.clerk.com",
+  // Styles: Tailwind requires inline styles
+  "style-src 'self' 'unsafe-inline'",
+  // Frames: Clerk OAuth + Cloudflare CAPTCHA
+  "frame-src 'self' https://*.clerk.accounts.dev https://challenges.cloudflare.com",
+  // Fonts: Local + data URIs
+  "font-src 'self' data:",
+  // Media: Blobs for WASM modules
+  "media-src 'self' blob:",
+  // Security: Block all objects (Flash, Java applets)
+  "object-src 'none'",
+  // Security: Prevent base tag hijacking
+  "base-uri 'self'",
+  // Forms: Self + Clerk OAuth callbacks
+  "form-action 'self' https://*.clerk.accounts.dev",
+  // Security: Prevent iframe embedding (clickjacking protection)
+  "frame-ancestors 'none'",
+].join('; ');
+
+// Define public routes that don't require authentication
+const isPublicRoute = createRouteMatcher([
+  '/',
+  '/sign-in(.*)',
+  '/sign-up(.*)',
+  '/api/relay(.*)',
+  '/benchmarks',
+  '/security',
+  '/debug(.*)',
+  '/test(.*)',
+  '/reset(.*)',
+]);
+
+export default clerkMiddleware(async (auth, req) => {
+  // Protect non-public routes by redirecting to sign-in
+  const { userId } = await auth();
+
+  if (!isPublicRoute(req) && !userId) {
+    const signInUrl = new URL('/sign-in', req.url);
+    signInUrl.searchParams.set('redirect_url', req.url);
+    return NextResponse.redirect(signInUrl);
+  }
+
+  // Create response with security headers
+  const res = NextResponse.next();
 
   // SECURITY: Force HTTPS in production
   if (
     process.env.NODE_ENV === 'production' &&
-    request.headers.get('x-forwarded-proto') !== 'https'
+    req.headers.get('x-forwarded-proto') !== 'https'
   ) {
-    const httpsUrl = `https://${request.headers.get('host')}${request.nextUrl.pathname}${request.nextUrl.search}`;
+    const httpsUrl = `https://${req.headers.get('host')}${req.nextUrl.pathname}${req.nextUrl.search}`;
     return NextResponse.redirect(httpsUrl, 301);
   }
 
-  // SECURITY: Add comprehensive security headers
+  // Add CSP header
+  res.headers.set('Content-Security-Policy', CSP);
 
   // HSTS: Force HTTPS for 1 year including subdomains
-  response.headers.set(
+  res.headers.set(
     'Strict-Transport-Security',
     'max-age=31536000; includeSubDomains; preload'
   );
 
   // Prevent MIME-type sniffing
-  response.headers.set('X-Content-Type-Options', 'nosniff');
+  res.headers.set('X-Content-Type-Options', 'nosniff');
 
-  // Prevent clickjacking
-  response.headers.set('X-Frame-Options', 'DENY');
+  // Prevent clickjacking (allow SAMEORIGIN for Clerk iframes)
+  res.headers.set('X-Frame-Options', 'SAMEORIGIN');
 
   // Enable XSS protection
-  response.headers.set('X-XSS-Protection', '1; mode=block');
+  res.headers.set('X-XSS-Protection', '1; mode=block');
 
   // Referrer policy
-  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
   // Permissions policy (disable unnecessary features)
-  response.headers.set(
+  res.headers.set(
     'Permissions-Policy',
     'camera=(), microphone=(), geolocation=(), interest-cohort=()'
   );
 
-  return response;
-}
+  // CRITICAL: Middleware only validates session existence
+  // It NEVER decrypts messages or accesses private keys
+  // All E2E crypto operations happen client-side only
+
+  return res;
+});
 
 export const config = {
-  matcher: '/:path*',
+  // Match all routes except static files and internal Next.js routes
+  matcher: [
+    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
+    '/(api|trpc)(.*)',
+  ],
 };

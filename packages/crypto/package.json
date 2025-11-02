@@ -8,6 +8,11 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./primitives": {
+      "types": "./dist/primitives.d.ts",
+      "browser": "./dist/primitives.browser.js",
+      "default": "./dist/primitives.js"
     }
   },
   "scripts": {

@@ -1,36 +1,170 @@
 'use client';
 
+/**
+ * Home Page with Clerk Authentication
+ *
+ * SECURITY ARCHITECTURE:
+ * - Clerk handles user authentication (login/logout)
+ * - After Clerk auth, E2E keys are generated client-side
+ * - Clerk userId is used as the identifier for key registration
+ * - Private keys stored in IndexedDB, NEVER sent to Clerk or server
+ * - Only public keys are uploaded to relay for key exchange
+ */
+
 import { useState, useEffect } from 'react';
+import { useUser, UserButton } from '@clerk/nextjs';
 import Link from 'next/link';
+import { getOrCreateIdentity, IdentityReEnrollError } from '@/lib/identity';
+import { generateAndUploadPrekeyBundle, loadPrekeySecrets } from '@/lib/prekeys';
+import { DeviceReEnrollModal } from '@/components/DeviceReEnrollModal';
+import { UsernameSetup } from '@/components/UsernameSetup';
+import { getProfileByUsername } from '@/lib/profiles';
 
 export default function Home() {
-  const [username, setUsername] = useState('');
-  const [isRegistered, setIsRegistered] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const { isSignedIn, user, isLoaded } = useUser();
+  const [cryptoReady, setCryptoReady] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
+  const [reEnrollError, setReEnrollError] = useState<IdentityReEnrollError | null>(null);
+  const [hasUsername, setHasUsername] = useState<boolean | null>(null);
+  const [username, setUsername] = useState<string | null>(null);
 
+  // Initialize E2E crypto keys after Clerk authentication
   useEffect(() => {
-    setMounted(true);
-    const stored = localStorage.getItem('ilyazh_username');
-    if (stored) {
-      setUsername(stored);
-      setIsRegistered(true);
-    }
-  }, []);
+    if (!isLoaded || !isSignedIn || !user?.id) return;
 
-  const handleRegister = async () => {
-    if (!username.trim()) return;
+    const initCrypto = async () => {
+      try {
+        console.log('[Home] User authenticated via Clerk:', user.id);
+        console.log('[Home] Initializing E2E encryption keys...');
 
-    try {
-      // Generate identity keys (done in client lib)
-      localStorage.setItem('ilyazh_username', username);
-      setIsRegistered(true);
-    } catch (err) {
-      console.error('Registration failed:', err);
+        // Use Clerk userId as the identity identifier
+        const userId = user.id;
+
+        // Get or create E2E identity keys (stored in IndexedDB)
+        const identity = await getOrCreateIdentity(userId);
+        console.log('[Home] E2E identity ready');
+
+        // Check if we have a prekey bundle, generate if not
+        const prekeySecrets = await loadPrekeySecrets(userId);
+        if (!prekeySecrets) {
+          console.log('[Home] Generating prekey bundle...');
+          await generateAndUploadPrekeyBundle(userId, identity);
+          console.log('[Home] Prekey bundle uploaded');
+        } else {
+          console.log('[Home] Existing prekey bundle found');
+        }
+
+        setCryptoReady(true);
+        console.log('[Home] E2E crypto initialization complete');
+      } catch (err) {
+        console.error('[Home] Failed to initialize E2E crypto:', err);
+
+        // Check if this is a device re-enrollment case
+        if (err instanceof IdentityReEnrollError) {
+          console.log('[Home] Device re-enrollment required');
+          setReEnrollError(err);
+        } else {
+          setInitError(err instanceof Error ? err.message : String(err));
+        }
+      }
+    };
+
+    initCrypto();
+  }, [isLoaded, isSignedIn, user?.id]);
+
+  // Check if user has a username after crypto initialization
+  useEffect(() => {
+    if (!cryptoReady || !user?.id) return;
+
+    const checkUsername = async () => {
+      try {
+        // Check if we have a stored human-readable username
+        const storedUsername = localStorage.getItem(`username:${user.id}`);
+
+        if (storedUsername) {
+          // We have a stored username - check if it's a Clerk auto-generated ID
+          if (storedUsername.startsWith('user_')) {
+            // This is a Clerk ID, not a human-readable username - force setup
+            console.log('[Home] Clerk ID detected, showing username setup');
+            setUsername(null);
+            setHasUsername(false);
+          } else {
+            // Valid human-readable username
+            setUsername(storedUsername);
+            setHasUsername(true);
+          }
+        } else {
+          // No stored username - need to set one up
+          setHasUsername(false);
+        }
+      } catch (err) {
+        console.error('[Home] Failed to check username:', err);
+        // Default to showing username setup if check fails
+        setHasUsername(false);
+      }
+    };
+
+    checkUsername();
+  }, [cryptoReady, user?.id]);
+
+  // Handle device re-enrollment modal
+  const handleReEnrollSuccess = () => {
+    setReEnrollError(null);
+    // Retry crypto initialization
+    window.location.reload();
+  };
+
+  const handleReEnrollCancel = () => {
+    setReEnrollError(null);
+    // User wants to use another account - sign out
+    window.location.href = '/sign-in';
+  };
+
+  // Handle username setup completion
+  const handleUsernameComplete = (newUsername: string) => {
+    if (user?.id) {
+      localStorage.setItem(`username:${user.id}`, newUsername);
+      setUsername(newUsername);
+      setHasUsername(true);
     }
   };
 
+  // Show re-enrollment modal if needed
+  if (reEnrollError) {
+    return (
+      <>
+        {/* SECURITY: Development warning banner */}
+        {process.env.NODE_ENV === 'development' && (
+          <div
+            style={{
+              background: '#ff6b6b',
+              color: 'white',
+              padding: '12px 20px',
+              textAlign: 'center',
+              fontWeight: 'bold',
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              zIndex: 9999,
+              fontSize: '14px',
+              borderBottom: '3px solid #c92a2a',
+            }}
+          >
+            ⚠️ DEVELOPMENT MODE - Post-quantum crypto is MOCKED. Not secure!
+          </div>
+        )}
+        <DeviceReEnrollModal
+          username={reEnrollError.username}
+          onSuccess={handleReEnrollSuccess}
+          onCancel={handleReEnrollCancel}
+        />
+      </>
+    );
+  }
+
   // Prevent hydration mismatch
-  if (!mounted) {
+  if (!isLoaded) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
         <div className="text-lg">Loading...</div>
@@ -38,7 +172,8 @@ export default function Home() {
     );
   }
 
-  if (isRegistered) {
+  // Show sign-in prompt if not authenticated
+  if (!isSignedIn) {
     return (
       <>
         {/* SECURITY: Development warning banner */}
@@ -66,13 +201,243 @@ export default function Home() {
           className="min-h-screen flex flex-col items-center justify-center p-8 bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800"
           style={{ paddingTop: process.env.NODE_ENV === 'development' ? '50px' : '0' }}
         >
-          <div className="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8">
+          <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8">
             <h1 className="text-4xl font-bold mb-4 text-center">
-              🔐 Ilyazh Messenger
+              🔐 Stv0r Messenger
             </h1>
-          <p className="text-center text-gray-600 dark:text-gray-400 mb-8">
-            Logged in as <strong>{username}</strong>
-          </p>
+            <p className="text-center text-gray-600 dark:text-gray-400 mb-8">
+              Quantum-Resistant E2E Encrypted Messaging
+            </p>
+
+            <div className="space-y-4">
+              <Link
+                href="/sign-in"
+                className="block w-full p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold text-center transition"
+              >
+                Sign In
+              </Link>
+
+              <Link
+                href="/sign-up"
+                className="block w-full p-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-semibold text-center transition"
+              >
+                Create Account
+              </Link>
+            </div>
+
+            <div className="mt-8 text-xs text-gray-500 dark:text-gray-400 text-center">
+              <p className="mb-2">🔒 Privacy-First Architecture:</p>
+              <ul className="text-left space-y-1">
+                <li>• Clerk handles authentication only</li>
+                <li>• Keys generated on your device</li>
+                <li>• Private keys never leave browser</li>
+                <li>• Server sees only encrypted data</li>
+              </ul>
+            </div>
+          </div>
+        </main>
+      </>
+    );
+  }
+
+  // Show crypto initialization status
+  if (!cryptoReady && !initError) {
+    return (
+      <>
+        {/* SECURITY: Development warning banner */}
+        {process.env.NODE_ENV === 'development' && (
+          <div
+            style={{
+              background: '#ff6b6b',
+              color: 'white',
+              padding: '12px 20px',
+              textAlign: 'center',
+              fontWeight: 'bold',
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              zIndex: 9999,
+              fontSize: '14px',
+              borderBottom: '3px solid #c92a2a',
+            }}
+          >
+            ⚠️ DEVELOPMENT MODE - Post-quantum crypto is MOCKED. Not secure!
+          </div>
+        )}
+        <main
+          className="min-h-screen flex flex-col items-center justify-center p-8 bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800"
+          style={{ paddingTop: process.env.NODE_ENV === 'development' ? '50px' : '0' }}
+        >
+          <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8 text-center">
+            <div className="text-4xl mb-4">🔐</div>
+            <h2 className="text-xl font-semibold mb-2">Initializing Encryption</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              Generating your quantum-resistant keypairs...
+            </p>
+            <div className="animate-pulse text-blue-500">
+              <div className="h-2 bg-blue-200 rounded-full w-full">
+                <div className="h-2 bg-blue-500 rounded-full w-1/2 animate-slide"></div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </>
+    );
+  }
+
+  // Show error state
+  if (initError) {
+    return (
+      <>
+        {/* SECURITY: Development warning banner */}
+        {process.env.NODE_ENV === 'development' && (
+          <div
+            style={{
+              background: '#ff6b6b',
+              color: 'white',
+              padding: '12px 20px',
+              textAlign: 'center',
+              fontWeight: 'bold',
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              zIndex: 9999,
+              fontSize: '14px',
+              borderBottom: '3px solid #c92a2a',
+            }}
+          >
+            ⚠️ DEVELOPMENT MODE - Post-quantum crypto is MOCKED. Not secure!
+          </div>
+        )}
+        <main
+          className="min-h-screen flex flex-col items-center justify-center p-8 bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800"
+          style={{ paddingTop: process.env.NODE_ENV === 'development' ? '50px' : '0' }}
+        >
+          <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8">
+            <div className="text-center mb-4">
+              <div className="text-4xl mb-2">❌</div>
+              <h2 className="text-xl font-semibold text-red-600">Initialization Failed</h2>
+            </div>
+            <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">
+              {initError}
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold transition"
+            >
+              Retry
+            </button>
+          </div>
+        </main>
+      </>
+    );
+  }
+
+  // Show username setup if crypto is ready but user has no username
+  if (cryptoReady && hasUsername === false) {
+    return (
+      <>
+        {/* SECURITY: Development warning banner */}
+        {process.env.NODE_ENV === 'development' && (
+          <div
+            style={{
+              background: '#ff6b6b',
+              color: 'white',
+              padding: '12px 20px',
+              textAlign: 'center',
+              fontWeight: 'bold',
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              zIndex: 9999,
+              fontSize: '14px',
+              borderBottom: '3px solid #c92a2a',
+            }}
+          >
+            ⚠️ DEVELOPMENT MODE - Post-quantum crypto is MOCKED. Not secure!
+          </div>
+        )}
+        <UsernameSetup onComplete={handleUsernameComplete} />
+      </>
+    );
+  }
+
+  // Wait for username check to complete
+  if (cryptoReady && hasUsername === null) {
+    return (
+      <>
+        {/* SECURITY: Development warning banner */}
+        {process.env.NODE_ENV === 'development' && (
+          <div
+            style={{
+              background: '#ff6b6b',
+              color: 'white',
+              padding: '12px 20px',
+              textAlign: 'center',
+              fontWeight: 'bold',
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              zIndex: 9999,
+              fontSize: '14px',
+              borderBottom: '3px solid #c92a2a',
+            }}
+          >
+            ⚠️ DEVELOPMENT MODE - Post-quantum crypto is MOCKED. Not secure!
+          </div>
+        )}
+        <main
+          className="min-h-screen flex flex-col items-center justify-center p-8 bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800"
+          style={{ paddingTop: process.env.NODE_ENV === 'development' ? '50px' : '0' }}
+        >
+          <div className="text-lg">Checking profile...</div>
+        </main>
+      </>
+    );
+  }
+
+  // Authenticated and crypto ready - show dashboard
+  return (
+    <>
+      {/* SECURITY: Development warning banner */}
+      {process.env.NODE_ENV === 'development' && (
+        <div
+          style={{
+            background: '#ff6b6b',
+            color: 'white',
+            padding: '12px 20px',
+            textAlign: 'center',
+            fontWeight: 'bold',
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 9999,
+            fontSize: '14px',
+            borderBottom: '3px solid #c92a2a',
+          }}
+        >
+          ⚠️ DEVELOPMENT MODE - Post-quantum crypto is MOCKED. Not secure!
+        </div>
+      )}
+      <main
+        className="min-h-screen flex flex-col items-center justify-center p-8 bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800"
+        style={{ paddingTop: process.env.NODE_ENV === 'development' ? '50px' : '0' }}
+      >
+        <div className="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-4xl font-bold">🔐 Stv0r Messenger</h1>
+              <p className="text-gray-600 dark:text-gray-400 mt-1">
+                Logged in as <strong>{user?.primaryEmailAddress?.emailAddress || user?.username || user?.id}</strong>
+              </p>
+            </div>
+            <UserButton afterSignOutUrl="/" />
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Link
@@ -111,82 +476,13 @@ export default function Home() {
               <li>✓ Double Ratchet with mandated cadence</li>
               <li>✓ sid-in-AAD for all records</li>
               <li>✓ AES-256-GCM + HKDF-SHA-384</li>
+              <li className="pt-2 border-t border-gray-300 dark:border-gray-600 mt-2">
+                🔑 Auth: Clerk (identity only, zero access to keys)
+              </li>
             </ul>
           </div>
-
-          <button
-            onClick={() => {
-              localStorage.removeItem('ilyazh_username');
-              setIsRegistered(false);
-              setUsername('');
-            }}
-            className="mt-4 w-full p-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
-          >
-            Logout
-          </button>
         </div>
       </main>
-      </>
-    );
-  }
-
-  return (
-    <>
-      {/* SECURITY: Development warning banner */}
-      {process.env.NODE_ENV === 'development' && (
-        <div
-          style={{
-            background: '#ff6b6b',
-            color: 'white',
-            padding: '12px 20px',
-            textAlign: 'center',
-            fontWeight: 'bold',
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            zIndex: 9999,
-            fontSize: '14px',
-            borderBottom: '3px solid #c92a2a',
-          }}
-        >
-          ⚠️ DEVELOPMENT MODE - Post-quantum crypto is MOCKED. Not secure!
-        </div>
-      )}
-      <main
-        className="min-h-screen flex flex-col items-center justify-center p-8 bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800"
-        style={{ paddingTop: process.env.NODE_ENV === 'development' ? '50px' : '0' }}
-      >
-      <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8">
-        <h1 className="text-4xl font-bold mb-4 text-center">
-          🔐 Ilyazh Messenger
-        </h1>
-        <p className="text-center text-gray-600 dark:text-gray-400 mb-8">
-          Post-Quantum E2E Encrypted Messaging
-        </p>
-
-        <div className="space-y-4">
-          <input
-            type="text"
-            placeholder="Enter username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleRegister()}
-            className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700"
-          />
-
-          <button
-            onClick={handleRegister}
-            className="w-full p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold transition"
-          >
-            Register / Login
-          </button>
-        </div>
-
-        <div className="mt-8 text-xs text-gray-500 dark:text-gray-400 text-center">
-          <p>Protocol v0.8 • Database-free • Server sees only opaque blobs</p>
-        </div>
-      </div>
-    </main>
+    </>
   );
 }

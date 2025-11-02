@@ -1,0 +1,63 @@
+# Dependencies (will be installed in container)
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs (will be generated in container)
+dist/
+build/
+.next/
+out/
+
+# Storage and data
+storage/
+data/
+
+# Environment files (set in cloud platform)
+.env
+.env*.local
+.env.production
+apps/web/.env.local
+apps/relay/.env
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Turbo cache
+.turbo/
+
+# Misc
+*.pem
+.cache/
+README.md
+LICENSE
+*.md
+
+# Web app (not needed in relay Docker build)
+apps/web/
+
+# Backup files
+*.bak
+*.bak*

@@ -8,6 +8,7 @@
 
 import { type IdentityKeyPair, type HandshakeState } from '@ilyazh/crypto';
 import _sodium from 'libsodium-wrappers';
+import { logDebug, logInfo, logWarn, logError } from './logger';
 
 // ==================== Password-based Encryption ====================
 
@@ -60,8 +61,8 @@ async function encryptWithPassword(plaintext: Uint8Array, password: string): Pro
   combined.set(nonce, salt.length);
   combined.set(ciphertext, salt.length + nonce.length);
 
-  // Return as base64
-  return Buffer.from(combined).toString('base64');
+  // Return as base64 - use libsodium for browser compatibility
+  return sodium.to_base64(combined, sodium.base64_variants.ORIGINAL);
 }
 
 /**
@@ -72,7 +73,8 @@ async function decryptWithPassword(encryptedBase64: string, password: string): P
   await _sodium.ready;
   const sodium = _sodium;
 
-  const combined = Buffer.from(encryptedBase64, 'base64');
+  // Use libsodium for browser-compatible base64 decoding
+  const combined = sodium.from_base64(encryptedBase64, sodium.base64_variants.ORIGINAL);
 
   // Extract salt, nonce, ciphertext
   const saltLength = sodium.crypto_pwhash_SALTBYTES; // 16
@@ -94,10 +96,11 @@ async function decryptWithPassword(encryptedBase64: string, password: string): P
 }
 
 const DB_NAME = 'ilyazh-keystore-v3'; // CHANGED NAME to force fresh start after crypto patch
-const DB_VERSION = 1; // Start fresh with v1
+const DB_VERSION = 2; // v2: Added pendingSessions store for relay retry logic
 const STORE_IDENTITY = 'identity';
 const STORE_SESSIONS = 'sessions';
 const STORE_PREKEYS = 'prekeys';
+const STORE_PENDING_SESSIONS = 'pendingSessions';
 
 interface StoredIdentity {
   username: string;
@@ -159,12 +162,12 @@ class KeyStore {
       };
 
       request.onblocked = () => {
-        console.warn('[KeyStore] Database open blocked - close all other tabs');
+        logWarn('keystore', 'Database open blocked - close all other tabs');
       };
 
       request.onsuccess = () => {
         this.db = request.result;
-        console.log('[KeyStore] Database opened successfully, version:', this.db.version);
+        logDebug('keystore', 'Database opened successfully', { version: this.db.version });
         resolve();
       };
 
@@ -186,6 +189,11 @@ class KeyStore {
         // Prekeys store: username → prekey secrets
         if (!db.objectStoreNames.contains(STORE_PREKEYS)) {
           db.createObjectStore(STORE_PREKEYS);
+        }
+
+        // Pending sessions store: for retry logic when relay returns 403
+        if (!db.objectStoreNames.contains(STORE_PENDING_SESSIONS)) {
+          db.createObjectStore(STORE_PENDING_SESSIONS);
         }
       };
     });
@@ -224,6 +232,13 @@ class KeyStore {
 
   async saveIdentity(username: string, identity: IdentityKeyPair): Promise<void> {
     const db = this.ensureDB();
+    await _sodium.ready;
+    const sodium = _sodium;
+
+    // Validate username
+    if (!username || username.trim() === '') {
+      throw new Error('[KeyStore] Cannot save identity: username is empty or undefined');
+    }
 
     let ed25519SecretKey: string;
     let mldsaSecretKey: string;
@@ -231,38 +246,62 @@ class KeyStore {
 
     // SECURITY: Encrypt secret keys if password is set
     if (this.password) {
-      console.log('[KeyStore] Encrypting identity keys with password...');
+      logDebug('keystore', 'Encrypting identity keys');
       ed25519SecretKey = await encryptWithPassword(identity.ed25519.secretKey, this.password);
       mldsaSecretKey = await encryptWithPassword(identity.mldsa.secretKey, this.password);
       encrypted = true;
-      console.log('[KeyStore] ✅ Identity keys encrypted');
+      logInfo('keystore', 'Identity keys encrypted');
     } else {
-      console.warn('[KeyStore] ⚠️ Saving identity WITHOUT encryption - set password for security!');
-      ed25519SecretKey = Buffer.from(identity.ed25519.secretKey).toString('base64');
-      mldsaSecretKey = Buffer.from(identity.mldsa.secretKey).toString('base64');
+      logWarn('keystore', 'Saving identity WITHOUT encryption - set password for security');
+      // Use libsodium's to_base64 for browser compatibility
+      ed25519SecretKey = sodium.to_base64(new Uint8Array(identity.ed25519.secretKey), sodium.base64_variants.ORIGINAL);
+      mldsaSecretKey = sodium.to_base64(new Uint8Array(identity.mldsa.secretKey), sodium.base64_variants.ORIGINAL);
     }
 
+    // Convert keys to base64 strings
+    const ed25519PublicKeyB64 = sodium.to_base64(new Uint8Array(identity.ed25519.publicKey), sodium.base64_variants.ORIGINAL);
+    const mldsaPublicKeyB64 = sodium.to_base64(new Uint8Array(identity.mldsa.publicKey), sodium.base64_variants.ORIGINAL);
+
+    // Create stored object
     const stored: StoredIdentity = {
-      username,
+      username: username,
       ed25519: {
-        publicKey: Buffer.from(identity.ed25519.publicKey).toString('base64'),
+        publicKey: ed25519PublicKeyB64,
         secretKey: ed25519SecretKey,
       },
       mldsa: {
-        publicKey: Buffer.from(identity.mldsa.publicKey).toString('base64'),
+        publicKey: mldsaPublicKeyB64,
         secretKey: mldsaSecretKey,
       },
       createdAt: Date.now(),
       encrypted,
     };
 
+    // Final validation before putting into database
+    if (!stored.username || typeof stored.username !== 'string' || stored.username.trim() === '') {
+      logError('keystore', 'Invalid username in stored object', {
+        username: stored.username,
+        usernameType: typeof stored.username
+      });
+      throw new Error('[KeyStore] CRITICAL: Invalid username in stored object');
+    }
+
+    logDebug('keystore', 'Validation passed, writing to database', {
+      username: stored.username,
+      encrypted: stored.encrypted
+    });
+
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_IDENTITY, 'readwrite');
       const store = tx.objectStore(STORE_IDENTITY);
+
       const request = store.put(stored);
 
       request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve();
+      request.onsuccess = () => {
+        logDebug('keystore', 'Identity saved to IndexedDB');
+        resolve();
+      };
     });
   }
 
@@ -277,6 +316,9 @@ class KeyStore {
       request.onerror = () => reject(request.error);
       request.onsuccess = async () => {
         try {
+          await _sodium.ready;
+          const sodium = _sodium;
+
           const stored = request.result as StoredIdentity | undefined;
           if (!stored) {
             resolve(null);
@@ -293,28 +335,30 @@ class KeyStore {
               return;
             }
 
-            console.log('[KeyStore] Decrypting identity keys...');
+            logDebug('keystore', 'Decrypting identity keys');
             try {
               ed25519SecretKey = await decryptWithPassword(stored.ed25519.secretKey, this.password);
               mldsaSecretKey = await decryptWithPassword(stored.mldsa.secretKey, this.password);
-              console.log('[KeyStore] ✅ Identity keys decrypted');
+              logDebug('keystore', 'Identity keys decrypted');
             } catch (err) {
               reject(new Error('Failed to decrypt identity: incorrect password'));
               return;
             }
           } else {
-            // Legacy unencrypted keys
-            ed25519SecretKey = Buffer.from(stored.ed25519.secretKey, 'base64');
-            mldsaSecretKey = Buffer.from(stored.mldsa.secretKey, 'base64');
+            // Legacy unencrypted keys - use libsodium for browser compatibility
+            ed25519SecretKey = sodium.from_base64(stored.ed25519.secretKey, sodium.base64_variants.ORIGINAL);
+            mldsaSecretKey = sodium.from_base64(stored.mldsa.secretKey, sodium.base64_variants.ORIGINAL);
           }
 
           resolve({
             ed25519: {
-              publicKey: Buffer.from(stored.ed25519.publicKey, 'base64'),
+              // Use libsodium's from_base64 for browser compatibility
+              publicKey: sodium.from_base64(stored.ed25519.publicKey, sodium.base64_variants.ORIGINAL),
               secretKey: ed25519SecretKey,
             },
             mldsa: {
-              publicKey: Buffer.from(stored.mldsa.publicKey, 'base64'),
+              // Use libsodium's from_base64 for browser compatibility
+              publicKey: sodium.from_base64(stored.mldsa.publicKey, sodium.base64_variants.ORIGINAL),
               secretKey: mldsaSecretKey,
             },
           });
@@ -342,8 +386,12 @@ class KeyStore {
 
   async saveSession(sessionId: Uint8Array, peerUsername: string, state: HandshakeState): Promise<void> {
     const db = this.ensureDB();
+    await _sodium.ready;
+    const sodium = _sodium;
+
     const stored: StoredSession = {
-      sessionId: Buffer.from(sessionId).toString('hex'),
+      // Use libsodium's to_hex for browser compatibility
+      sessionId: sodium.to_hex(sessionId),
       peerUsername,
       state,
       createdAt: state.sessionStartTime,
@@ -362,7 +410,11 @@ class KeyStore {
 
   async loadSession(sessionId: Uint8Array): Promise<HandshakeState | null> {
     const db = this.ensureDB();
-    const sessionIdHex = Buffer.from(sessionId).toString('hex');
+    await _sodium.ready;
+    const sodium = _sodium;
+
+    // Use libsodium's to_hex for browser compatibility
+    const sessionIdHex = sodium.to_hex(sessionId);
 
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_SESSIONS, 'readonly');
@@ -401,7 +453,11 @@ class KeyStore {
 
   async deleteSession(sessionId: Uint8Array): Promise<void> {
     const db = this.ensureDB();
-    const sessionIdHex = Buffer.from(sessionId).toString('hex');
+    await _sodium.ready;
+    const sodium = _sodium;
+
+    // Use libsodium's to_hex for browser compatibility
+    const sessionIdHex = sodium.to_hex(sessionId);
 
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_SESSIONS, 'readwrite');
@@ -447,12 +503,12 @@ class KeyStore {
     return new Promise((resolve, reject) => {
       const request = indexedDB.deleteDatabase(DB_NAME);
       request.onsuccess = () => {
-        console.log('[KeyStore] Database deleted successfully');
+        logDebug('keystore', 'Database deleted successfully');
         resolve();
       };
       request.onerror = () => reject(request.error);
       request.onblocked = () => {
-        console.warn('[KeyStore] Database deletion blocked');
+        logWarn('keystore', 'Database deletion blocked');
       };
     });
   }
