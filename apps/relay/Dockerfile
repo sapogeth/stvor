@@ -6,6 +6,9 @@
 
 FROM node:20-alpine AS base
 
+# Railway-specific: Accept service ID for cache mount prefixing
+ARG RAILWAY_SERVICE_ID=relay
+
 # Install pnpm
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
@@ -15,6 +18,7 @@ RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 # Build stage - TypeScript compilation
 # ==============================================================================
 FROM base AS builder
+ARG RAILWAY_SERVICE_ID=relay
 WORKDIR /app
 
 # Copy workspace configuration
@@ -26,7 +30,8 @@ COPY packages ./packages
 COPY apps/relay ./apps/relay
 
 # Install ALL dependencies (including devDependencies for build)
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+# Railway-compatible cache mount: id=s/${RAILWAY_SERVICE_ID}-pnpm-store
+RUN --mount=type=cache,id=s/${RAILWAY_SERVICE_ID}-pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
 # Build both crypto package and relay
@@ -37,6 +42,7 @@ RUN pnpm --filter @ilyazh/crypto build && \
 # Production stage - Minimal runtime image
 # ==============================================================================
 FROM base AS runner
+ARG RAILWAY_SERVICE_ID=relay
 WORKDIR /app
 
 # Set production environment
@@ -53,7 +59,8 @@ COPY --from=builder /app/packages/crypto/package.json ./packages/crypto/
 COPY --from=builder /app/package.json /app/pnpm-workspace.yaml ./
 
 # Install ONLY production dependencies (no devDependencies)
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+# Railway-compatible cache mount: id=s/${RAILWAY_SERVICE_ID}-pnpm-store
+RUN --mount=type=cache,id=s/${RAILWAY_SERVICE_ID}-pnpm-store,target=/pnpm/store \
     pnpm install --prod --frozen-lockfile
 
 # Install curl for health checks (Railway/Render monitoring)
