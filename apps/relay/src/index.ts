@@ -989,8 +989,8 @@ fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
 
     // CRITICAL FIX: Include canonical participants with identities
     // This provides source of truth for E2E identity resolution
-    const participants = [];
-    const uniqueSenders = new Set(messages.map(m => m.senderId).filter(Boolean));
+    const participants: Array<{ username: string; canonicalUsername: string; identityEd25519: string; identityMLDSA: string }> = [];
+    const uniqueSenders = new Set(messages.map((m: any) => m.senderId).filter(Boolean));
 
     for (const senderId of uniqueSenders) {
       try {
@@ -1029,7 +1029,7 @@ fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
       chatId,
       since,
       participants, // CRITICAL: Canonical participants with identity keys
-      messages: messages.map(m => ({
+      messages: messages.map((m: any) => ({
         blobRef: m.blobRef,
         encryptedBlob: m.encryptedBlob.toString('base64'),
         senderId: m.senderId,
@@ -1041,7 +1041,7 @@ fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
         type: m.messageType || 'message', // CRITICAL FIX: Return message type
         session: storedSession || undefined, // CRITICAL FIX: Include inline session with message
       })),
-      entries: messages.map(m => ({ // Add 'entries' alias for frontend compatibility
+      entries: messages.map((m: any) => ({ // Add 'entries' alias for frontend compatibility
         blobRef: m.blobRef,
         encryptedBlob: m.encryptedBlob.toString('base64'),
         senderId: m.senderId,
