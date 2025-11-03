@@ -50,8 +50,8 @@ COPY --from=builder /app/apps/relay/package.json ./apps/relay/
 COPY --from=builder /app/packages/crypto/dist ./packages/crypto/dist
 COPY --from=builder /app/packages/crypto/package.json ./packages/crypto/
 
-# Copy workspace files for pnpm
-COPY --from=builder /app/package.json /app/pnpm-workspace.yaml ./
+# Copy workspace files for pnpm (including lockfile for frozen install)
+COPY --from=builder /app/package.json /app/pnpm-workspace.yaml /app/pnpm-lock.yaml ./
 
 # Install ONLY production dependencies (no devDependencies)
 # No cache mount - Railway compatible
