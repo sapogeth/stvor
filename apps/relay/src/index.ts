@@ -988,14 +988,14 @@ fastify.post<{ Params: { chatId: string }, Body: MessageBody }>(
 // Support multiple URL patterns for client compatibility
 // All routes delegate to the same POST /message/:chatId logic above
 
-fastify.post<{ Params: { chatId: string } }>(
+fastify.post<{ Params: { chatId: string }, Body: MessageBody }>(
   '/messages/:chatId',
   async (request, reply) => {
-    // Redirect to canonical endpoint
+    // Redirect to canonical endpoint - reuse the same body type
     return fastify.inject({
       method: 'POST',
       url: `/message/${request.params.chatId}`,
-      payload: request.body,
+      payload: request.body as Record<string, unknown>,
       headers: request.headers,
     });
   }
