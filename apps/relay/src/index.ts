@@ -800,28 +800,47 @@ function makeChatId(participants: string[]): string {
 // ==================== Chat Initialization ====================
 
 interface ChatInitBody {
-  participants: string[];
+  participants?: string[]; // Array format (legacy)
+  from?: string;           // Two-person format (new)
+  to?: string;             // Two-person format (new)
 }
 
 fastify.post<{ Body: ChatInitBody }>(
   '/chat/init',
   // No authentication required - chat ID is deterministic and not secret
   async (request, reply) => {
-    const { participants } = request.body;
+    const { participants, from, to } = request.body;
 
-    if (!participants || !Array.isArray(participants) || participants.length < 2) {
-      return reply.code(400).send({ error: 'participants array with at least 2 members required' });
+    // Support both formats:
+    // 1. Array format: { participants: ["alice", "bob"] }
+    // 2. Two-person format: { from: "alice", to: "bob" }
+    let actualParticipants: string[];
+
+    if (from && to) {
+      // New format: { from, to }
+      actualParticipants = [from, to];
+    } else if (participants && Array.isArray(participants)) {
+      // Legacy format: { participants: [...] }
+      actualParticipants = participants;
+    } else {
+      return reply.code(400).send({
+        error: 'Either "participants" array or "from"+"to" fields required'
+      });
+    }
+
+    if (actualParticipants.length < 2) {
+      return reply.code(400).send({ error: 'At least 2 participants required' });
     }
 
     try {
-      const chatId = makeChatId(participants);
+      const chatId = makeChatId(actualParticipants);
 
-      console.log(`[Chat] Init request for participants: ${participants.join(', ')}`);
+      console.log(`[Chat] Init request for participants: ${actualParticipants.join(', ')}`);
       console.log(`[Chat] Generated deterministic chatId: ${chatId}`);
 
       // Chat is implicitly created on first message, no need to pre-create
       // Just return the canonical ID
-      return { chatId, status: 'ok' };
+      return { chatId, status: 'ok', ok: true };
     } catch (err) {
       console.error('[Chat] Failed to init:', err);
       return reply.code(400).send({ error: (err as Error).message });
