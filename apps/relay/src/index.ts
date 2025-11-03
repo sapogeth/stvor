@@ -8,9 +8,9 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import jwt from '@fastify/jwt';
-import { createStorageAdapter, type IStorageAdapter } from './storage/index.js';
-import { type PrekeyBundle } from './storage/interfaces.js';
-import { normalizeUsername } from './utils/normalize.js';
+import { createStorageAdapter, type IStorageAdapter } from './storage/index';
+import { type PrekeyBundle } from './storage/interfaces';
+import { normalizeUsername } from './utils/normalize';
 import * as crypto from 'crypto';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
