@@ -984,6 +984,25 @@ fastify.post<{ Params: { chatId: string }, Body: MessageBody }>(
   }
 );
 
+// ==================== Message Endpoint Aliases ====================
+// Support multiple URL patterns for client compatibility
+// All routes delegate to the same POST /message/:chatId logic above
+
+fastify.post<{ Params: { chatId: string } }>(
+  '/messages/:chatId',
+  async (request, reply) => {
+    // Redirect to canonical endpoint
+    return fastify.inject({
+      method: 'POST',
+      url: `/message/${request.params.chatId}`,
+      payload: request.body,
+      headers: request.headers,
+    });
+  }
+);
+
+console.log('[Routes] ✅ Message endpoint aliases registered: POST /message/:chatId, POST /messages/:chatId');
+
 // ==================== Sync Messages ====================
 
 interface SyncQuery {
