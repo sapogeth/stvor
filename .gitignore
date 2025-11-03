@@ -9,11 +9,11 @@ build/
 .next/
 out/
 
-# Storage (contains encrypted messages)
-storage/
-data/
-pgdata/
-docker-data/
+# Storage (contains encrypted messages - only root level)
+/storage/
+/data/
+/pgdata/
+/docker-data/
 
 # Environment (CRITICAL: Never commit secrets)
 .env
