@@ -990,17 +990,17 @@ fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
     // CRITICAL FIX: Include canonical participants with identities
     // This provides source of truth for E2E identity resolution
     const participants: Array<{ username: string; canonicalUsername: string; identityEd25519: string; identityMLDSA: string }> = [];
-    const uniqueSenders = new Set(messages.map((m: any) => m.senderId).filter(Boolean));
+    const uniqueSenders = new Set<string>(messages.map((m: any) => m.senderId as string).filter(Boolean));
 
     for (const senderId of uniqueSenders) {
       try {
         // Fetch canonical identity for this participant
-        const user = await storage.users.getUserByUsername(senderId);
+        const user = await storage.users.getUserByUsername(senderId as string);
 
         if (user) {
           participants.push({
-            username: senderId, // Canonical username
-            canonicalUsername: senderId.toLowerCase().trim(), // CRITICAL FIX: Explicit canonical form
+            username: senderId as string, // Canonical username
+            canonicalUsername: (senderId as string).toLowerCase().trim(), // CRITICAL FIX: Explicit canonical form
             identityEd25519: user.identityEd25519,
             identityMLDSA: user.identityMLDSA,
           });
