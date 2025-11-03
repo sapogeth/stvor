@@ -11,15 +11,21 @@ const files = await glob('dist/**/*.js', { cwd: process.cwd() });
 for (const file of files) {
   let content = readFileSync(file, 'utf8');
 
-  // Add .js extension to relative imports
+  // Add .js extension to relative imports (only if not already present)
   // Matches: import ... from './path' or from '../path'
   content = content.replace(
     /from\s+['"](\.\.[/\\][^'"]+)['"]/g,
-    (match, path) => `from '${path}.js'`
+    (match, path) => {
+      if (path.endsWith('.js')) return match; // Already has .js
+      return `from '${path}.js'`;
+    }
   );
   content = content.replace(
     /from\s+['"](\.[/\\][^'"]+)['"]/g,
-    (match, path) => `from '${path}.js'`
+    (match, path) => {
+      if (path.endsWith('.js')) return match; // Already has .js
+      return `from '${path}.js'`;
+    }
   );
 
   writeFileSync(file, content, 'utf8');

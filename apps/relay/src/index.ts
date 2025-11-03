@@ -165,10 +165,10 @@ async function authenticate(request: any, reply: any) {
 
 // ==================== Rate Limiting ====================
 
-async function rateLimit(request: any, reply: any, key: string, limit: number, windowMs: number) {
+async function rateLimit(request: any, reply: any, key: string, limit: number, windowMs: number): Promise<boolean> {
   if (!storage || !storageReady) {
     // If storage not ready - skip rate limit
-    return;
+    return true;
   }
 
   try {
@@ -177,10 +177,13 @@ async function rateLimit(request: any, reply: any, key: string, limit: number, w
       metrics.rateLimitHits++;
       logSecurityEvent('RATE_LIMIT_EXCEEDED', { key, ip: request.ip });
       reply.code(429).send({ error: 'Rate limit exceeded', retryAfter: Math.ceil(windowMs / 1000) });
+      return false;
     }
+    return true;
   } catch (err) {
     console.error('[RateLimit] Error:', err);
     // On error - allow request
+    return true;
   }
 }
 
@@ -200,6 +203,9 @@ fastify.get('/healthz', async () => {
 });
 
 fastify.get('/ready', async () => {
+  if (!storage || !storageReady) {
+    throw new Error('Storage not initialized');
+  }
   const healthy = await storage.isHealthy();
   if (!healthy) {
     throw new Error('Storage not healthy');
@@ -240,7 +246,8 @@ fastify.post<{ Body: RegisterBody }>('/register', async (request, reply) => {
     return reply.code(400).send({ error: 'Missing required fields' });
   }
 
-  await rateLimit(request, reply, `register:${request.ip}`, 5, 60 * 60 * 1000);
+  const rateLimitPassed = await rateLimit(request, reply, `register:${request.ip}`, 5, 60 * 60 * 1000);
+  if (!rateLimitPassed) return;
 
   logSecurityEvent('USER_REGISTRATION_ATTEMPT', { userId, username, ip: request.ip });
 
@@ -301,7 +308,8 @@ fastify.post<{ Body: PrekeyBundleBody }>(
       return reply.code(403).send({ error: 'Forbidden' });
     }
 
-    await rateLimit(request, reply, `prekey:${userId}`, 10, 60 * 60 * 1000);
+    const rateLimitPassed = await rateLimit(request, reply, `prekey:${userId}`, 10, 60 * 60 * 1000);
+    if (!rateLimitPassed) return;
 
     const stored = await storage.prekeys.storePrekeyBundle({
       userId,
@@ -352,7 +360,8 @@ fastify.post<{ Body: BatchPrekeyBody }>(
       return reply.code(403).send({ error: 'Forbidden' });
     }
 
-    await rateLimit(request, reply, `prekey-batch:${userId}`, 2, 60 * 60 * 1000);
+    const rateLimitPassed = await rateLimit(request, reply, `prekey-batch:${userId}`, 2, 60 * 60 * 1000);
+    if (!rateLimitPassed) return;
 
     let succeeded = 0;
     for (const b of bundles) {
