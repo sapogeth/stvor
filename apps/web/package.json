@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3002",
-    "build": "next build",
+    "build": "pnpm --filter @ilyazh/crypto build && next build",
     "start": "next start",
     "lint": "next lint",
     "clean": "rm -rf .next"
