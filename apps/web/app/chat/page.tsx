@@ -1244,8 +1244,17 @@ export default function ChatPage() {
         }),
       });
 
+      console.log('[Chat] Init response:', {
+        ok: initRes.ok,
+        status: initRes.status,
+        statusText: initRes.statusText,
+        headers: Object.fromEntries(initRes.headers.entries()),
+      });
+
       if (!initRes.ok) {
-        throw new Error(`Failed to initialize chat on relay: ${initRes.status}`);
+        const errorText = await initRes.text();
+        console.error('[Chat] Init failed with body:', errorText);
+        throw new Error(`Failed to initialize chat on relay: ${initRes.status} - ${errorText}`);
       }
 
       const initData = await initRes.json();
