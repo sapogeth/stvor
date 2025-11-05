@@ -88,9 +88,10 @@ export default function middleware(req: NextRequest) {
   }
 
   // For all other routes, apply Clerk middleware
-  return clerkMiddleware(async (auth, request) => {
-    // Protect non-public routes by redirecting to sign-in
-    const { userId } = await auth();
+  return clerkMiddleware(
+    async (auth, request) => {
+      // Protect non-public routes by redirecting to sign-in
+      const { userId } = await auth();
 
     if (!isPublicRoute(request) && !userId) {
       const signInUrl = new URL('/sign-in', request.url);
@@ -141,8 +142,9 @@ export default function middleware(req: NextRequest) {
     // It NEVER decrypts messages or accesses private keys
     // All E2E crypto operations happen client-side only
 
-    return res;
-  })(req);
+      return res;
+    }
+  )(req);
 }
 
 export const config = {
