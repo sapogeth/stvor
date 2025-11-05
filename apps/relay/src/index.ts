@@ -230,6 +230,30 @@ fastify.get('/metrics', async () => {
   };
 });
 
+// ==================== Debug Endpoints ====================
+
+/**
+ * DELETE /debug/prekeys/:username
+ * Clear prekey bundle for a specific user (for fixing signature issues)
+ */
+fastify.delete<{ Params: { username: string } }>('/debug/prekeys/:username', async (request, reply) => {
+  const username = normalizeUsername(request.params.username);
+
+  const hadBundle = SIGNED_PREKEYS.has(username);
+  SIGNED_PREKEYS.delete(username);
+
+  console.log(`[Debug] Cleared prekey bundle for: ${username} (existed: ${hadBundle})`);
+
+  return {
+    success: true,
+    username,
+    cleared: hadBundle,
+    message: hadBundle
+      ? `Prekey bundle for ${username} has been cleared. User must re-register.`
+      : `No prekey bundle found for ${username}`
+  };
+});
+
 // ==================== User Registration ====================
 
 interface RegisterBody {

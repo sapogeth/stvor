@@ -144,3 +144,44 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ path
     );
   }
 }
+
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
+  const resolvedParams = await params;
+  const path = resolvedParams.path.join("/");
+
+  try {
+    const url = `${RELAY_URL}/${path}`;
+
+    console.log(`[Proxy] DELETE /${path}`);
+
+    // Forward all headers, especially Authorization
+    const headers: Record<string, string> = {};
+    req.headers.forEach((value, key) => {
+      // Skip host and connection headers
+      if (!['host', 'connection', 'content-length'].includes(key.toLowerCase())) {
+        headers[key] = value;
+      }
+    });
+
+    const res = await fetch(url, {
+      method: "DELETE",
+      headers,
+    });
+
+    const responseText = await res.text();
+    console.log(`[Proxy] DELETE /${path} -> ${res.status}`);
+
+    return new Response(responseText, {
+      status: res.status,
+      headers: {
+        'content-type': res.headers.get('content-type') || 'application/json',
+      },
+    });
+  } catch (e) {
+    console.error(`[Proxy] Relay unreachable for DELETE ${path}:`, e);
+    return NextResponse.json(
+      { error: 'RELAY_UNAVAILABLE', detail: String((e as Error)?.message ?? e) },
+      { status: 502 }
+    );
+  }
+}
