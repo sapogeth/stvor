@@ -143,9 +143,10 @@ export default clerkMiddleware(async (auth, request) => {
 });
 
 export const config = {
-  // Exclude /api/* entirely from middleware matching
-  // This ensures /api/relay/* is never processed by middleware at all
+  // Exclude static files and Next.js internals
+  // NOTE: We DON'T exclude /api/* because some API routes need Clerk (e.g. /api/profiles)
+  // We only bypass /api/relay/* via early return in middleware function
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 };
