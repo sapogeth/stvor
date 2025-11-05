@@ -29,5 +29,3 @@ export async function POST(req: Request) {
   console.log(`[Proxy] Directory POST /${username} -> ${res.status}`);
   return NextResponse.json(data, { status: res.status });
 }
-
-export const dynamic = 'force-dynamic';
