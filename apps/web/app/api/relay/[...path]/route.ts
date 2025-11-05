@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Force Node.js runtime (not Edge) for full fetch API support
+export const runtime = 'nodejs';
+// Force dynamic rendering (no static optimization)
+export const dynamic = 'force-dynamic';
+
 const RELAY_URL =
   process.env.RELAY_BASE_URL ||
   process.env.RELAY_INTERNAL_URL ||
@@ -9,6 +14,7 @@ const RELAY_URL =
  * Transparent API proxy to relay server
  * Forwards all /api/relay/* requests to the real relay
  * NO synthetic responses, NO dev mode auto-create
+ * NO Clerk authentication (bypassed in middleware)
  */
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
@@ -47,7 +53,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pat
     });
   } catch (e) {
     console.error(`[Proxy] Relay unreachable for POST ${path}:`, e);
-    return NextResponse.json({ error: 'RELAY_UNAVAILABLE' }, { status: 503 });
+    return NextResponse.json(
+      { error: 'RELAY_UNAVAILABLE', detail: String((e as Error)?.message ?? e) },
+      { status: 502 }
+    );
   }
 }
 
@@ -86,7 +95,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ path
     });
   } catch (e) {
     console.error(`[Proxy] Relay unreachable for GET ${path}:`, e);
-    return NextResponse.json({ error: 'RELAY_UNAVAILABLE' }, { status: 503 });
+    return NextResponse.json(
+      { error: 'RELAY_UNAVAILABLE', detail: String((e as Error)?.message ?? e) },
+      { status: 502 }
+    );
   }
 }
 
@@ -126,6 +138,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ path
     });
   } catch (e) {
     console.error(`[Proxy] Relay unreachable for PUT ${path}:`, e);
-    return NextResponse.json({ error: 'RELAY_UNAVAILABLE' }, { status: 503 });
+    return NextResponse.json(
+      { error: 'RELAY_UNAVAILABLE', detail: String((e as Error)?.message ?? e) },
+      { status: 502 }
+    );
   }
 }

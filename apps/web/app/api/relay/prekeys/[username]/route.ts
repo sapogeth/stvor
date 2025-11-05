@@ -1,6 +1,10 @@
 // apps/web/app/api/relay/prekeys/[username]/route.ts
 import { NextResponse } from 'next/server';
 
+// Force Node.js runtime (not Edge)
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 const RELAY_BASE =
   process.env.RELAY_BASE_URL ||
   'http://localhost:3001';

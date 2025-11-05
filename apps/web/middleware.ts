@@ -6,10 +6,12 @@
  * - Clerk NEVER sees or stores private encryption keys
  * - E2E crypto operations remain 100% client-side
  * - Middleware validates session but NEVER decrypts messages
+ * - /api/relay/* is COMPLETELY BYPASSED (direct server-to-server proxy)
  */
 
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
 /**
  * Content-Security-Policy Configuration
@@ -65,7 +67,6 @@ const isPublicRoute = createRouteMatcher([
   '/',
   '/sign-in(.*)',
   '/sign-up(.*)',
-  '/api/relay(.*)',
   '/benchmarks',
   '/security',
   '/debug(.*)',
@@ -73,66 +74,81 @@ const isPublicRoute = createRouteMatcher([
   '/reset(.*)',
 ]);
 
-export default clerkMiddleware(async (auth, req) => {
-  // Protect non-public routes by redirecting to sign-in
-  const { userId } = await auth();
+/**
+ * Main middleware with early bypass for /api/relay/*
+ * CRITICAL: /api/relay/* routes MUST NOT be processed by Clerk at all
+ */
+export default function middleware(req: NextRequest) {
+  const url = new URL(req.url);
 
-  if (!isPublicRoute(req) && !userId) {
-    const signInUrl = new URL('/sign-in', req.url);
-    signInUrl.searchParams.set('redirect_url', req.url);
-    return NextResponse.redirect(signInUrl);
+  // HARD BYPASS: /api/relay/* goes directly to route handlers
+  // This ensures no Clerk SDK initialization, no auth checks, no interference
+  if (url.pathname.startsWith('/api/relay/')) {
+    return NextResponse.next();
   }
 
-  // Create response with security headers
-  const res = NextResponse.next();
+  // For all other routes, apply Clerk middleware
+  return clerkMiddleware(async (auth, request) => {
+    // Protect non-public routes by redirecting to sign-in
+    const { userId } = await auth();
 
-  // SECURITY: Force HTTPS in production
-  if (
-    process.env.NODE_ENV === 'production' &&
-    req.headers.get('x-forwarded-proto') !== 'https'
-  ) {
-    const httpsUrl = `https://${req.headers.get('host')}${req.nextUrl.pathname}${req.nextUrl.search}`;
-    return NextResponse.redirect(httpsUrl, 301);
-  }
+    if (!isPublicRoute(request) && !userId) {
+      const signInUrl = new URL('/sign-in', request.url);
+      signInUrl.searchParams.set('redirect_url', request.url);
+      return NextResponse.redirect(signInUrl);
+    }
 
-  // Add CSP header
-  res.headers.set('Content-Security-Policy', CSP);
+    // Create response with security headers
+    const res = NextResponse.next();
 
-  // HSTS: Force HTTPS for 1 year including subdomains
-  res.headers.set(
-    'Strict-Transport-Security',
-    'max-age=31536000; includeSubDomains; preload'
-  );
+    // SECURITY: Force HTTPS in production
+    if (
+      process.env.NODE_ENV === 'production' &&
+      request.headers.get('x-forwarded-proto') !== 'https'
+    ) {
+      const httpsUrl = `https://${request.headers.get('host')}${request.nextUrl.pathname}${request.nextUrl.search}`;
+      return NextResponse.redirect(httpsUrl, 301);
+    }
 
-  // Prevent MIME-type sniffing
-  res.headers.set('X-Content-Type-Options', 'nosniff');
+    // Add CSP header
+    res.headers.set('Content-Security-Policy', CSP);
 
-  // Prevent clickjacking (allow SAMEORIGIN for Clerk iframes)
-  res.headers.set('X-Frame-Options', 'SAMEORIGIN');
+    // HSTS: Force HTTPS for 1 year including subdomains
+    res.headers.set(
+      'Strict-Transport-Security',
+      'max-age=31536000; includeSubDomains; preload'
+    );
 
-  // Enable XSS protection
-  res.headers.set('X-XSS-Protection', '1; mode=block');
+    // Prevent MIME-type sniffing
+    res.headers.set('X-Content-Type-Options', 'nosniff');
 
-  // Referrer policy
-  res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    // Prevent clickjacking (allow SAMEORIGIN for Clerk iframes)
+    res.headers.set('X-Frame-Options', 'SAMEORIGIN');
 
-  // Permissions policy (disable unnecessary features)
-  res.headers.set(
-    'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=(), interest-cohort=()'
-  );
+    // Enable XSS protection
+    res.headers.set('X-XSS-Protection', '1; mode=block');
 
-  // CRITICAL: Middleware only validates session existence
-  // It NEVER decrypts messages or accesses private keys
-  // All E2E crypto operations happen client-side only
+    // Referrer policy
+    res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
-  return res;
-});
+    // Permissions policy (disable unnecessary features)
+    res.headers.set(
+      'Permissions-Policy',
+      'camera=(), microphone=(), geolocation=(), interest-cohort=()'
+    );
+
+    // CRITICAL: Middleware only validates session existence
+    // It NEVER decrypts messages or accesses private keys
+    // All E2E crypto operations happen client-side only
+
+    return res;
+  })(req);
+}
 
 export const config = {
-  // Match all routes except static files and internal Next.js routes
+  // Exclude /api/* entirely from middleware matching
+  // This ensures /api/relay/* is never processed by middleware at all
   matcher: [
-    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
-    '/(api|trpc)(.*)',
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ],
 };
