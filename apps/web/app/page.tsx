@@ -14,6 +14,7 @@
 import { useState, useEffect } from 'react';
 import { useUser, UserButton } from '@clerk/nextjs';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { getOrCreateIdentity, IdentityReEnrollError } from '@/lib/identity';
 import { generateAndUploadPrekeyBundle, loadPrekeySecrets } from '@/lib/prekeys';
 import { DeviceReEnrollModal } from '@/components/DeviceReEnrollModal';
@@ -22,6 +23,7 @@ import { getProfileByUsername } from '@/lib/profiles';
 
 export default function Home() {
   const { isSignedIn, user, isLoaded } = useUser();
+  const router = useRouter();
   const [cryptoReady, setCryptoReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [reEnrollError, setReEnrollError] = useState<IdentityReEnrollError | null>(null);
@@ -400,7 +402,13 @@ export default function Home() {
     );
   }
 
-  // Authenticated and crypto ready - show dashboard
+  // Authenticated and crypto ready - redirect to home
+  if (cryptoReady && hasUsername) {
+    router.push('/home');
+    return null;
+  }
+
+  // Authenticated and crypto ready - show old dashboard (legacy)
   return (
     <>
       {/* SECURITY: Development warning banner */}
