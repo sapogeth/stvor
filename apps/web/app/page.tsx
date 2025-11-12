@@ -30,27 +30,67 @@ export default function Home() {
   const [hasUsername, setHasUsername] = useState<boolean | null>(null);
   const [username, setUsername] = useState<string | null>(null);
 
-  // Initialize E2E crypto keys after Clerk authentication
+  // Check if user has a username FIRST (before crypto init)
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !user?.id) return;
 
+    const checkUsername = async () => {
+      try {
+        // Check if we have a stored human-readable username
+        const storedUsername = localStorage.getItem(`username:${user.id}`);
+
+        if (storedUsername) {
+          // We have a stored username - check if it's a Clerk auto-generated ID
+          if (storedUsername.startsWith('user_')) {
+            // This is a Clerk ID, not a human-readable username - force setup
+            console.log('[Home] Clerk ID detected, showing username setup');
+            setUsername(null);
+            setHasUsername(false);
+          } else {
+            // Valid human-readable username - proceed to crypto init
+            console.log('[Home] Found username:', storedUsername);
+            setUsername(storedUsername);
+            setHasUsername(true);
+          }
+        } else {
+          // No stored username - need to set one up first
+          console.log('[Home] No username found, showing setup');
+          setHasUsername(false);
+        }
+      } catch (err) {
+        console.error('[Home] Failed to check username:', err);
+        // Default to showing username setup if check fails
+        setHasUsername(false);
+      }
+    };
+
+    checkUsername();
+  }, [isLoaded, isSignedIn, user?.id]);
+
+  // Initialize E2E crypto keys AFTER username is confirmed
+  useEffect(() => {
+    // Only initialize crypto if user has a valid username
+    if (!hasUsername || !username) return;
+    if (cryptoReady) return; // Already initialized
+
     const initCrypto = async () => {
       try {
-        console.log('[Home] User authenticated via Clerk:', user.id);
-        console.log('[Home] Initializing E2E encryption keys...');
+        console.log('[Home] User authenticated via Clerk:', user?.id);
+        console.log('[Home] Initializing E2E encryption with username:', username);
 
-        // Use Clerk userId as the identity identifier
-        const userId = user.id;
+        // CRITICAL: Use human-readable username, NOT Clerk ID
+        // This ensures relay validation passes (3-20 chars, lowercase alphanumeric + underscore)
+        const canonicalUsername = username.toLowerCase().trim();
 
         // Get or create E2E identity keys (stored in IndexedDB)
-        const identity = await getOrCreateIdentity(userId);
+        const identity = await getOrCreateIdentity(canonicalUsername);
         console.log('[Home] E2E identity ready');
 
         // Check if we have a prekey bundle, generate if not
-        const prekeySecrets = await loadPrekeySecrets(userId);
+        const prekeySecrets = await loadPrekeySecrets(canonicalUsername);
         if (!prekeySecrets) {
           console.log('[Home] Generating prekey bundle...');
-          await generateAndUploadPrekeyBundle(userId, identity);
+          await generateAndUploadPrekeyBundle(canonicalUsername, identity);
           console.log('[Home] Prekey bundle uploaded');
         } else {
           console.log('[Home] Existing prekey bundle found');
@@ -72,42 +112,7 @@ export default function Home() {
     };
 
     initCrypto();
-  }, [isLoaded, isSignedIn, user?.id]);
-
-  // Check if user has a username after crypto initialization
-  useEffect(() => {
-    if (!cryptoReady || !user?.id) return;
-
-    const checkUsername = async () => {
-      try {
-        // Check if we have a stored human-readable username
-        const storedUsername = localStorage.getItem(`username:${user.id}`);
-
-        if (storedUsername) {
-          // We have a stored username - check if it's a Clerk auto-generated ID
-          if (storedUsername.startsWith('user_')) {
-            // This is a Clerk ID, not a human-readable username - force setup
-            console.log('[Home] Clerk ID detected, showing username setup');
-            setUsername(null);
-            setHasUsername(false);
-          } else {
-            // Valid human-readable username
-            setUsername(storedUsername);
-            setHasUsername(true);
-          }
-        } else {
-          // No stored username - need to set one up
-          setHasUsername(false);
-        }
-      } catch (err) {
-        console.error('[Home] Failed to check username:', err);
-        // Default to showing username setup if check fails
-        setHasUsername(false);
-      }
-    };
-
-    checkUsername();
-  }, [cryptoReady, user?.id]);
+  }, [hasUsername, username, cryptoReady, user?.id]);
 
   // Handle device re-enrollment modal
   const handleReEnrollSuccess = () => {
@@ -242,52 +247,6 @@ export default function Home() {
     );
   }
 
-  // Show crypto initialization status
-  if (!cryptoReady && !initError) {
-    return (
-      <>
-        {/* SECURITY: Development warning banner */}
-        {process.env.NODE_ENV === 'development' && (
-          <div
-            style={{
-              background: '#ff6b6b',
-              color: 'white',
-              padding: '12px 20px',
-              textAlign: 'center',
-              fontWeight: 'bold',
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              zIndex: 9999,
-              fontSize: '14px',
-              borderBottom: '3px solid #c92a2a',
-            }}
-          >
-            ⚠️ DEVELOPMENT MODE - Post-quantum crypto is MOCKED. Not secure!
-          </div>
-        )}
-        <main
-          className="min-h-screen flex flex-col items-center justify-center p-8 bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800"
-          style={{ paddingTop: process.env.NODE_ENV === 'development' ? '50px' : '0' }}
-        >
-          <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8 text-center">
-            <div className="text-4xl mb-4">🔐</div>
-            <h2 className="text-xl font-semibold mb-2">Initializing Encryption</h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
-              Generating your quantum-resistant keypairs...
-            </p>
-            <div className="animate-pulse text-blue-500">
-              <div className="h-2 bg-blue-200 rounded-full w-full">
-                <div className="h-2 bg-blue-500 rounded-full w-1/2 animate-slide"></div>
-              </div>
-            </div>
-          </div>
-        </main>
-      </>
-    );
-  }
-
   // Show error state
   if (initError) {
     return (
@@ -337,8 +296,8 @@ export default function Home() {
     );
   }
 
-  // Show username setup if crypto is ready but user has no username
-  if (cryptoReady && hasUsername === false) {
+  // Show username setup if user has no username (BEFORE crypto init)
+  if (hasUsername === false) {
     return (
       <>
         {/* SECURITY: Development warning banner */}
@@ -367,8 +326,8 @@ export default function Home() {
     );
   }
 
-  // Wait for username check to complete
-  if (cryptoReady && hasUsername === null) {
+  // Wait for username check to complete (initial loading)
+  if (hasUsername === null) {
     return (
       <>
         {/* SECURITY: Development warning banner */}
@@ -397,6 +356,52 @@ export default function Home() {
           style={{ paddingTop: process.env.NODE_ENV === 'development' ? '50px' : '0' }}
         >
           <div className="text-lg">Checking profile...</div>
+        </main>
+      </>
+    );
+  }
+
+  // Show crypto initialization if username is set but crypto not ready
+  if (hasUsername && !cryptoReady && !initError) {
+    return (
+      <>
+        {/* SECURITY: Development warning banner */}
+        {process.env.NODE_ENV === 'development' && (
+          <div
+            style={{
+              background: '#ff6b6b',
+              color: 'white',
+              padding: '12px 20px',
+              textAlign: 'center',
+              fontWeight: 'bold',
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              zIndex: 9999,
+              fontSize: '14px',
+              borderBottom: '3px solid #c92a2a',
+            }}
+          >
+            ⚠️ DEVELOPMENT MODE - Post-quantum crypto is MOCKED. Not secure!
+          </div>
+        )}
+        <main
+          className="min-h-screen flex flex-col items-center justify-center p-8 bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800"
+          style={{ paddingTop: process.env.NODE_ENV === 'development' ? '50px' : '0' }}
+        >
+          <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8 text-center">
+            <div className="text-4xl mb-4">🔐</div>
+            <h2 className="text-xl font-semibold mb-2">Initializing Encryption</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              Generating quantum-resistant keypairs for @{username}...
+            </p>
+            <div className="animate-pulse text-blue-500">
+              <div className="h-2 bg-blue-200 rounded-full w-full">
+                <div className="h-2 bg-blue-500 rounded-full w-1/2 animate-slide"></div>
+              </div>
+            </div>
+          </div>
         </main>
       </>
     );
