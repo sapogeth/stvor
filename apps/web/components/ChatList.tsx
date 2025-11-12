@@ -41,10 +41,19 @@ export function ChatList({ currentUsername, onSelectChat, onStartNewChat }: Chat
       for (const chatId of chatIds) {
         const lastMsg = await getLastMessage(chatId);
 
-        // Extract recipient username from chatId
-        // chatId format: "user1--user2" (alphabetically sorted)
-        const participants = chatId.split('--');
-        const recipientUsername = participants.find(p => p !== currentUsername.toLowerCase()) || participants[0];
+        // Extract recipient username from the stored message
+        // The recipient is stored in each message record
+        let recipientUsername = 'unknown';
+
+        if (lastMsg) {
+          // If we sent the last message, the recipient field has the other person's username
+          // If we received the last message, the sender field has the other person's username
+          if (lastMsg.sender === currentUsername.toLowerCase()) {
+            recipientUsername = lastMsg.recipient;
+          } else {
+            recipientUsername = lastMsg.sender;
+          }
+        }
 
         chatPreviews.push({
           chatId,

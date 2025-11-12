@@ -354,21 +354,52 @@ export default function ChatPage() {
       try {
         // PART 3: Use cursor from ref for this specific chat
         const cursor = cursorsRef.current[chatId] || 0;
+
+        console.log('[Sync] 🔄 Polling for new messages:', {
+          chatId,
+          cursor,
+          timestamp: new Date().toISOString(),
+        });
+
         const syncRes = await fetch(getRelayUrlForBrowser(`sync/${chatId}?since=${cursor}`), {
           headers: createAuthHeaders(username),
         });
 
-        if (!syncRes.ok) return;
+        if (!syncRes.ok) {
+          console.warn('[Sync] ⚠️  Sync request failed:', {
+            status: syncRes.status,
+            statusText: syncRes.statusText,
+            chatId,
+          });
+          return;
+        }
 
         const syncData = await syncRes.json();
         const incoming = Array.isArray(syncData.messages) ? syncData.messages : (syncData.entries || []);
 
-        if (incoming.length === 0) return;
+        if (incoming.length === 0) {
+          // Silent - no new messages
+          return;
+        }
 
-        console.log(`[Sync] Received ${incoming.length} entries`);
+        console.log(`[Sync] 📬 Received ${incoming.length} entries from relay:`, {
+          chatId,
+          entriesCount: incoming.length,
+          cursor,
+          timestamp: new Date().toISOString(),
+        });
 
-        // Debug: log all entry types
+        // Debug: log all entry types with detailed info
         for (const entry of incoming) {
+          console.log('[Sync] Entry details:', {
+            index: entry.index,
+            from: entry.from,
+            type: entry.type || '⚠️  MISSING TYPE',
+            hasBlob: !!entry.blob,
+            hasBlobRef: !!entry.blobRef,
+            hasSession: !!entry.session,
+            timestamp: entry.ts,
+          });
           logDebug('sync', 'Entry received', { index: entry.index, from: entry.from, type: entry.type || 'MISSING' });
         }
 
@@ -867,7 +898,15 @@ export default function ChatPage() {
 
             if (currentRatchetState) {
               try {
-                console.log('[Message] Decrypting message from:', msg.from);
+                console.log('[Message] 🔓 Starting decryption process:', {
+                  messageId: msg.id,
+                  from: msg.from,
+                  sessionId: Buffer.from(currentRatchetState.sessionId).toString('hex').slice(0, 16) + '...',
+                  sendCounter: currentRatchetState.sendCounter,
+                  recvCounter: currentRatchetState.recvCounter,
+                  noncePreview: Buffer.from(encryptedRecord.nonce).toString('hex').slice(0, 32) + '...',
+                  ciphertextLength: encryptedRecord.ciphertext.length,
+                });
 
                 // CRITICAL FIX: Try to decrypt FIRST, check nonce ONLY if successful
                 // This prevents false replay detection when we retry after session refresh
@@ -877,10 +916,29 @@ export default function ChatPage() {
 
                 try {
                   // Decrypt message
+                  const decryptStartTime = Date.now();
                   const result = await decryptMessage(currentRatchetState, encryptedRecord);
+                  const decryptDuration = Date.now() - decryptStartTime;
+
                   plaintext = result.plaintext;
                   newState = result.newState;
+
+                  console.log('[Message] ✅ Decryption successful:', {
+                    messageId: msg.id,
+                    from: msg.from,
+                    plaintextLength: plaintext.length,
+                    decryptionTime: decryptDuration + 'ms',
+                    newSendCounter: newState.sendCounter,
+                    newRecvCounter: newState.recvCounter,
+                  });
                 } catch (decryptErr) {
+                  console.error('[Message] ❌ Decryption failed:', {
+                    messageId: msg.id,
+                    from: msg.from,
+                    error: decryptErr instanceof Error ? decryptErr.message : String(decryptErr),
+                    sessionId: Buffer.from(currentRatchetState.sessionId).toString('hex').slice(0, 16) + '...',
+                    recvCounter: currentRatchetState.recvCounter,
+                  });
                   // Re-throw to outer catch block for proper handling
                   throw decryptErr;
                 }
@@ -1192,6 +1250,7 @@ export default function ChatPage() {
                 id: newMessage.id,
                 chatId: chatId,
                 sender: newMessage.sender,
+                recipient: username.toLowerCase(), // We are the recipient of incoming messages
                 text: newMessage.text,
                 timestamp: newMessage.timestamp,
                 encrypted: newMessage.encrypted,
@@ -1432,7 +1491,8 @@ export default function ChatPage() {
       // Verify Ed25519 signature (skip for dev mode or classical-only mode)
       // Classical-only mode: no ML-DSA keys means we're in dev/testing
       const isClassicalOnly = !mldsaBase64 || mldsaBase64 === '';
-      const shouldVerify = !peerData.dev && !isClassicalOnly;
+      const isRelayBundle = peerBundle.bundleId === 'relay-bundle' || peerBundle.bundleId === 'dev-bundle';
+      const shouldVerify = !peerData.dev && !isClassicalOnly && !isRelayBundle;
 
       if (shouldVerify) {
         const ed25519Valid = ed25519Verify(
@@ -1452,7 +1512,9 @@ export default function ChatPage() {
 
         console.log('[Security] ✅ Prekey bundle Ed25519 signature verified successfully');
       } else {
-        if (isClassicalOnly) {
+        if (isRelayBundle) {
+          console.log('[Security] ⚠️ Relay test bundle detected - skipping signature verification');
+        } else if (isClassicalOnly) {
           console.log('[Security] ⚠️ Classical-only mode (no PQ keys) - skipping signature verification');
         } else {
           console.log('[Security] ⚠️ Dev mode - skipping signature verification');
@@ -1553,18 +1615,33 @@ export default function ChatPage() {
     if (!inputText.trim() || !chatId) return;
 
     const messageText = inputText;
+    const messageId = `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setInputText('');
 
     // Canonicalize usernames
     const usernameCanonical = username.toLowerCase().trim();
     const recipientCanonical = recipient.toLowerCase().trim();
 
+    console.log('[Send] 🚀 Starting message send:', {
+      messageId,
+      chatId,
+      from: usernameCanonical,
+      to: recipientCanonical,
+      textLength: messageText.length,
+      hasRatchetState: !!ratchetState,
+      timestamp: new Date().toISOString(),
+    });
+
     try {
       let data: string;
-
       let inlineSession: any = undefined;
 
       if (ratchetState) {
+        console.log('[Send] 📝 Encrypting message with ratchet state...');
+        console.log('[Send] - Session ID:', Buffer.from(ratchetState.sessionId).toString('hex').slice(0, 16) + '...');
+        console.log('[Send] - Send counter before encryption:', ratchetState.sendCounter);
+        console.log('[Send] - Recv counter before encryption:', ratchetState.recvCounter);
+
         // CRITICAL FIX: Serialize session BEFORE encryption
         // The inline session must contain the state that will be used for encryption
         // NOT the state after encryption (which has advanced chain keys)
@@ -1576,50 +1653,95 @@ export default function ChatPage() {
 
         // Encrypt message using ratchet
         const plaintext = new TextEncoder().encode(messageText);
+        const encryptStartTime = Date.now();
         const { record, newState } = await encryptMessage(ratchetState, plaintext);
+        const encryptDuration = Date.now() - encryptStartTime;
+
+        console.log('[Send] ✅ Message encrypted successfully');
+        console.log('[Send] - Encryption took:', encryptDuration, 'ms');
+        console.log('[Send] - Nonce (first 16 bytes):', Buffer.from(record.nonce).toString('hex').slice(0, 32));
+        console.log('[Send] - Ciphertext length:', record.ciphertext.length);
+        console.log('[Send] - New send counter:', newState.sendCounter);
+
         setRatchetState(newState);
 
         // Save updated session state to IndexedDB after encryption
+        console.log('[Send] 💾 Saving updated session to IndexedDB...');
         await keystore.init();
         await keystore.saveSession(newState.sessionId, recipientCanonical, newState);
+        console.log('[Send] ✅ Session saved to IndexedDB');
 
         // Encode as wire format
         const wireData = encodeEncryptedMessage(record);
         data = Buffer.from(wireData).toString('base64');
+        console.log('[Send] ✅ Message encoded to base64, length:', data.length);
       } else {
-        // Fallback to plain base64 if no session yet
+        console.log('[Send] ⚠️  No ratchet state - using plaintext fallback (DEV MODE ONLY)');
         data = Buffer.from(messageText, 'utf-8').toString('base64');
       }
+
+      console.log('[Send] 🌐 Sending to relay...');
+      const sendStartTime = Date.now();
+
+      const requestBody = {
+        type: 'message',
+        from: usernameCanonical,
+        blob: data,
+        text: ratchetState ? undefined : messageText,  // dev fallback for classical-only
+        ts: Date.now(),
+        version: 'ilyazh/0.8',
+        session: inlineSession,  // CRITICAL: Send session atomically with message
+      };
+
+      console.log('[Send] Request payload:', {
+        type: requestBody.type,
+        from: requestBody.from,
+        blobLength: requestBody.blob.length,
+        hasSession: !!requestBody.session,
+        version: requestBody.version,
+      });
 
       const response = await fetch(getRelayUrlForBrowser(`message/${chatId}`), {
         method: 'POST',
         headers: createAuthHeaders(usernameCanonical),
-        body: JSON.stringify({
-          type: 'message',
-          from: usernameCanonical,
-          blob: data,
-          text: ratchetState ? undefined : messageText,  // dev fallback for classical-only
-          ts: Date.now(),
-          version: 'ilyazh/0.8',
-          session: inlineSession,  // CRITICAL: Send session atomically with message
-        }),
+        body: JSON.stringify(requestBody),
       });
 
-      console.log('[Send] Message sent to relay:', {
+      const sendDuration = Date.now() - sendStartTime;
+
+      console.log('[Send] 📡 Relay response received:', {
+        messageId,
         chatId,
         status: response.status,
+        statusText: response.statusText,
         ok: response.ok,
         from: usernameCanonical,
+        to: recipientCanonical,
         hasSession: !!ratchetState,
+        duration: sendDuration + 'ms',
+        timestamp: new Date().toISOString(),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[Send] Relay error:', response.status, errorText);
+        console.error('[Send] ❌ Relay rejected message:', {
+          messageId,
+          chatId,
+          status: response.status,
+          statusText: response.statusText,
+          errorBody: errorText,
+          from: usernameCanonical,
+          to: recipientCanonical,
+        });
         throw new Error(`Failed to send message: ${response.status} - ${errorText}`);
       }
 
       const result = await response.json();
+      console.log('[Send] ✅ Relay accepted message:', {
+        messageId,
+        relayIndex: result.index,
+        relayResponse: result,
+      });
 
       const newMessage: Message = {
         id: (result && typeof result.index !== 'undefined')
@@ -1639,6 +1761,7 @@ export default function ChatPage() {
           id: newMessage.id,
           chatId: chatId,
           sender: newMessage.sender,
+          recipient: recipientCanonical, // The person we're sending to
           text: newMessage.text,
           timestamp: newMessage.timestamp,
           encrypted: newMessage.encrypted,

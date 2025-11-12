@@ -14,13 +14,14 @@
  */
 
 const DB_NAME = 'stvor-messages';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Incremented: added 'recipient' field to StoredMessage
 const STORE_NAME = 'messages';
 
 export interface StoredMessage {
   id: string;
   chatId: string;
   sender: string;
+  recipient: string; // Username of the other participant in the chat
   text: string;
   timestamp: number;
   encrypted: boolean;
