@@ -154,12 +154,22 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Posts Feed - Under Development */}
-        <div className="p-6">
-          <div className="text-center py-12 text-gray-500">
-            <div className="text-6xl mb-4">🚧</div>
-            <h3 className="text-xl font-semibold mb-2">Posts Feed - Under Development</h3>
-            <p className="text-sm">We're working hard to bring you this feature soon!</p>
+        {/* Recent Posts Preview */}
+        <div className="border-b border-gray-800 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold">Recent Posts</h3>
+            <a href="/news" className="text-green-500 hover:text-green-400 text-sm font-medium transition">
+              View all →
+            </a>
+          </div>
+          <div className="text-center py-8 text-gray-500">
+            <p className="text-sm">Check out the latest posts from the community!</p>
+            <a
+              href="/news"
+              className="mt-4 inline-block px-6 py-2.5 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition"
+            >
+              Go to News Feed
+            </a>
           </div>
         </div>
       </div>

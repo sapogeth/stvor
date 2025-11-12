@@ -4,47 +4,41 @@
  * News Page - News feed with post creation
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useUser } from '@clerk/nextjs';
-import { Image, Smile, MoreHorizontal, Heart, MessageCircle, Repeat } from 'lucide-react';
+import { Image, Smile, MoreHorizontal, Heart, MessageCircle, Repeat, Trash2, Loader2 } from 'lucide-react';
+import * as postsApi from '@/lib/api/posts';
 
 export default function NewsPage() {
   const { user } = useUser();
   const [postContent, setPostContent] = useState('');
+  const [posts, setPosts] = useState<postsApi.Post[]>([]);
+  const [username, setUsername] = useState<string | null>(null);
+  const [isPosting, setIsPosting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Mock posts data
-  const posts = [
-    {
-      id: 1,
-      author: 'STVOR',
-      username: '@stv0r',
-      timestamp: '2h ago',
-      content: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.',
-      likes: 6000,
-      comments: 250,
-      shares: 6,
-    },
-    {
-      id: 2,
-      author: 'STVOR',
-      username: '@stv0r',
-      timestamp: '2h ago',
-      content: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit',
-      likes: 6000,
-      comments: 250,
-      shares: 6,
-    },
-    {
-      id: 3,
-      author: 'STVOR',
-      username: '@stv0r',
-      timestamp: '2h ago',
-      content: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.',
-      likes: 6000,
-      comments: 250,
-      shares: 6,
-    },
-  ];
+  // Load username from localStorage
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const storedUsername = localStorage.getItem(`username:${user.id}`);
+    if (storedUsername && !storedUsername.startsWith('user_')) {
+      setUsername(storedUsername);
+    }
+  }, [user?.id]);
+
+  // Load posts feed
+  useEffect(() => {
+    loadFeed();
+  }, []);
+
+  const loadFeed = async () => {
+    setIsLoading(true);
+    const feedPosts = await postsApi.getFeed(20);
+    setPosts(feedPosts);
+    setIsLoading(false);
+  };
 
   const trending = [
     { topic: 'Malaysia', category: 'Trending · Global', views: '28.1K Views' },
@@ -61,12 +55,65 @@ export default function NewsPage() {
     { name: '@accountnam3', subtitle: 'Breaking News', time: '11 hours ago', category: 'Entertainment', views: '28.1K Views' },
   ];
 
-  const handlePost = () => {
-    if (postContent.trim()) {
-      // TODO: Implement actual post creation
-      console.log('Creating post:', postContent);
-      setPostContent('');
+  const handlePost = async () => {
+    if (!postContent.trim() || !username) {
+      setError('Username not set or post is empty');
+      return;
     }
+
+    setIsPosting(true);
+    setError(null);
+
+    const result = await postsApi.createPost(username, {
+      content: postContent.trim(),
+    });
+
+    setIsPosting(false);
+
+    if (result.success) {
+      setPostContent('');
+      // Reload feed to show new post
+      await loadFeed();
+    } else {
+      setError(result.error || 'Failed to create post');
+    }
+  };
+
+  const handleLike = async (postId: string) => {
+    if (!username) return;
+
+    const success = await postsApi.likePost(postId, username);
+    if (success) {
+      // Update local state
+      setPosts(posts.map(p =>
+        p.postId === postId
+          ? { ...p, likesCount: p.likesCount + 1 }
+          : p
+      ));
+    }
+  };
+
+  const handleDelete = async (postId: string) => {
+    if (!username) return;
+
+    const success = await postsApi.deletePost(postId, username);
+    if (success) {
+      // Remove from local state
+      setPosts(posts.filter(p => p.postId !== postId));
+    }
+  };
+
+  const formatTimestamp = (timestamp: number): string => {
+    const now = Date.now();
+    const diff = now - timestamp;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+
+    if (days > 0) return `${days}d ago`;
+    if (hours > 0) return `${hours}h ago`;
+    if (minutes > 0) return `${minutes}m ago`;
+    return 'just now';
   };
 
   return (
@@ -94,37 +141,48 @@ export default function NewsPage() {
             </div>
 
             <div className="flex-1">
+              {error && (
+                <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-sm">
+                  {error}
+                </div>
+              )}
+
               <textarea
                 value={postContent}
                 onChange={(e) => setPostContent(e.target.value)}
                 placeholder="What's happening?"
                 className="w-full bg-transparent text-lg focus:outline-none resize-none mb-3"
                 rows={3}
+                disabled={isPosting || !username}
               />
+
+              {!username && (
+                <div className="mb-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-500 text-sm">
+                  Please set your username in settings before posting
+                </div>
+              )}
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  <button className="p-2 text-green-500 hover:bg-green-500/10 rounded-full transition">
+                  <button className="p-2 text-green-500 hover:bg-green-500/10 rounded-full transition" disabled>
                     <Image className="w-5 h-5" />
                   </button>
-                  <button className="p-2 text-green-500 hover:bg-green-500/10 rounded-full transition">
+                  <button className="p-2 text-green-500 hover:bg-green-500/10 rounded-full transition" disabled>
                     <Smile className="w-5 h-5" />
-                  </button>
-                  <button className="p-2 text-green-500 hover:bg-green-500/10 rounded-full transition">
-                    <MoreHorizontal className="w-5 h-5" />
                   </button>
                 </div>
 
                 <button
                   onClick={handlePost}
-                  disabled={!postContent.trim()}
-                  className={`px-6 py-2 rounded-full font-semibold transition ${
-                    postContent.trim()
+                  disabled={!postContent.trim() || isPosting || !username}
+                  className={`px-6 py-2 rounded-full font-semibold transition flex items-center space-x-2 ${
+                    postContent.trim() && !isPosting && username
                       ? 'bg-green-500 text-white hover:bg-green-600'
                       : 'bg-gray-800 text-gray-500 cursor-not-allowed'
                   }`}
                 >
-                  Post
+                  {isPosting && <Loader2 className="w-4 h-4 animate-spin" />}
+                  <span>{isPosting ? 'Posting...' : 'Post'}</span>
                 </button>
               </div>
             </div>
@@ -133,45 +191,75 @@ export default function NewsPage() {
 
         {/* Posts Feed */}
         <div className="divide-y divide-gray-800">
-          {posts.map((post) => (
-            <div key={post.id} className="p-4 hover:bg-gray-900/30 transition cursor-pointer">
-              <div className="flex space-x-3">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 rounded-full bg-gray-700"></div>
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-2 mb-1">
-                    <span className="font-bold">{post.author}</span>
-                    <span className="text-gray-500">{post.username}</span>
-                    <span className="text-gray-500">· {post.timestamp}</span>
-                    <button className="ml-auto text-gray-500 hover:text-white transition">
-                      <MoreHorizontal className="w-5 h-5" />
-                    </button>
+          {isLoading ? (
+            <div className="p-12 text-center text-gray-500">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />
+              <p>Loading posts...</p>
+            </div>
+          ) : posts.length === 0 ? (
+            <div className="p-12 text-center text-gray-500">
+              <p className="text-lg mb-2">No posts yet</p>
+              <p className="text-sm">Be the first to post something!</p>
+            </div>
+          ) : (
+            posts.map((post) => (
+              <div key={post.postId} className="p-4 hover:bg-gray-900/30 transition">
+                <div className="flex space-x-3">
+                  <div className="flex-shrink-0">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-500 to-blue-600 flex items-center justify-center text-white font-bold">
+                      {post.authorUsername[0].toUpperCase()}
+                    </div>
                   </div>
 
-                  <p className="text-sm mb-3 whitespace-pre-wrap">{post.content}</p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center space-x-2 mb-1">
+                      <span className="font-bold">@{post.authorUsername}</span>
+                      <span className="text-gray-500">· {formatTimestamp(post.createdAt)}</span>
+                      {username === post.authorUsername && (
+                        <button
+                          onClick={() => handleDelete(post.postId)}
+                          className="ml-auto text-gray-500 hover:text-red-500 transition"
+                          title="Delete post"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
 
-                  <div className="flex items-center justify-between text-gray-500 text-sm max-w-md">
-                    <button className="flex items-center space-x-2 hover:text-red-500 transition group">
-                      <Heart className="w-5 h-5 group-hover:fill-red-500" />
-                      <span>{post.likes >= 1000 ? `${(post.likes / 1000).toFixed(1)}K` : post.likes}</span>
-                    </button>
+                    <p className="text-sm mb-3 whitespace-pre-wrap">{post.content}</p>
 
-                    <button className="flex items-center space-x-2 hover:text-blue-500 transition">
-                      <MessageCircle className="w-5 h-5" />
-                      <span>{post.comments}</span>
-                    </button>
+                    {post.imageUrl && (
+                      <img
+                        src={post.imageUrl}
+                        alt="Post attachment"
+                        className="rounded-lg mb-3 max-w-full"
+                      />
+                    )}
 
-                    <button className="flex items-center space-x-2 hover:text-green-500 transition">
-                      <Repeat className="w-5 h-5" />
-                      <span>{post.shares}</span>
-                    </button>
+                    <div className="flex items-center justify-between text-gray-500 text-sm max-w-md">
+                      <button
+                        onClick={() => handleLike(post.postId)}
+                        className="flex items-center space-x-2 hover:text-red-500 transition group"
+                      >
+                        <Heart className="w-5 h-5 group-hover:fill-red-500" />
+                        <span>{post.likesCount >= 1000 ? `${(post.likesCount / 1000).toFixed(1)}K` : post.likesCount}</span>
+                      </button>
+
+                      <button className="flex items-center space-x-2 hover:text-blue-500 transition">
+                        <MessageCircle className="w-5 h-5" />
+                        <span>{post.commentsCount}</span>
+                      </button>
+
+                      <button className="flex items-center space-x-2 hover:text-green-500 transition">
+                        <Repeat className="w-5 h-5" />
+                        <span>{post.sharesCount}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
 
