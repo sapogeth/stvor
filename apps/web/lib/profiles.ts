@@ -86,3 +86,26 @@ export async function checkUsernameAvailable(
   const profile = await getProfileByUsername(username);
   return profile === null;
 }
+
+/**
+ * Get current user's profile
+ */
+export async function getCurrentUserProfile(): Promise<Profile | null> {
+  try {
+    const response = await fetch('/api/profiles/me');
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch current profile');
+    }
+
+    return await response.json();
+  } catch (err) {
+    console.error('[profiles] Failed to get current profile:', err);
+    return null;
+  }
+}

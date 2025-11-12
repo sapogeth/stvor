@@ -95,15 +95,20 @@ export function UsernameSetup({ onComplete }: UsernameSetupProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="bg-white rounded-lg shadow-2xl max-w-md w-full mx-4 p-8">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black text-white p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-xl shadow-2xl max-w-md w-full p-8">
         {/* Header */}
         <div className="mb-6 text-center">
-          <div className="text-5xl mb-4">👤</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            Choose Your Stv0r Username
+          <div className="flex items-center justify-center mb-4">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+              <span className="text-white font-bold text-3xl">S</span>
+            </div>
+          </div>
+          <h1 className="text-4xl font-bold mb-4 tracking-wider">STVOR</h1>
+          <h2 className="text-2xl font-bold mb-2">
+            Choose Your Username
           </h2>
-          <p className="text-sm text-gray-600 mb-2">
+          <p className="text-sm text-gray-400 mb-2">
             This will be your public handle for finding and starting conversations
           </p>
           <p className="text-xs text-gray-500">
@@ -117,12 +122,12 @@ export function UsernameSetup({ onComplete }: UsernameSetupProps) {
           <div>
             <label
               htmlFor="username"
-              className="block text-sm font-semibold text-gray-700 mb-1"
+              className="block text-sm font-semibold text-gray-300 mb-2"
             >
               Username
             </label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-mono">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-mono">
                 @
               </span>
               <input
@@ -132,14 +137,14 @@ export function UsernameSetup({ onComplete }: UsernameSetupProps) {
                 onChange={(e) => handleUsernameChange(e.target.value)}
                 placeholder="myusername"
                 disabled={isSubmitting}
-                className="w-full pl-8 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 font-mono"
+                className="w-full pl-8 pr-10 py-3 bg-black border border-gray-800 text-white rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent disabled:opacity-50 font-mono placeholder:text-gray-600"
                 autoComplete="off"
                 maxLength={20}
               />
               {/* Status Indicator */}
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
                 {isChecking && (
-                  <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                  <div className="animate-spin h-5 w-5 border-2 border-green-500 border-t-transparent rounded-full"></div>
                 )}
                 {!isChecking && isAvailable === true && (
                   <div className="text-green-500 text-xl">✓</div>
@@ -158,9 +163,9 @@ export function UsernameSetup({ onComplete }: UsernameSetupProps) {
           <div>
             <label
               htmlFor="displayName"
-              className="block text-sm font-semibold text-gray-700 mb-1"
+              className="block text-sm font-semibold text-gray-300 mb-2"
             >
-              Display Name <span className="text-gray-400 font-normal">(optional)</span>
+              Display Name <span className="text-gray-500 font-normal">(optional)</span>
             </label>
             <input
               id="displayName"
@@ -169,7 +174,7 @@ export function UsernameSetup({ onComplete }: UsernameSetupProps) {
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="John Doe"
               disabled={isSubmitting}
-              className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+              className="w-full px-3 py-3 bg-black border border-gray-800 text-white rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent disabled:opacity-50 placeholder:text-gray-600"
               maxLength={50}
             />
             <p className="text-xs text-gray-500 mt-1">
@@ -179,8 +184,8 @@ export function UsernameSetup({ onComplete }: UsernameSetupProps) {
 
           {/* Error Display */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-              <p className="text-sm text-red-700">{error}</p>
+            <div className="bg-red-900/30 border border-red-800 rounded-lg p-3">
+              <p className="text-sm text-red-400">{error}</p>
             </div>
           )}
 
@@ -194,15 +199,17 @@ export function UsernameSetup({ onComplete }: UsernameSetupProps) {
               isAvailable === false ||
               !validateUsername(username)
             }
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+            className="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-800 disabled:text-gray-500 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
           >
             {isSubmitting ? 'Creating Profile...' : 'Continue'}
           </button>
         </form>
 
         {/* Security Notice */}
-        <div className="mt-6 text-xs text-gray-500 text-center">
-          <p>🔒 Your username is public but your encryption keys stay private</p>
+        <div className="mt-6 p-4 bg-gray-950 rounded-lg border border-gray-800">
+          <p className="text-xs text-gray-400 text-center">
+            🔒 Your username is public but your encryption keys stay private
+          </p>
         </div>
       </div>
     </div>

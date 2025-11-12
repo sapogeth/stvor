@@ -4,11 +4,24 @@
  * Home/Feed Page - Twitter/X-like News Feed
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useUser } from '@clerk/nextjs';
 import { MessageCircle, ShoppingCart, MessageSquare, MoreHorizontal } from 'lucide-react';
 
 export default function HomePage() {
+  const { user } = useUser();
   const [activeTab, setActiveTab] = useState<'feed' | 'following'>('feed');
+  const [username, setUsername] = useState<string | null>(null);
+
+  // Load username from localStorage
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const storedUsername = localStorage.getItem(`username:${user.id}`);
+    if (storedUsername && !storedUsername.startsWith('user_')) {
+      setUsername(storedUsername);
+    }
+  }, [user?.id]);
 
   // Mock data - в будущем будет загружаться с сервера
   const announcements = [
@@ -77,7 +90,7 @@ export default function HomePage() {
           <div className="flex items-start justify-between mb-4">
             <div>
               <h2 className="text-2xl font-bold mb-1">
-                👋 Hello, <span className="text-green-500">@username!</span>
+                👋 Hello, <span className="text-green-500">@{username || 'user'}!</span>
               </h2>
               <p className="text-gray-400 flex items-center text-sm">
                 <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>

@@ -1572,31 +1572,94 @@ export default function ChatPage() {
 
   if (!mounted) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
-        <div className="text-lg">Loading...</div>
+      <main className="min-h-screen flex items-center justify-center bg-black text-white p-4">
+        <div className="text-center max-w-md">
+          <div className="flex items-center justify-center mb-6">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center animate-pulse">
+              <span className="text-white font-bold text-4xl">S</span>
+            </div>
+          </div>
+          <h1 className="text-3xl font-bold mb-4 tracking-wider">STVOR</h1>
+          <div className="space-y-3">
+            <div className="animate-pulse">
+              <div className="h-2 bg-gray-800 rounded w-full mb-2"></div>
+              <div className="h-2 bg-gray-800 rounded w-5/6 mx-auto"></div>
+            </div>
+            <p className="text-lg text-gray-400 mt-4">Загрузка...</p>
+          </div>
+        </div>
       </main>
     );
   }
 
   if (!identity) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
-        <div className="text-lg">Generating identity keys...</div>
+      <main className="min-h-screen flex items-center justify-center bg-black text-white p-4">
+        <div className="text-center max-w-md">
+          <div className="flex items-center justify-center mb-6">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center animate-pulse">
+              <span className="text-white font-bold text-4xl">S</span>
+            </div>
+          </div>
+          <h1 className="text-3xl font-bold mb-4 tracking-wider">STVOR</h1>
+          <div className="space-y-3">
+            <div className="animate-pulse">
+              <div className="h-2 bg-green-500 rounded w-full mb-2"></div>
+              <div className="h-2 bg-green-500 rounded w-4/6 mx-auto"></div>
+            </div>
+            <p className="text-lg text-green-500 mt-4">Генерация ключей шифрования...</p>
+            <p className="text-sm text-gray-500">Ваши ключи никогда не покидают устройство</p>
+          </div>
+        </div>
       </main>
     );
   }
 
   if (!chatActive) {
+    // Show loading state during handshake initialization
+    if (handshakeInProgress) {
+      return (
+        <main className="min-h-screen flex items-center justify-center bg-black text-white p-4">
+          <div className="text-center max-w-md">
+            <div className="flex items-center justify-center mb-6">
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center animate-pulse">
+                <span className="text-white font-bold text-4xl">S</span>
+              </div>
+            </div>
+            <h1 className="text-3xl font-bold mb-4 tracking-wider">STVOR</h1>
+            <div className="space-y-4">
+              <div className="animate-pulse">
+                <div className="h-2 bg-green-500 rounded w-full mb-2"></div>
+                <div className="h-2 bg-green-500 rounded w-3/4 mx-auto mb-2"></div>
+                <div className="h-2 bg-green-500 rounded w-5/6 mx-auto"></div>
+              </div>
+              <div className="space-y-2 mt-6">
+                <p className="text-xl text-green-500 font-semibold">Создаётся пространство</p>
+                <p className="text-lg text-gray-400">Полностью изолированное от других</p>
+                <p className="text-md text-gray-500 italic">Ваша мини расширенная территория</p>
+              </div>
+              <div className="mt-8 p-4 bg-gray-900 rounded-lg border border-gray-800">
+                <p className="text-xs text-gray-400">
+                  🔒 Установка защищённого соединения с использованием<br />
+                  квантово-устойчивого шифрования ML-KEM-768
+                </p>
+              </div>
+            </div>
+          </div>
+        </main>
+      );
+    }
+
     return (
-      <main className="min-h-screen flex flex-col items-center justify-center p-8 bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
-        <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8">
-          <Link href="/" className="text-sm text-blue-500 hover:underline mb-4 block">
-            ← Back to Home
+      <main className="min-h-screen flex flex-col items-center justify-center p-8 bg-black text-white">
+        <div className="w-full max-w-md bg-gray-900 border border-gray-800 rounded-xl shadow-2xl p-8">
+          <Link href="/" className="text-sm text-green-500 hover:text-green-400 mb-4 block">
+            ← Назад
           </Link>
 
-          <h1 className="text-3xl font-bold mb-4">💬 Start Chat</h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
-            Logged in as <strong>{username}</strong>
+          <h1 className="text-3xl font-bold mb-4">💬 Начать Чат</h1>
+          <p className="text-gray-400 mb-6">
+            Вы вошли как <strong className="text-white">{username}</strong>
           </p>
 
           <UsernameSearch
@@ -1608,7 +1671,7 @@ export default function ChatPage() {
             }}
             onKeyDown={(e) => e.key === 'Enter' && !handshakeInProgress && startChat()}
             disabled={handshakeInProgress}
-            placeholder="Search username (@username)"
+            placeholder="Поиск пользователя (@username)"
             autoFocus
           />
           <div className="mb-4" />
@@ -1616,20 +1679,35 @@ export default function ChatPage() {
           <button
             onClick={startChat}
             disabled={handshakeInProgress}
-            className="w-full p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold transition disabled:opacity-50"
+            className="w-full p-3 bg-green-500 hover:bg-green-600 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-lg font-semibold transition"
           >
-            {handshakeInProgress ? 'Initializing...' : 'Start Encrypted Chat'}
+            Начать Зашифрованный Чат
           </button>
 
-          <div className="mt-6 text-sm text-gray-600 dark:text-gray-400">
-            <p className="font-semibold mb-2">Ilyazh-Web3E2E Protocol:</p>
-            <ol className="list-decimal list-inside space-y-1">
-              <li>Hybrid AKE (X25519 + ML-KEM-768)</li>
-              <li>Dual signatures (Ed25519 + ML-DSA-65)</li>
-              <li>Session ID derivation with HKDF-SHA-384</li>
-              <li>Double ratchet with mandatory rekey</li>
-              <li>AES-256-GCM with sid-in-AAD</li>
-            </ol>
+          <div className="mt-6 p-4 bg-gray-950 rounded-lg border border-gray-800">
+            <p className="font-semibold mb-3 text-green-500">Протокол Ilyazh-Web3E2E:</p>
+            <ul className="text-xs space-y-2 text-gray-400">
+              <li className="flex items-start">
+                <span className="text-green-500 mr-2">•</span>
+                <span>Гибридный обмен ключами (X25519 + ML-KEM-768)</span>
+              </li>
+              <li className="flex items-start">
+                <span className="text-green-500 mr-2">•</span>
+                <span>Двойные подписи (Ed25519 + ML-DSA-65)</span>
+              </li>
+              <li className="flex items-start">
+                <span className="text-green-500 mr-2">•</span>
+                <span>Вывод ID сессии через HKDF-SHA-384</span>
+              </li>
+              <li className="flex items-start">
+                <span className="text-green-500 mr-2">•</span>
+                <span>Double Ratchet с обязательной ротацией ключей</span>
+              </li>
+              <li className="flex items-start">
+                <span className="text-green-500 mr-2">•</span>
+                <span>AES-256-GCM с sid-in-AAD</span>
+              </li>
+            </ul>
           </div>
         </div>
       </main>
