@@ -1603,11 +1603,21 @@ export default function ChatPage() {
         }),
       });
 
+      console.log('[Send] Message sent to relay:', {
+        chatId,
+        status: response.status,
+        ok: response.ok,
+        from: usernameCanonical,
+        hasSession: !!ratchetState,
+      });
+
       if (!response.ok) {
-        console.warn('[Message] Relay returned', response.status, 'but continuing in DEV mode');
+        const errorText = await response.text();
+        console.error('[Send] Relay error:', response.status, errorText);
+        throw new Error(`Failed to send message: ${response.status} - ${errorText}`);
       }
 
-      const result = await response.json().catch(() => ({ index: Date.now(), dev: true }));
+      const result = await response.json();
 
       const newMessage: Message = {
         id: (result && typeof result.index !== 'undefined')
@@ -1794,28 +1804,28 @@ export default function ChatPage() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col bg-gray-100 dark:bg-gray-900">
+    <main className="min-h-screen flex flex-col bg-black text-white">
       {/* Header */}
-      <div className="bg-white dark:bg-gray-800 shadow-sm p-4 flex items-center justify-between">
+      <div className="bg-gray-900 border-b border-gray-800 shadow-sm p-4 flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <Link href="/" className="text-blue-500 hover:underline text-sm">
-            ← Home
+          <Link href="/" className="text-green-500 hover:text-green-400 text-sm font-medium">
+            ← Назад
           </Link>
           <div>
             <div className="font-semibold">
               {username} → {recipient}
             </div>
-            <div className="text-xs text-green-600 dark:text-green-400">
-              {ratchetState ? '🔒 E2E Encrypted (Active)' : '⚠️ Handshake Pending'}
+            <div className="text-xs text-green-500">
+              {ratchetState ? '🔒 E2E Зашифровано (Активно)' : '⚠️ Ожидание Handshake'}
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           {sessionInfo && (
-            <div className="text-xs text-gray-600 dark:text-gray-400">
-              <div>Messages: {sessionInfo.messageCount}</div>
-              <div>Epoch: {sessionInfo.ratchetId}</div>
+            <div className="text-xs text-gray-400">
+              <div>Сообщений: {sessionInfo.messageCount}</div>
+              <div>Эпоха: {sessionInfo.ratchetId}</div>
             </div>
           )}
           {ratchetState && (
@@ -1837,7 +1847,7 @@ export default function ChatPage() {
                 }
                 setShowSafetyNumber(true);
               }}
-              className="px-3 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+              className="px-3 py-1 text-xs bg-gray-800 border border-gray-700 rounded hover:bg-gray-700 hover:border-green-500 transition"
               title="Verify safety number"
             >
               🔐 Safety Number
@@ -1878,7 +1888,7 @@ export default function ChatPage() {
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-black">
         {messages.map((msg) => (
           <div
             key={msg.id}
@@ -1887,10 +1897,10 @@ export default function ChatPage() {
             <div
               className={`max-w-md p-3 rounded-lg ${
                 msg.sender === 'system'
-                  ? 'bg-yellow-100 dark:bg-yellow-900/30 text-center w-full'
+                  ? 'bg-gray-900 border border-gray-800 text-gray-300 text-center w-full'
                   : msg.sender === username
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-white dark:bg-gray-800'
+                  ? 'bg-green-500 text-white'
+                  : 'bg-gray-800 border border-gray-700 text-white'
               }`}
             >
               {msg.sender !== 'system' && (
@@ -1908,27 +1918,27 @@ export default function ChatPage() {
       </div>
 
       {/* Input */}
-      <div className="bg-white dark:bg-gray-800 p-4 border-t dark:border-gray-700">
+      <div className="bg-gray-900 border-t border-gray-800 p-4">
         <div className="flex space-x-2">
           <input
             type="text"
-            placeholder="Type a message..."
+            placeholder="Введите сообщение..."
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-            className="flex-1 p-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700"
+            className="flex-1 p-3 bg-black border border-gray-800 text-white rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent placeholder:text-gray-600"
           />
           <button
             onClick={sendMessage}
-            className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold transition"
+            className="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold transition"
           >
-            Send
+            Отправить
           </button>
         </div>
-        <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+        <div className="text-xs text-gray-400 mt-2">
           {ratchetState
-            ? 'All messages encrypted with AES-256-GCM • sid in AAD'
-            : 'Messages will be encrypted once handshake completes'}
+            ? 'Все сообщения зашифрованы с помощью AES-256-GCM • sid in AAD'
+            : 'Сообщения будут зашифрованы после завершения handshake'}
         </div>
       </div>
     </main>

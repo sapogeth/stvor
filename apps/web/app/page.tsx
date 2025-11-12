@@ -433,15 +433,20 @@ export default function Home() {
         </div>
       )}
       <main
-        className="min-h-screen flex flex-col items-center justify-center p-8 bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800"
+        className="min-h-screen flex flex-col items-center justify-center p-8 bg-black text-white"
         style={{ paddingTop: process.env.NODE_ENV === 'development' ? '50px' : '0' }}
       >
-        <div className="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8">
+        <div className="w-full max-w-2xl bg-gray-900 border border-gray-800 rounded-xl shadow-2xl p-8">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-4xl font-bold">🔐 Stv0r Messenger</h1>
-              <p className="text-gray-600 dark:text-gray-400 mt-1">
-                Logged in as <strong>{user?.primaryEmailAddress?.emailAddress || user?.username || user?.id}</strong>
+              <div className="flex items-center space-x-3 mb-3">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                  <span className="text-white font-bold text-2xl">S</span>
+                </div>
+                <h1 className="text-4xl font-bold tracking-wider">STVOR</h1>
+              </div>
+              <p className="text-gray-400 mt-1">
+                Logged in as <strong className="text-white">{user?.primaryEmailAddress?.emailAddress || user?.username || user?.id}</strong>
               </p>
             </div>
             <UserButton afterSignOutUrl="/" />
@@ -450,42 +455,58 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Link
               href="/chat"
-              className="p-6 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-center transition"
+              className="p-6 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-green-500 text-white rounded-lg text-center transition group"
             >
               <div className="text-4xl mb-2">💬</div>
-              <div className="font-semibold">Chat</div>
-              <div className="text-sm opacity-80">1:1 Encrypted Messages</div>
+              <div className="font-semibold text-green-500">Chat</div>
+              <div className="text-sm text-gray-400">1:1 Encrypted Messages</div>
             </Link>
 
             <Link
               href="/benchmarks"
-              className="p-6 bg-green-500 hover:bg-green-600 text-white rounded-lg text-center transition"
+              className="p-6 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-green-500 text-white rounded-lg text-center transition group"
             >
               <div className="text-4xl mb-2">📊</div>
-              <div className="font-semibold">Benchmarks</div>
-              <div className="text-sm opacity-80">Performance Metrics</div>
+              <div className="font-semibold text-green-500">Benchmarks</div>
+              <div className="text-sm text-gray-400">Performance Metrics</div>
             </Link>
 
             <Link
               href="/security"
-              className="p-6 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-center transition"
+              className="p-6 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-green-500 text-white rounded-lg text-center transition group"
             >
               <div className="text-4xl mb-2">🔒</div>
-              <div className="font-semibold">Security</div>
-              <div className="text-sm opacity-80">Session Invariants</div>
+              <div className="font-semibold text-green-500">Security</div>
+              <div className="text-sm text-gray-400">Session Invariants</div>
             </Link>
           </div>
 
-          <div className="mt-8 p-4 bg-gray-100 dark:bg-gray-700 rounded-lg">
-            <h3 className="font-semibold mb-2">Protocol: Ilyazh-Web3E2E v0.8</h3>
-            <ul className="text-sm space-y-1 text-gray-700 dark:text-gray-300">
-              <li>✓ Hybrid AKE: X25519 + ML-KEM-768</li>
-              <li>✓ Dual Signatures: Ed25519 + ML-DSA-65</li>
-              <li>✓ Double Ratchet with mandated cadence</li>
-              <li>✓ sid-in-AAD for all records</li>
-              <li>✓ AES-256-GCM + HKDF-SHA-384</li>
-              <li className="pt-2 border-t border-gray-300 dark:border-gray-600 mt-2">
-                🔑 Auth: Clerk (identity only, zero access to keys)
+          <div className="mt-8 p-4 bg-gray-950 rounded-lg border border-gray-800">
+            <h3 className="font-semibold mb-3 text-green-500">Protocol: Ilyazh-Web3E2E v0.8</h3>
+            <ul className="text-sm space-y-2 text-gray-300">
+              <li className="flex items-start">
+                <span className="text-green-500 mr-2">✓</span>
+                <span>Hybrid AKE: X25519 + ML-KEM-768</span>
+              </li>
+              <li className="flex items-start">
+                <span className="text-green-500 mr-2">✓</span>
+                <span>Dual Signatures: Ed25519 + ML-DSA-65</span>
+              </li>
+              <li className="flex items-start">
+                <span className="text-green-500 mr-2">✓</span>
+                <span>Double Ratchet with mandated cadence</span>
+              </li>
+              <li className="flex items-start">
+                <span className="text-green-500 mr-2">✓</span>
+                <span>sid-in-AAD for all records</span>
+              </li>
+              <li className="flex items-start">
+                <span className="text-green-500 mr-2">✓</span>
+                <span>AES-256-GCM + HKDF-SHA-384</span>
+              </li>
+              <li className="flex items-start pt-2 border-t border-gray-700 mt-2">
+                <span className="mr-2">🔑</span>
+                <span>Auth: Clerk (identity only, zero access to keys)</span>
               </li>
             </ul>
           </div>
