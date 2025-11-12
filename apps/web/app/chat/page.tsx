@@ -488,8 +488,8 @@ export default function ChatPage() {
               // 2. Publish new bundle to relay
               // 3. Return the newly generated secrets
               // This prevents crashes while maintaining E2E security.
-              // IMPORTANT: Use userId (Clerk ID) for crypto operations, not display username
-              const prekeySecrets = await loadPrekeySecretsOrRegenerate(userId, identity);
+              // CRITICAL: Use username (NOT Clerk ID) for all crypto operations
+              const prekeySecrets = await loadPrekeySecretsOrRegenerate(username, identity);
 
               console.log('[Handshake] Using prekey bundle:', prekeySecrets.bundleId);
 
@@ -514,12 +514,12 @@ export default function ChatPage() {
               await keystore.saveSession(handshakeState.sessionId, msg.from, handshakeState);
 
               // Delete used prekey secrets
-              // IMPORTANT: Use userId (Clerk ID) for crypto operations, not display username
-              await deletePrekeySecrets(userId);
+              // CRITICAL: Use username (NOT Clerk ID) for all crypto operations
+              await deletePrekeySecrets(username);
 
               // Generate new prekey bundle for future sessions
               console.log('[Handshake] Generating new prekey bundle...');
-              await generateAndUploadPrekeyBundle(userId, identity);
+              await generateAndUploadPrekeyBundle(username, identity);
 
               // Send response handshake
               const responseWireData = encodeHandshakeMessage(responseMessage);
