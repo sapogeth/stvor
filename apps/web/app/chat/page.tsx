@@ -56,6 +56,7 @@ import { refreshSessionFromPeer, retryPendingSession } from '@/lib/ratchet-refre
 import { SafetyNumber } from '@/components/SafetyNumber';
 import { SessionHealthWarning } from '@/components/SessionHealthWarning';
 import { UsernameSearch } from '@/components/UsernameSearch';
+import { ChatList } from '@/components/ChatList';
 import { logDebug, logInfo, logWarn, logError, redactPlaintext, redactSessionId, isSyncDebugEnabled } from '@/lib/logger';
 import { saveMessage, loadMessages, type StoredMessage } from '@/lib/message-store';
 
@@ -190,6 +191,7 @@ export default function ChatPage() {
   const [username, setUsername] = useState('');
   const [recipient, setRecipient] = useState('');
   const [chatActive, setChatActive] = useState(false);
+  const [showingChatList, setShowingChatList] = useState(true); // Show chat list by default
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [sessionInfo, setSessionInfo] = useState<any>(null);
@@ -1739,12 +1741,47 @@ export default function ChatPage() {
       );
     }
 
+    // Show chat list or new chat form
+    if (showingChatList) {
+      return (
+        <main className="min-h-screen flex flex-col bg-black text-white">
+          {/* Header */}
+          <div className="bg-gray-900 border-b border-gray-800 p-4 flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                <span className="text-white font-bold text-xl">S</span>
+              </div>
+              <h1 className="text-xl font-bold tracking-wider">STVOR Чаты</h1>
+            </div>
+            <Link href="/" className="text-green-500 hover:text-green-400 text-sm font-medium">
+              ← Домой
+            </Link>
+          </div>
+
+          {/* Chat List */}
+          <div className="flex-1 overflow-hidden">
+            <ChatList
+              currentUsername={username}
+              onSelectChat={(recipientUsername) => {
+                setRecipient(recipientUsername);
+                setShowingChatList(false);
+              }}
+              onStartNewChat={() => setShowingChatList(false)}
+            />
+          </div>
+        </main>
+      );
+    }
+
     return (
       <main className="min-h-screen flex flex-col items-center justify-center p-8 bg-black text-white">
         <div className="w-full max-w-md bg-gray-900 border border-gray-800 rounded-xl shadow-2xl p-8">
-          <Link href="/" className="text-sm text-green-500 hover:text-green-400 mb-4 block">
-            ← Назад
-          </Link>
+          <button
+            onClick={() => setShowingChatList(true)}
+            className="text-sm text-green-500 hover:text-green-400 mb-4 block"
+          >
+            ← Назад к чатам
+          </button>
 
           <h1 className="text-3xl font-bold mb-4">💬 Начать Чат</h1>
           <p className="text-gray-400 mb-6">
@@ -1808,9 +1845,17 @@ export default function ChatPage() {
       {/* Header */}
       <div className="bg-gray-900 border-b border-gray-800 shadow-sm p-4 flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <Link href="/" className="text-green-500 hover:text-green-400 text-sm font-medium">
-            ← Назад
-          </Link>
+          <button
+            onClick={() => {
+              setChatActive(false);
+              setShowingChatList(true);
+              setRatchetState(null);
+              setMessages([]);
+            }}
+            className="text-green-500 hover:text-green-400 text-sm font-medium"
+          >
+            ← Назад к чатам
+          </button>
           <div>
             <div className="font-semibold">
               {username} → {recipient}
