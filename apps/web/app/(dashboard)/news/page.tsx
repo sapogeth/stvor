@@ -24,7 +24,9 @@ export default function NewsPage() {
 
     const storedUsername = localStorage.getItem(`username:${user.id}`);
     if (storedUsername && !storedUsername.startsWith('user_')) {
-      setUsername(storedUsername);
+      // CRITICAL: Normalize username to lowercase to pass relay validation
+      // Relay requires: 3-20 chars, lowercase alphanumeric + underscore only
+      setUsername(storedUsername.toLowerCase().trim());
     }
   }, [user?.id]);
 

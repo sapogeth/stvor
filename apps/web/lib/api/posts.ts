@@ -44,11 +44,15 @@ export async function createPost(
   data: CreatePostRequest
 ): Promise<CreatePostResponse> {
   try {
+    // CRITICAL: Normalize username to lowercase to pass relay validation
+    // Relay requires: 3-20 chars, lowercase alphanumeric + underscore only
+    const canonicalUsername = username.toLowerCase().trim();
+
     const response = await fetch(`${getRelayBaseUrl()}/posts`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-username': username,
+        'x-username': canonicalUsername,
       },
       body: JSON.stringify(data),
     });
@@ -126,11 +130,14 @@ export async function likePost(
   username: string
 ): Promise<boolean> {
   try {
+    // CRITICAL: Normalize username to lowercase to pass relay validation
+    const canonicalUsername = username.toLowerCase().trim();
+
     const response = await fetch(`${getRelayBaseUrl()}/posts/${postId}/like`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-username': username,
+        'x-username': canonicalUsername,
       },
     });
 
@@ -154,11 +161,14 @@ export async function deletePost(
   username: string
 ): Promise<boolean> {
   try {
+    // CRITICAL: Normalize username to lowercase to pass relay validation
+    const canonicalUsername = username.toLowerCase().trim();
+
     const response = await fetch(`${getRelayBaseUrl()}/posts/${postId}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
-        'x-username': username,
+        'x-username': canonicalUsername,
       },
     });
 
