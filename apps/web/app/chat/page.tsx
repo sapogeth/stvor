@@ -242,29 +242,37 @@ export default function ChatPage() {
       console.log('[Chat] Clerk user authenticated:', clerkUserId);
       setUserId(clerkUserId);
 
-      // Try to get human-readable username from localStorage, fallback to userId
+      // CRITICAL: Get human-readable username from localStorage
+      // NEVER use Clerk ID for identity registration (fails relay validation)
       const storedUsername = localStorage.getItem(`username:${clerkUserId}`);
-      const displayUsername = storedUsername && !storedUsername.startsWith('user_')
-        ? storedUsername
-        : clerkUserId;
 
-      console.log('[Chat] Display username:', displayUsername);
-      setUsername(displayUsername);
+      if (!storedUsername || storedUsername.startsWith('user_')) {
+        // No valid username - redirect to home page to set it up
+        console.error('[Chat] No valid username found, redirecting to home');
+        alert('Please set your username first');
+        window.location.href = '/';
+        return;
+      }
+
+      const canonicalUsername = storedUsername.toLowerCase().trim();
+      console.log('[Chat] Using username for identity:', canonicalUsername);
+      setUsername(canonicalUsername);
 
       try {
-        console.log('[Chat] Initializing E2E identity for Clerk user:', clerkUserId);
+        console.log('[Chat] Initializing E2E identity with username:', canonicalUsername);
 
-        // Get or create E2E identity (handles registration with relay)
-        const identityKeys = await getOrCreateIdentity(clerkUserId);
+        // CRITICAL: Use human-readable username, NOT Clerk ID
+        // This ensures relay validation passes (3-20 chars, lowercase alphanumeric + underscore)
+        const identityKeys = await getOrCreateIdentity(canonicalUsername);
         setIdentity(identityKeys);
 
         console.log('[Chat] E2E identity loaded/created');
 
         // Check if we have a prekey bundle, generate if not
-        const prekeySecrets = await loadPrekeySecrets(clerkUserId);
+        const prekeySecrets = await loadPrekeySecrets(canonicalUsername);
         if (!prekeySecrets) {
           console.log('[Chat] No prekey bundle found, generating...');
-          await generateAndUploadPrekeyBundle(clerkUserId, identityKeys);
+          await generateAndUploadPrekeyBundle(canonicalUsername, identityKeys);
           console.log('[Chat] Prekey bundle generated and uploaded');
         } else {
           console.log('[Chat] Existing prekey bundle found:', prekeySecrets.bundleId);
@@ -273,7 +281,7 @@ export default function ChatPage() {
         console.log('[Chat] E2E crypto initialization complete');
       } catch (err) {
         console.error('[Chat] Failed to initialize E2E crypto:', err);
-        alert('Failed to initialize encryption keys. Please refresh.');
+        alert('Failed to initialize encryption keys. Please refresh or set your username in settings.');
       }
     };
 
