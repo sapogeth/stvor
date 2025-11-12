@@ -57,6 +57,7 @@ import { SafetyNumber } from '@/components/SafetyNumber';
 import { SessionHealthWarning } from '@/components/SessionHealthWarning';
 import { UsernameSearch } from '@/components/UsernameSearch';
 import { logDebug, logInfo, logWarn, logError, redactPlaintext, redactSessionId, isSyncDebugEnabled } from '@/lib/logger';
+import { saveMessage, loadMessages, type StoredMessage } from '@/lib/message-store';
 
 // PART 2: Client-side deduplication set (module-level, persists across renders)
 const seenEntries = new Set<string>();
@@ -309,6 +310,39 @@ export default function ChatPage() {
     const interval = setInterval(updateHealth, 30000);
     return () => clearInterval(interval);
   }, [ratchetState]);
+
+  // Load persisted messages from IndexedDB when chat becomes active
+  useEffect(() => {
+    if (!chatActive || !chatId) return;
+
+    const loadPersistedMessages = async () => {
+      try {
+        console.log('[MessageStore] Loading persisted messages for chatId:', chatId);
+        const stored = await loadMessages(chatId);
+
+        if (stored.length > 0) {
+          console.log(`[MessageStore] Loaded ${stored.length} persisted messages`);
+
+          // Convert StoredMessage to Message format
+          const loadedMessages = stored.map(msg => ({
+            id: msg.id,
+            sender: msg.sender,
+            text: msg.text,
+            timestamp: msg.timestamp,
+            encrypted: msg.encrypted,
+          }));
+
+          setMessages(loadedMessages);
+        } else {
+          console.log('[MessageStore] No persisted messages found');
+        }
+      } catch (err) {
+        console.error('[MessageStore] Failed to load messages:', err);
+      }
+    };
+
+    loadPersistedMessages();
+  }, [chatActive, chatId]);
 
   // Poll for incoming messages
   useEffect(() => {
@@ -1150,6 +1184,21 @@ export default function ChatPage() {
               return [...prev, newMessage];
             });
 
+            // Save message to IndexedDB for persistence
+            try {
+              await saveMessage({
+                id: newMessage.id,
+                chatId: chatId,
+                sender: newMessage.sender,
+                text: newMessage.text,
+                timestamp: newMessage.timestamp,
+                encrypted: newMessage.encrypted,
+              });
+              console.log('[MessageStore] Saved incoming message:', newMessage.id);
+            } catch (storeErr) {
+              console.error('[MessageStore] Failed to save message:', storeErr);
+            }
+
             // CRITICAL: Mark as successfully processed ONLY after message is decrypted and rendered
             seenEntries.add(dedupeKey);
             seenEntries.add(nonceDedupe); // Also mark nonce as seen to prevent relay duplicates
@@ -1275,15 +1324,23 @@ export default function ChatPage() {
         setRatchetState(existingSession);
         setChatActive(true);
 
-        setMessages([
-          {
-            id: 'system-init',
-            sender: 'system',
-            text: `🔐 Existing session restored with ${recipientCanonical}`,
-            timestamp: Date.now(),
-            encrypted: true,
-          },
-        ]);
+        // Add system message only if no messages are loaded yet
+        // (loadPersistedMessages useEffect will load them after chatActive becomes true)
+        setMessages((prev) => {
+          if (prev.length > 0) {
+            // Already have messages, don't add system message
+            return prev;
+          }
+          return [
+            {
+              id: 'system-init',
+              sender: 'system',
+              text: `🔐 Existing session restored with ${recipientCanonical}`,
+              timestamp: Date.now(),
+              encrypted: true,
+            },
+          ];
+        });
 
         setHandshakeInProgress(false);
         return;
@@ -1464,15 +1521,22 @@ export default function ChatPage() {
         sessionAge: '0s',
       });
 
-      setMessages([
-        {
-          id: 'system-handshake',
-          sender: 'system',
-          text: `🔐 Handshake sent to ${recipientCanonical}. Waiting for response...`,
-          timestamp: Date.now(),
-          encrypted: true,
-        },
-      ]);
+      // Add system message only if no messages are loaded yet
+      setMessages((prev) => {
+        if (prev.length > 0) {
+          // Already have messages, don't add system message
+          return prev;
+        }
+        return [
+          {
+            id: 'system-handshake',
+            sender: 'system',
+            text: `🔐 Handshake sent to ${recipientCanonical}. Waiting for response...`,
+            timestamp: Date.now(),
+            encrypted: true,
+          },
+        ];
+      });
 
       setHandshakeInProgress(false);
     } catch (err) {
@@ -1556,6 +1620,21 @@ export default function ChatPage() {
       };
 
       setMessages((prev) => [...prev, newMessage]);
+
+      // Save outgoing message to IndexedDB for persistence
+      try {
+        await saveMessage({
+          id: newMessage.id,
+          chatId: chatId,
+          sender: newMessage.sender,
+          text: newMessage.text,
+          timestamp: newMessage.timestamp,
+          encrypted: newMessage.encrypted,
+        });
+        console.log('[MessageStore] Saved outgoing message:', newMessage.id);
+      } catch (storeErr) {
+        console.error('[MessageStore] Failed to save outgoing message:', storeErr);
+      }
 
       if (sessionInfo) {
         setSessionInfo({
