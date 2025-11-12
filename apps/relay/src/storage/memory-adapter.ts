@@ -11,10 +11,12 @@ import type {
   IMessageRepository,
   ISyncRepository,
   IRateLimitRepository,
+  IPostRepository,
   UserIdentity,
   PrekeyBundle,
   MessageBlob,
   SyncCursor,
+  Post,
 } from './interfaces.js';
 
 class MemoryUserRepository implements IUserRepository {
@@ -42,6 +44,10 @@ class MemoryUserRepository implements IUserRepository {
 
   async userExists(userId: string): Promise<boolean> {
     return this.users.has(userId);
+  }
+
+  async getTotalUserCount(): Promise<number> {
+    return this.users.size;
   }
 }
 
@@ -248,12 +254,95 @@ class MemoryRateLimitRepository implements IRateLimitRepository {
   }
 }
 
+class MemoryPostRepository implements IPostRepository {
+  private posts = new Map<string, Post>(); // postId -> post
+  private userPostsIndex = new Map<string, string[]>(); // userId -> postIds
+
+  async createPost(post: Post): Promise<boolean> {
+    if (this.posts.has(post.postId)) {
+      return false;
+    }
+
+    this.posts.set(post.postId, post);
+
+    // Add to user index
+    const userPosts = this.userPostsIndex.get(post.authorId) || [];
+    userPosts.push(post.postId);
+    this.userPostsIndex.set(post.authorId, userPosts);
+
+    return true;
+  }
+
+  async getPost(postId: string): Promise<Post | null> {
+    return this.posts.get(postId) || null;
+  }
+
+  async getFeed(limit: number, beforeTimestamp?: number): Promise<Post[]> {
+    const allPosts = Array.from(this.posts.values());
+
+    // Filter by timestamp if provided
+    const filtered = beforeTimestamp
+      ? allPosts.filter(p => p.createdAt < beforeTimestamp)
+      : allPosts;
+
+    // Sort by creation time (newest first)
+    filtered.sort((a, b) => b.createdAt - a.createdAt);
+
+    return filtered.slice(0, limit);
+  }
+
+  async getUserPosts(userId: string, limit: number): Promise<Post[]> {
+    const postIds = this.userPostsIndex.get(userId) || [];
+    const posts: Post[] = [];
+
+    for (const postId of postIds) {
+      const post = this.posts.get(postId);
+      if (post) {
+        posts.push(post);
+      }
+    }
+
+    // Sort by creation time (newest first)
+    posts.sort((a, b) => b.createdAt - a.createdAt);
+
+    return posts.slice(0, limit);
+  }
+
+  async deletePost(postId: string, userId: string): Promise<boolean> {
+    const post = this.posts.get(postId);
+    if (!post || post.authorId !== userId) {
+      return false;
+    }
+
+    this.posts.delete(postId);
+
+    // Remove from user index
+    const userPosts = this.userPostsIndex.get(userId) || [];
+    const filtered = userPosts.filter(id => id !== postId);
+    this.userPostsIndex.set(userId, filtered);
+
+    return true;
+  }
+
+  async incrementLikes(postId: string): Promise<void> {
+    const post = this.posts.get(postId);
+    if (post) {
+      post.likesCount++;
+    }
+  }
+
+  async getTotalPostCount(): Promise<number> {
+    return this.posts.size;
+  }
+}
+
 export class MemoryStorageAdapter implements IStorageAdapter {
   users: IUserRepository;
   prekeys: IPrekeyRepository;
   messages: IMessageRepository;
   sync: ISyncRepository;
   rateLimit: IRateLimitRepository;
+  posts: IPostRepository;
 
   constructor() {
     this.users = new MemoryUserRepository();
@@ -261,6 +350,7 @@ export class MemoryStorageAdapter implements IStorageAdapter {
     this.messages = new MemoryMessageRepository();
     this.sync = new MemorySyncRepository();
     this.rateLimit = new MemoryRateLimitRepository();
+    this.posts = new MemoryPostRepository();
   }
 
   async init(): Promise<void> {

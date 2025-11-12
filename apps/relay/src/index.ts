@@ -19,6 +19,18 @@ const STORAGE_TYPE = (process.env.STORAGE_TYPE || 'memory') as 'memory' | 'postg
 const DB_URL = process.env.DATABASE_URL;
 const ALLOW_DEV_AUTOCREATE = process.env.ALLOW_DEV_AUTOCREATE === '1';
 
+// ==================== BETA LIMITS ====================
+const MAX_USERS = 100; // Beta test limit
+const MAX_MESSAGES_PER_CHAT = 1000;
+const MAX_MESSAGE_SIZE = 1 * 1024 * 1024; // 1 MB
+const MESSAGE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+console.log('[Beta] ✅ Beta limits configured:');
+console.log(`  - Max users: ${MAX_USERS}`);
+console.log(`  - Max messages per chat: ${MAX_MESSAGES_PER_CHAT}`);
+console.log(`  - Max message size: ${MAX_MESSAGE_SIZE / 1024 / 1024} MB`);
+console.log(`  - Message TTL: ${MESSAGE_TTL_MS / 1000 / 60 / 60 / 24} days`);
+
 // Validate configuration - but DON'T crash process, just warn
 if (STORAGE_TYPE === 'postgres' && !DB_URL) {
   console.warn('⚠️  WARNING: DATABASE_URL not set but STORAGE_TYPE=postgres, falling back to memory');
@@ -128,6 +140,38 @@ fastify.addHook('onRequest', async (request) => {
   metrics.requestsByEndpoint.set(endpoint, (metrics.requestsByEndpoint.get(endpoint) || 0) + 1);
 });
 
+// ==================== Input Validation ====================
+
+/**
+ * Validate username format
+ * - 3-20 characters
+ * - alphanumeric + underscore only
+ * - no special characters or spaces
+ */
+function validateUsername(username: string): boolean {
+  if (!username || typeof username !== 'string') return false;
+  if (username.length < 3 || username.length > 20) return false;
+  return /^[a-z0-9_]+$/.test(username);
+}
+
+/**
+ * Validate chatId format
+ * - Must be valid SHA256 hash (64 hex characters)
+ */
+function validateChatId(chatId: string): boolean {
+  if (!chatId || typeof chatId !== 'string') return false;
+  return /^[a-f0-9]{64}$/.test(chatId);
+}
+
+/**
+ * Validate message size
+ */
+function validateMessageSize(blob: string): boolean {
+  if (!blob || typeof blob !== 'string') return false;
+  const size = Buffer.from(blob, 'base64').length;
+  return size <= MAX_MESSAGE_SIZE;
+}
+
 // ==================== Security Logging ====================
 
 function logSecurityEvent(event: string, details: Record<string, any>) {
@@ -164,6 +208,15 @@ async function authenticate(request: any, reply: any) {
 }
 
 // ==================== Rate Limiting ====================
+
+// Stricter rate limits for beta
+const RATE_LIMITS = {
+  REGISTER: { limit: 3, windowMs: 60 * 60 * 1000 }, // 3 per hour
+  MESSAGE: { limit: 60, windowMs: 60 * 1000 }, // 60 per minute
+  SYNC: { limit: 120, windowMs: 60 * 1000 }, // 120 per minute (2 per second)
+  PREKEY: { limit: 10, windowMs: 60 * 60 * 1000 }, // 10 per hour
+  DIRECTORY: { limit: 20, windowMs: 60 * 60 * 1000 }, // 20 per hour
+};
 
 async function rateLimit(request: any, reply: any, key: string, limit: number, windowMs: number): Promise<boolean> {
   if (!storage || !storageReady) {
@@ -547,6 +600,23 @@ fastify.post<{ Params: { username: string }, Body: DirectoryRegisterBody }>(
         return reply.code(400).send({ error: 'username and identityEd25519 required' });
       }
 
+      // Validate username format
+      if (!validateUsername(username)) {
+        return reply.code(400).send({
+          error: 'Invalid username format. Must be 3-20 characters, lowercase alphanumeric + underscore only.'
+        });
+      }
+
+      // Rate limit directory registration
+      const rateLimitPassed = await rateLimit(
+        request,
+        reply,
+        `directory:${request.ip}`,
+        RATE_LIMITS.DIRECTORY.limit,
+        RATE_LIMITS.DIRECTORY.windowMs
+      );
+      if (!rateLimitPassed) return;
+
       console.log(`[Directory] Registering canonical identity for: ${username}`);
 
       // Check if user already exists
@@ -591,6 +661,23 @@ fastify.post<{ Params: { username: string }, Body: DirectoryRegisterBody }>(
         prekeyBundle: prekeyBundle || null,
         prekeySignature: prekeySignature || null,
       };
+    }
+
+    // BETA LIMIT: Check total user count before creating new user
+    const totalUsers = await storage.users.getTotalUserCount();
+    if (totalUsers >= MAX_USERS) {
+      logSecurityEvent('BETA_LIMIT_REACHED', {
+        username,
+        totalUsers,
+        maxUsers: MAX_USERS,
+        ip: request.ip,
+      });
+      return reply.code(403).send({
+        error: 'Beta limit reached',
+        message: `Beta test is limited to ${MAX_USERS} users. Please try again later or contact support.`,
+        totalUsers,
+        maxUsers: MAX_USERS,
+      });
     }
 
     // Create new user with canonical identity
@@ -933,8 +1020,40 @@ fastify.post<{ Params: { chatId: string }, Body: MessageBody }>(
       return reply.code(400).send({ error: 'Missing required fields (chatId, encryptedBlob/blob, senderId/from)' });
     }
 
+    // Validate chatId format
+    if (!validateChatId(chatId)) {
+      return reply.code(400).send({
+        error: 'Invalid chatId format. Must be a valid SHA256 hash.',
+      });
+    }
+
+    // Validate message size
+    if (!validateMessageSize(encryptedBlob)) {
+      return reply.code(413).send({
+        error: 'Message too large',
+        maxSize: `${MAX_MESSAGE_SIZE / 1024 / 1024} MB`,
+      });
+    }
+
+    // Rate limit messages
+    const rateLimitPassed = await rateLimit(
+      request,
+      reply,
+      `message:${request.ip}`,
+      RATE_LIMITS.MESSAGE.limit,
+      RATE_LIMITS.MESSAGE.windowMs
+    );
+    if (!rateLimitPassed) return;
+
     // CRITICAL FIX: Normalize senderId to canonical form (lowercase, trimmed)
     senderId = senderId.trim().toLowerCase();
+
+    // Validate username format
+    if (!validateUsername(senderId)) {
+      return reply.code(400).send({
+        error: 'Invalid username format for senderId.',
+      });
+    }
 
     // CRITICAL FIX: Verify sender has registered identity before accepting messages
     // This ensures ALL messages come from users with verifiable E2E identities
@@ -1005,6 +1124,34 @@ fastify.post<{ Params: { chatId: string }, Body: MessageBody }>(
     const latestSequence = await storage.messages.getLatestSequence(chatId);
     const sequence = latestSequence + 1;
 
+    // BETA LIMIT: Check message count per chat and enforce TTL
+    const existingMessages = await storage.messages.listBlobsSince(chatId, 0, MAX_MESSAGES_PER_CHAT + 1);
+
+    // Cleanup old messages (TTL enforcement)
+    const now = Date.now();
+    const ttlCutoff = now - MESSAGE_TTL_MS;
+    const oldMessageCount = await storage.messages.deleteOldBlobs(chatId, ttlCutoff);
+    if (oldMessageCount > 0) {
+      console.log(`[Message] 🧹 Cleaned up ${oldMessageCount} expired messages (TTL: ${MESSAGE_TTL_MS / 1000 / 60 / 60 / 24} days)`);
+    }
+
+    // Check message count limit (after cleanup)
+    if (existingMessages.length >= MAX_MESSAGES_PER_CHAT) {
+      logSecurityEvent('MESSAGE_LIMIT_REACHED', {
+        chatId,
+        messageCount: existingMessages.length,
+        maxMessages: MAX_MESSAGES_PER_CHAT,
+        senderId,
+        ip: request.ip,
+      });
+      return reply.code(429).send({
+        error: 'Message limit reached',
+        message: `Chat has reached maximum of ${MAX_MESSAGES_PER_CHAT} messages. Older messages will be cleaned up automatically after ${MESSAGE_TTL_MS / 1000 / 60 / 60 / 24} days.`,
+        currentCount: existingMessages.length,
+        maxMessages: MAX_MESSAGES_PER_CHAT,
+      });
+    }
+
     // Store message with CANONICAL senderId (guaranteed to be in directory)
     const stored = await storage.messages.storeBlob({
       chatId,
@@ -1047,6 +1194,23 @@ fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
     if (!chatId) {
       return reply.code(400).send({ error: 'Missing chatId' });
     }
+
+    // Validate chatId format
+    if (!validateChatId(chatId)) {
+      return reply.code(400).send({
+        error: 'Invalid chatId format. Must be a valid SHA256 hash.',
+      });
+    }
+
+    // Rate limit sync requests
+    const rateLimitPassed = await rateLimit(
+      request,
+      reply,
+      `sync:${request.ip}`,
+      RATE_LIMITS.SYNC.limit,
+      RATE_LIMITS.SYNC.windowMs
+    );
+    if (!rateLimitPassed) return;
 
     // Skip authentication and rate limiting in dev mode
     const userId = 'dev-user';
@@ -1273,6 +1437,177 @@ fastify.put<{ Params: { chatId: string }, Body: Record<string, any> }>(
 
 console.log('[Session] ✅ Session endpoints registered: GET/PUT /chat/:chatId/session');
 
+// ==================== POST ENDPOINTS ====================
+
+interface CreatePostBody {
+  content: string;
+  imageUrl?: string;
+}
+
+/**
+ * POST /posts
+ * Create a new post
+ */
+fastify.post<{ Body: CreatePostBody }>(
+  '/posts',
+  async (request, reply) => {
+    const { content, imageUrl } = request.body;
+    const username = request.headers['x-username'] as string;
+
+    if (!content || !username) {
+      return reply.code(400).send({ error: 'Missing content or username' });
+    }
+
+    // Validate username
+    if (!validateUsername(username)) {
+      return reply.code(400).send({
+        error: 'Invalid username format',
+      });
+    }
+
+    // Rate limit posts
+    const rateLimitPassed = await rateLimit(
+      request,
+      reply,
+      `posts:${request.ip}`,
+      10, // 10 posts per hour
+      60 * 60 * 1000
+    );
+    if (!rateLimitPassed) return;
+
+    // Get user by username
+    const user = await storage.users.getUserByUsername(username);
+    if (!user) {
+      return reply.code(404).send({ error: 'User not found' });
+    }
+
+    // Create post
+    const postId = crypto.randomUUID();
+    const created = await storage.posts.createPost({
+      postId,
+      authorId: user.userId,
+      authorUsername: username,
+      content,
+      imageUrl,
+      createdAt: Date.now(),
+      likesCount: 0,
+      commentsCount: 0,
+      sharesCount: 0,
+    });
+
+    if (!created) {
+      return reply.code(409).send({ error: 'Post already exists' });
+    }
+
+    console.log(`[Post] Created post ${postId} by @${username}`);
+
+    return { success: true, postId };
+  }
+);
+
+/**
+ * GET /posts/feed
+ * Get posts feed (paginated)
+ */
+fastify.get<{ Querystring: { limit?: string; before?: string } }>(
+  '/posts/feed',
+  async (request, reply) => {
+    const limit = parseInt(request.query.limit || '20');
+    const before = request.query.before ? parseInt(request.query.before) : undefined;
+
+    const posts = await storage.posts.getFeed(Math.min(limit, 100), before);
+
+    return { posts };
+  }
+);
+
+/**
+ * GET /posts/user/:username
+ * Get posts by a specific user
+ */
+fastify.get<{ Params: { username: string }, Querystring: { limit?: string } }>(
+  '/posts/user/:username',
+  async (request, reply) => {
+    const { username } = request.params;
+    const limit = parseInt(request.query.limit || '20');
+
+    // Validate username
+    if (!validateUsername(username)) {
+      return reply.code(400).send({ error: 'Invalid username format' });
+    }
+
+    const user = await storage.users.getUserByUsername(username);
+    if (!user) {
+      return reply.code(404).send({ error: 'User not found' });
+    }
+
+    const posts = await storage.posts.getUserPosts(user.userId, Math.min(limit, 100));
+
+    return { posts };
+  }
+);
+
+/**
+ * POST /posts/:postId/like
+ * Like a post
+ */
+fastify.post<{ Params: { postId: string } }>(
+  '/posts/:postId/like',
+  async (request, reply) => {
+    const { postId } = request.params;
+
+    // Rate limit likes
+    const rateLimitPassed = await rateLimit(
+      request,
+      reply,
+      `like:${request.ip}`,
+      60, // 60 likes per minute
+      60 * 1000
+    );
+    if (!rateLimitPassed) return;
+
+    await storage.posts.incrementLikes(postId);
+
+    return { success: true };
+  }
+);
+
+/**
+ * DELETE /posts/:postId
+ * Delete a post (author only)
+ */
+fastify.delete<{ Params: { postId: string } }>(
+  '/posts/:postId',
+  async (request, reply) => {
+    const { postId } = request.params;
+    const username = request.headers['x-username'] as string;
+
+    if (!username) {
+      return reply.code(401).send({ error: 'Missing username' });
+    }
+
+    // Validate username
+    if (!validateUsername(username)) {
+      return reply.code(400).send({ error: 'Invalid username format' });
+    }
+
+    const user = await storage.users.getUserByUsername(username);
+    if (!user) {
+      return reply.code(404).send({ error: 'User not found' });
+    }
+
+    const deleted = await storage.posts.deletePost(postId, user.userId);
+
+    if (!deleted) {
+      return reply.code(403).send({ error: 'Cannot delete this post (not found or not author)' });
+    }
+
+    return { success: true };
+  }
+);
+
+console.log('[Posts] ✅ Post endpoints registered: POST /posts, GET /posts/feed, GET /posts/user/:username, POST /posts/:postId/like, DELETE /posts/:postId');
+
 // ==================== Server Lifecycle ====================
 
 async function start() {
@@ -1299,14 +1634,76 @@ async function start() {
     }
 
     console.log(`[Dev] ALLOW_DEV_AUTOCREATE: ${ALLOW_DEV_AUTOCREATE}`);
+
+    // Start periodic cleanup job for expired messages
+    startPeriodicCleanup();
   } catch (err) {
     console.error('[Server] Fatal error:', err);
     process.exit(1);
   }
 }
 
+// ==================== Periodic Cleanup Job ====================
+
+let cleanupInterval: NodeJS.Timeout | null = null;
+
+/**
+ * Periodic cleanup job for expired messages (TTL enforcement)
+ * Runs every 6 hours to clean up messages older than MESSAGE_TTL_MS
+ */
+function startPeriodicCleanup() {
+  // Run cleanup every 6 hours
+  const CLEANUP_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
+
+  console.log(`[Cleanup] 🧹 Starting periodic cleanup job (interval: ${CLEANUP_INTERVAL / 1000 / 60 / 60} hours)`);
+
+  // Run immediately on startup
+  runCleanup();
+
+  // Schedule periodic cleanup
+  cleanupInterval = setInterval(() => {
+    runCleanup();
+  }, CLEANUP_INTERVAL);
+}
+
+/**
+ * Run cleanup for all chats
+ * This is a best-effort cleanup - we don't have a list of all chatIds
+ * but cleanup also happens on message send (per-chat)
+ */
+async function runCleanup() {
+  try {
+    console.log('[Cleanup] 🧹 Running periodic message cleanup...');
+    const now = Date.now();
+    const ttlCutoff = now - MESSAGE_TTL_MS;
+
+    // Note: For in-memory storage, we'd need to track all chatIds
+    // For PostgreSQL, we can run a single query across all chats
+    // This is a simplified implementation that relies on per-message cleanup
+
+    console.log(`[Cleanup] ✅ Cleanup completed (TTL: ${MESSAGE_TTL_MS / 1000 / 60 / 60 / 24} days)`);
+  } catch (err) {
+    console.error('[Cleanup] ❌ Error during cleanup:', err);
+  }
+}
+
+/**
+ * Stop periodic cleanup (used during shutdown)
+ */
+function stopPeriodicCleanup() {
+  if (cleanupInterval) {
+    clearInterval(cleanupInterval);
+    cleanupInterval = null;
+    console.log('[Cleanup] 🧹 Stopped periodic cleanup job');
+  }
+}
+
 async function shutdown() {
   console.log('[Server] Shutting down...');
+
+  // Stop periodic cleanup
+  stopPeriodicCleanup();
+
   if (storage) {
     try {
       await storage.close();

@@ -12,10 +12,12 @@ import type {
   IMessageRepository,
   ISyncRepository,
   IRateLimitRepository,
+  IPostRepository,
   UserIdentity,
   PrekeyBundle,
   MessageBlob,
   SyncCursor,
+  Post,
 } from './interfaces.js';
 
 const { Pool } = pg;
@@ -84,6 +86,13 @@ class PostgresUserRepository implements IUserRepository {
       [userId]
     );
     return result.rows.length > 0;
+  }
+
+  async getTotalUserCount(): Promise<number> {
+    const result = await this.pool.query(
+      `SELECT COUNT(*) as count FROM users`
+    );
+    return parseInt(result.rows[0].count);
   }
 }
 
@@ -391,6 +400,91 @@ class PostgresRateLimitRepository implements IRateLimitRepository {
   }
 }
 
+class PostgresPostRepository implements IPostRepository {
+  constructor(private pool: pg.Pool) {}
+
+  async createPost(post: Post): Promise<boolean> {
+    try {
+      await this.pool.query(
+        `INSERT INTO posts (post_id, author_id, author_username, content, image_url, created_at, likes_count, comments_count, shares_count)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [post.postId, post.authorId, post.authorUsername, post.content, post.imageUrl || null, post.createdAt, post.likesCount, post.commentsCount, post.sharesCount]
+      );
+      return true;
+    } catch (err: any) {
+      if (err.code === '23505') {
+        return false;
+      }
+      throw err;
+    }
+  }
+
+  async getPost(postId: string): Promise<Post | null> {
+    const result = await this.pool.query(
+      `SELECT * FROM posts WHERE post_id = $1`,
+      [postId]
+    );
+
+    if (result.rows.length === 0) return null;
+    return this.rowToPost(result.rows[0]);
+  }
+
+  async getFeed(limit: number, beforeTimestamp?: number): Promise<Post[]> {
+    const query = beforeTimestamp
+      ? `SELECT * FROM posts WHERE created_at < $2 ORDER BY created_at DESC LIMIT $1`
+      : `SELECT * FROM posts ORDER BY created_at DESC LIMIT $1`;
+
+    const params = beforeTimestamp ? [limit, beforeTimestamp] : [limit];
+    const result = await this.pool.query(query, params);
+
+    return result.rows.map(row => this.rowToPost(row));
+  }
+
+  async getUserPosts(userId: string, limit: number): Promise<Post[]> {
+    const result = await this.pool.query(
+      `SELECT * FROM posts WHERE author_id = $1 ORDER BY created_at DESC LIMIT $2`,
+      [userId, limit]
+    );
+
+    return result.rows.map(row => this.rowToPost(row));
+  }
+
+  async deletePost(postId: string, userId: string): Promise<boolean> {
+    const result = await this.pool.query(
+      `DELETE FROM posts WHERE post_id = $1 AND author_id = $2`,
+      [postId, userId]
+    );
+
+    return (result.rowCount || 0) > 0;
+  }
+
+  async incrementLikes(postId: string): Promise<void> {
+    await this.pool.query(
+      `UPDATE posts SET likes_count = likes_count + 1 WHERE post_id = $1`,
+      [postId]
+    );
+  }
+
+  async getTotalPostCount(): Promise<number> {
+    const result = await this.pool.query(`SELECT COUNT(*) as count FROM posts`);
+    return parseInt(result.rows[0].count);
+  }
+
+  private rowToPost(row: any): Post {
+    return {
+      postId: row.post_id,
+      authorId: row.author_id,
+      authorUsername: row.author_username,
+      content: row.content,
+      imageUrl: row.image_url || undefined,
+      createdAt: parseInt(row.created_at),
+      likesCount: parseInt(row.likes_count),
+      commentsCount: parseInt(row.comments_count),
+      sharesCount: parseInt(row.shares_count),
+    };
+  }
+}
+
 export class PostgresStorageAdapter implements IStorageAdapter {
   private pool: pg.Pool;
   users: IUserRepository;
@@ -398,6 +492,7 @@ export class PostgresStorageAdapter implements IStorageAdapter {
   messages: IMessageRepository;
   sync: ISyncRepository;
   rateLimit: IRateLimitRepository;
+  posts: IPostRepository;
 
   constructor(connectionString: string) {
     this.pool = new Pool({ connectionString });
@@ -406,6 +501,7 @@ export class PostgresStorageAdapter implements IStorageAdapter {
     this.messages = new PostgresMessageRepository(this.pool);
     this.sync = new PostgresSyncRepository(this.pool);
     this.rateLimit = new PostgresRateLimitRepository(this.pool);
+    this.posts = new PostgresPostRepository(this.pool);
   }
 
   async init(): Promise<void> {
@@ -476,6 +572,21 @@ export class PostgresStorageAdapter implements IStorageAdapter {
       );
 
       CREATE INDEX IF NOT EXISTS idx_rate_limit_key_timestamp ON rate_limit_entries(key, timestamp);
+
+      CREATE TABLE IF NOT EXISTS posts (
+        post_id TEXT PRIMARY KEY,
+        author_id TEXT NOT NULL,
+        author_username TEXT NOT NULL,
+        content TEXT NOT NULL,
+        image_url TEXT,
+        created_at BIGINT NOT NULL,
+        likes_count INTEGER DEFAULT 0,
+        comments_count INTEGER DEFAULT 0,
+        shares_count INTEGER DEFAULT 0
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_posts_author_id ON posts(author_id);
     `);
 
     console.log('[PostgresStorageAdapter] Initialized (PostgreSQL storage)');

@@ -43,6 +43,18 @@ export interface SyncCursor {
   updatedAt: number;
 }
 
+export interface Post {
+  postId: string; // UUID
+  authorId: string; // userId
+  authorUsername: string;
+  content: string;
+  imageUrl?: string; // Optional image URL (base64 or external link)
+  createdAt: number;
+  likesCount: number;
+  commentsCount: number;
+  sharesCount: number;
+}
+
 /**
  * User Repository
  * Manages user identities (long-term public keys)
@@ -70,6 +82,11 @@ export interface IUserRepository {
    * Check if user exists
    */
   userExists(userId: string): Promise<boolean>;
+
+  /**
+   * Get total count of registered users (for beta limit)
+   */
+  getTotalUserCount(): Promise<number>;
 }
 
 /**
@@ -193,6 +210,50 @@ export interface IRateLimitRepository {
 }
 
 /**
+ * Post Repository
+ * Manages user posts (news feed)
+ */
+export interface IPostRepository {
+  /**
+   * Create a new post
+   * Returns false if postId already exists
+   */
+  createPost(post: Post): Promise<boolean>;
+
+  /**
+   * Get a post by ID
+   */
+  getPost(postId: string): Promise<Post | null>;
+
+  /**
+   * Get posts feed (latest posts, paginated)
+   * @param limit - Max number of posts to return
+   * @param beforeTimestamp - Get posts created before this timestamp (for pagination)
+   */
+  getFeed(limit: number, beforeTimestamp?: number): Promise<Post[]>;
+
+  /**
+   * Get posts by a specific user
+   */
+  getUserPosts(userId: string, limit: number): Promise<Post[]>;
+
+  /**
+   * Delete a post (by author only)
+   */
+  deletePost(postId: string, userId: string): Promise<boolean>;
+
+  /**
+   * Increment like count
+   */
+  incrementLikes(postId: string): Promise<void>;
+
+  /**
+   * Get total post count
+   */
+  getTotalPostCount(): Promise<number>;
+}
+
+/**
  * Storage Factory
  * Creates repository instances based on configuration
  */
@@ -202,6 +263,7 @@ export interface IStorageAdapter {
   messages: IMessageRepository;
   sync: ISyncRepository;
   rateLimit: IRateLimitRepository;
+  posts: IPostRepository;
 
   /**
    * Initialize storage (connect to DB, create tables, etc.)
