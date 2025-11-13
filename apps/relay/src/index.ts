@@ -12,6 +12,7 @@ import { createStorageAdapter, type IStorageAdapter } from './storage/index';
 import { type PrekeyBundle } from './storage/interfaces';
 import { normalizeUsername } from './utils/normalize';
 import * as crypto from 'crypto';
+import DOMPurify from 'isomorphic-dompurify';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -98,21 +99,24 @@ await fastify.register(multipart, {
 
 const JWT_SECRET = process.env.JWT_SECRET || '';
 
-if (!JWT_SECRET || JWT_SECRET.length < 32) {
-  console.warn('⚠️  WARNING: JWT_SECRET not set or too short - server will start but auth will fail');
-  console.warn('   Generate: openssl rand -base64 48');
+// CRITICAL SECURITY: Force server exit if JWT_SECRET is weak or missing
+if (!JWT_SECRET || JWT_SECRET.length < 48) {
+  console.error('❌ CRITICAL: JWT_SECRET not set or too short (< 48 chars)');
+  console.error('   Generate with: openssl rand -base64 48');
+  console.error('   Set in .env: JWT_SECRET=<generated-value>');
+  process.exit(1); // Refuse to start with weak secret
 }
 
-if (JWT_SECRET) {
-  const INSECURE = ['secret', 'change-this', 'development-secret', 'test-secret', 'jwt-secret', 'please-change-me'];
-  if (INSECURE.some(s => JWT_SECRET.toLowerCase().includes(s))) {
-    console.warn('⚠️  WARNING: JWT_SECRET is insecure');
-    console.warn('   Generate: openssl rand -base64 48');
-  }
+// Check for common insecure patterns
+const INSECURE = ['secret', 'change-this', 'development-secret', 'test-secret', 'jwt-secret', 'please-change-me', 'temp-secret'];
+if (INSECURE.some(s => JWT_SECRET.toLowerCase().includes(s))) {
+  console.error('❌ CRITICAL: JWT_SECRET contains insecure pattern');
+  console.error('   Generate secure secret with: openssl rand -base64 48');
+  process.exit(1); // Refuse to start with insecure secret
 }
 
 await fastify.register(jwt, {
-  secret: JWT_SECRET || 'temp-secret-for-healthcheck',
+  secret: JWT_SECRET,
   sign: { algorithm: 'HS256', expiresIn: '30d' },
   verify: { algorithms: ['HS256'] },
 });
@@ -1008,7 +1012,7 @@ function detectMessageType(body: MessageBody): 'handshake' | 'message' {
 
 fastify.post<{ Params: { chatId: string }, Body: MessageBody }>(
   '/message/:chatId',
-  // No authentication required in dev mode - relay accepts all requests
+  { preHandler: authenticate }, // CRITICAL SECURITY: Require authentication
   async (request, reply) => {
     const { chatId } = request.params;
 
@@ -1450,6 +1454,7 @@ interface CreatePostBody {
  */
 fastify.post<{ Body: CreatePostBody }>(
   '/posts',
+  { preHandler: authenticate }, // CRITICAL SECURITY: Require authentication
   async (request, reply) => {
     const { content, imageUrl } = request.body;
     const username = request.headers['x-username'] as string;
@@ -1464,6 +1469,20 @@ fastify.post<{ Body: CreatePostBody }>(
         error: 'Invalid username format',
       });
     }
+
+    // CRITICAL SECURITY: Sanitize content to prevent XSS attacks
+    const sanitizedContent = DOMPurify.sanitize(content, {
+      ALLOWED_TAGS: [], // Strip all HTML tags
+      ALLOWED_ATTR: [], // Strip all attributes
+      KEEP_CONTENT: true, // Keep text content
+    });
+
+    // Sanitize imageUrl if provided
+    const sanitizedImageUrl = imageUrl ? DOMPurify.sanitize(imageUrl, {
+      ALLOWED_TAGS: [],
+      ALLOWED_ATTR: [],
+      KEEP_CONTENT: true,
+    }) : undefined;
 
     // Rate limit posts
     const rateLimitPassed = await rateLimit(
@@ -1487,8 +1506,8 @@ fastify.post<{ Body: CreatePostBody }>(
       postId,
       authorId: user.userId,
       authorUsername: username,
-      content,
-      imageUrl,
+      content: sanitizedContent, // Use sanitized content
+      imageUrl: sanitizedImageUrl, // Use sanitized imageUrl
       createdAt: Date.now(),
       likesCount: 0,
       commentsCount: 0,
@@ -1553,6 +1572,7 @@ fastify.get<{ Params: { username: string }, Querystring: { limit?: string } }>(
  */
 fastify.post<{ Params: { postId: string } }>(
   '/posts/:postId/like',
+  { preHandler: authenticate }, // CRITICAL SECURITY: Require authentication
   async (request, reply) => {
     const { postId } = request.params;
 
@@ -1578,6 +1598,7 @@ fastify.post<{ Params: { postId: string } }>(
  */
 fastify.delete<{ Params: { postId: string } }>(
   '/posts/:postId',
+  { preHandler: authenticate }, // CRITICAL SECURITY: Require authentication
   async (request, reply) => {
     const { postId } = request.params;
     const username = request.headers['x-username'] as string;
