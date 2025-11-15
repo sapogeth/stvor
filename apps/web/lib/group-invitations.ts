@@ -179,6 +179,28 @@ export async function hasGroupInvitation(username: string, groupId: string): Pro
 }
 
 /**
+ * Check if user has ACCEPTED invitation for a group (can chat)
+ */
+export async function hasAcceptedInvitation(username: string, groupId: string): Promise<boolean> {
+  const db = await getInvitationsDB();
+  const transaction = db.transaction([STORE_NAME], 'readonly');
+  const store = transaction.objectStore(STORE_NAME);
+  const index = store.index('groupId');
+
+  return new Promise((resolve, reject) => {
+    const request = index.getAll(groupId);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const invitations = request.result as GroupInvitation[];
+      const hasAccepted = invitations.some(
+        (inv) => inv.recipientUsername === username && inv.status === 'accepted'
+      );
+      resolve(hasAccepted);
+    };
+  });
+}
+
+/**
  * Delete invitation after accepting/rejecting
  */
 export async function deleteGroupInvitation(invitationId: string): Promise<void> {

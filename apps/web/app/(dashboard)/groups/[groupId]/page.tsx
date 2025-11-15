@@ -13,7 +13,7 @@ import { useWebSocket } from '@/lib/websocket-client';
 import { useChatRealtime } from '@/lib/use-chat-realtime';
 import { TypingIndicator, OnlineUsers } from '@/components/TypingIndicator';
 import { loadGroupChat, decryptFromGroup, encryptForGroup, StoredGroupChat } from '@/lib/group-chat';
-import { hasGroupInvitation } from '@/lib/group-invitations';
+import { hasGroupInvitation, hasAcceptedInvitation } from '@/lib/group-invitations';
 
 const getRelayUrl = () => {
   if (typeof window === 'undefined') return 'http://localhost:3001';
@@ -73,17 +73,26 @@ export default function GroupChatPage() {
           setIsAuthorized(true);
           setLoading(false);
         } else {
-          // User is not creator or participant, check if they have an invitation
-          const hasInvitation = await hasGroupInvitation(username, groupId);
-          if (hasInvitation) {
-            // They have a pending invitation, allow them to view
+          // User is not creator or participant, check invitation status
+          const hasAccepted = await hasAcceptedInvitation(username, groupId);
+          if (hasAccepted) {
+            // They have ACCEPTED the invitation, give full access
             setGroupChat(group);
-            setIsAuthorized(false);
-            setError('You need to accept the invitation first');
+            setIsAuthorized(true);
             setLoading(false);
           } else {
-            setError('You do not have access to this group. Ask the creator to invite you.');
-            setLoading(false);
+            // Check if they have a PENDING invitation
+            const hasPending = await hasGroupInvitation(username, groupId);
+            if (hasPending) {
+              // They have a pending invitation, allow them to view but not chat
+              setGroupChat(group);
+              setIsAuthorized(false);
+              setError('You need to accept the invitation first');
+              setLoading(false);
+            } else {
+              setError('You do not have access to this group. Ask the creator to invite you.');
+              setLoading(false);
+            }
           }
         }
       } catch (err) {
