@@ -214,7 +214,7 @@ export default function GroupChatPage() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <p className="text-red-600 mb-4">{error || 'Group not found'}</p>
-          <Link href="/(dashboard)/groups" className="text-blue-600 hover:underline">
+          <Link href="/groups" className="text-blue-600 hover:underline">
             Back to groups
           </Link>
         </div>
@@ -239,7 +239,7 @@ export default function GroupChatPage() {
                 className={`w-3 h-3 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}
                 title={connected ? 'Connected' : 'Disconnected'}
               ></div>
-              <Link href="/(dashboard)/groups" className="text-blue-600 hover:underline text-sm">
+              <Link href="/groups" className="text-blue-600 hover:underline text-sm">
                 Back
               </Link>
             </div>
@@ -296,7 +296,7 @@ export default function GroupChatPage() {
                 You have been invited to this group. Go to your notifications and accept the invitation to start chatting.
               </p>
               <Link
-                href="/(dashboard)/notifications"
+                href="/notifications"
                 className="text-yellow-700 dark:text-yellow-300 hover:underline text-sm mt-2 inline-block"
               >
                 View Invitations →

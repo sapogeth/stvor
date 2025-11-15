@@ -139,7 +139,7 @@ export default function NotificationsPage() {
       await acceptGroupInvitation(invitation.invitationId);
       setGroupInvitations((prev) => prev.filter((inv) => inv.invitationId !== invitation.invitationId));
       // Navigate to the group
-      router.push(`/(dashboard)/groups/${invitation.groupId}`);
+      router.push(`/groups/${invitation.groupId}`);
     } catch (err) {
       console.error('[Notifications] Failed to accept invitation:', err);
       alert('Failed to accept invitation');

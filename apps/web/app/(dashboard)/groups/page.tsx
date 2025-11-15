@@ -114,7 +114,7 @@ export default function GroupsPage() {
       alert(`Group created! Invitations sent to ${selectedMembers.length} members.`);
 
       // Navigate to new group
-      router.push(`/(dashboard)/groups/${groupId}`);
+      router.push(`/groups/${groupId}`);
     } catch (err) {
       console.error('[Groups] Failed to create group:', err);
       setError('Failed to create group');
