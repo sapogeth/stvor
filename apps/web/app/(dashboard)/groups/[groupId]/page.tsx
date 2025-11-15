@@ -47,7 +47,9 @@ export default function GroupChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const username = user?.username || user?.firstName || 'unknown';
-  const wsUrl = getRelayUrl().replace('http://', 'ws://');
+  const wsUrl = getRelayUrl()
+    .replace('https://', 'wss://')
+    .replace('http://', 'ws://');
 
   // Load group chat from IndexedDB and check authorization
   useEffect(() => {
