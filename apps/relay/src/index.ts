@@ -128,6 +128,7 @@ console.log('[Security] ✅ JWT (HS256, 30d expiry)');
 
 let storage: IStorageAdapter | null = null;
 let storageReady = false;
+let wsManager: any = null; // WebSocket manager reference
 
 // ==================== Metrics ====================
 
@@ -1181,6 +1182,124 @@ fastify.post<{ Params: { chatId: string }, Body: MessageBody }>(
 
 console.log('[Routes] ✅ Message endpoints: POST /message/:chatId');
 
+// ==================== Group Messages ====================
+
+interface GroupMessageBody {
+  type: 'group_message';
+  sender: string;
+  message: {
+    aad: string; // base64
+    nonce: string; // base64
+    ciphertext: string; // base64
+    recipients: {
+      [username: string]: {
+        nonce: string; // base64
+        ciphertext: string; // base64
+      };
+    };
+  };
+}
+
+fastify.post<{ Params: { groupId: string }, Body: GroupMessageBody }>(
+  '/group/:groupId/message',
+  { preHandler: authenticate },
+  async (request, reply) => {
+    const { groupId } = request.params;
+    const { sender, message: groupMessage } = request.body;
+
+    if (!groupId || !sender || !groupMessage) {
+      return reply.code(400).send({ error: 'Missing required fields' });
+    }
+
+    // Validate groupId format (same as chatId)
+    if (!validateChatId(groupId)) {
+      return reply.code(400).send({
+        error: 'Invalid groupId format. Must be a valid SHA256 hash.',
+      });
+    }
+
+    // CRITICAL: Normalize senderId to canonical form (lowercase, trimmed)
+    const senderNormalized = sender.trim().toLowerCase();
+
+    // Validate username format
+    if (!validateUsername(senderNormalized)) {
+      return reply.code(400).send({
+        error: 'Invalid username format for sender.',
+      });
+    }
+
+    // Rate limit group messages
+    const rateLimitPassed = await rateLimit(
+      request,
+      reply,
+      `group-message:${request.ip}`,
+      RATE_LIMITS.MESSAGE.limit * 2, // More lenient for groups (multiple recipients)
+      RATE_LIMITS.MESSAGE.windowMs
+    );
+    if (!rateLimitPassed) return;
+
+    // Verify sender has registered identity
+    try {
+      const senderUser = await storage.users.getUserByUsername(senderNormalized);
+
+      if (!senderUser) {
+        console.warn(`[GroupMessage] ❌ Rejected group message from unregistered user: ${senderNormalized}`);
+        return reply.code(403).send({
+          error: 'identity_required',
+          message: 'You must register your identity in /directory before sending messages',
+        });
+      }
+
+      console.log(`[GroupMessage] ✅ Identity verified for sender: ${senderNormalized}`);
+    } catch (err) {
+      console.error(`[GroupMessage] ❌ Failed to verify identity for ${senderNormalized}:`, err);
+      return reply.code(500).send({
+        error: 'identity_verification_failed',
+        message: 'Failed to verify sender identity',
+      });
+    }
+
+    // Broadcast to all recipients via WebSocket
+    let deliveredCount = 0;
+
+    for (const [recipientUsername, wrappedData] of Object.entries(groupMessage.recipients)) {
+      // Check if recipient is connected
+      if (wsManager) {
+        const recipientConnected = wsManager.getConnectedUsers(groupId).includes(recipientUsername);
+
+        if (recipientConnected) {
+          // Send via WebSocket instantly
+          wsManager.sendToClient(recipientUsername, {
+            type: 'message',
+            chatId: groupId,
+            senderId: senderNormalized,
+            content: {
+              aad: groupMessage.aad,
+              nonce: groupMessage.nonce,
+              ciphertext: groupMessage.ciphertext,
+              recipient: wrappedData,
+            },
+            timestamp: Date.now(),
+          });
+          deliveredCount++;
+        }
+      }
+    }
+
+    console.log(`[GroupMessage] Group message in ${groupId.slice(0, 12)}... delivered to ${deliveredCount} recipients`);
+
+    return {
+      success: true,
+      groupId,
+      sender: senderNormalized,
+      delivered: deliveredCount,
+      timestamp: Date.now(),
+    };
+  }
+);
+
+console.log('[Routes] ✅ Group message endpoint: POST /group/:groupId/message');
+
 // ==================== Sync Messages ====================
 
 interface SyncQuery {
@@ -1652,7 +1771,7 @@ async function start() {
     }
 
     // SECOND: Setup WebSocket before starting server
-    await setupWebSocket(fastify);
+    wsManager = await setupWebSocket(fastify);
 
     // THIRD: Start server (so /healthz and /ws respond)
     await fastify.listen({ port: PORT, host: HOST });
