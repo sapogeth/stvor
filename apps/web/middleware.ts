@@ -36,8 +36,8 @@ const CSP = [
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://challenges.cloudflare.com",
   // Script elements: CRITICAL for CAPTCHA - must include challenges.cloudflare.com
   "script-src-elem 'self' 'unsafe-inline' https://*.clerk.accounts.dev https://challenges.cloudflare.com",
-  // Connections: Clerk API + Supabase relay + localhost dev
-  "connect-src 'self' https://*.clerk.accounts.dev https://api.clerk.com https://api.clerk.dev https://*.supabase.co https://challenges.cloudflare.com http://localhost:* ws://localhost:*",
+  // Connections: Clerk API + Supabase relay + localhost dev + WebSocket relay server
+  "connect-src 'self' https://*.clerk.accounts.dev https://api.clerk.com https://api.clerk.dev https://*.supabase.co https://challenges.cloudflare.com http://localhost:* ws://localhost:* wss://localhost:* wss://*.railway.app",
   // Web Workers: CRITICAL for CAPTCHA - allows blob: URLs and Cloudflare workers
   "worker-src 'self' blob: https://*.clerk.accounts.dev https://challenges.cloudflare.com",
   // Child contexts: Fallback for older browsers (same as worker-src)
