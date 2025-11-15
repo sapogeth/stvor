@@ -467,7 +467,8 @@ export async function setupWebSocket(fastify: FastifyInstance) {
   const wsManager = new WebSocketManager();
 
   // Register WebSocket plugin
-  await fastify.register(require('@fastify/websocket'));
+  const websocketPlugin = await import('@fastify/websocket');
+  await fastify.register(websocketPlugin.default);
 
   /**
    * WebSocket endpoint: /ws

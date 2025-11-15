@@ -157,6 +157,26 @@ export async function createGroupChat(
 }
 
 /**
+ * Helper: Convert base64 to Uint8Array
+ */
+function base64ToUint8(str: string): Uint8Array {
+  const binary = atob(str);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/**
+ * Helper: Convert Uint8Array to base64
+ */
+function uint8ToBase64(arr: Uint8Array): string {
+  const binary = String.fromCharCode.apply(null, Array.from(arr));
+  return btoa(binary);
+}
+
+/**
  * Encrypt message for group sending
  */
 export async function encryptForGroup(
@@ -174,15 +194,15 @@ export async function encryptForGroup(
     groupName: groupChat.groupName,
     groupCreatedAt: groupChat.createdAt,
     groupVersion: 1,
-    sessionId: Buffer.from(groupChat.groupSessionId || '', 'hex'),
-    rootKey: Buffer.from(groupChat.groupRootKey || '', 'base64'),
+    sessionId: base64ToUint8(groupChat.groupSessionId || ''),
+    rootKey: base64ToUint8(groupChat.groupRootKey || ''),
     sendRatchetId: BigInt(groupChat.ratchetId),
     sendChainKey: new Uint8Array(), // Would be derived in full impl
     sendCounter: groupChat.messageCounter,
     groupTotalMessages: groupChat.messageCounter,
     participants: groupChat.participants.map((username) => ({
       username,
-      groupChainKey: Buffer.from(groupChat.participantChainKeys?.[username] || '', 'base64'),
+      groupChainKey: base64ToUint8(groupChat.participantChainKeys?.[username] || ''),
     })),
   };
 
@@ -190,15 +210,15 @@ export async function encryptForGroup(
 
   // Convert to base64 for transmission
   return {
-    aad: Buffer.from(result.aad).toString('base64'),
-    nonce: Buffer.from(result.nonce).toString('base64'),
-    ciphertext: Buffer.from(result.ciphertext).toString('base64'),
+    aad: uint8ToBase64(result.aad),
+    nonce: uint8ToBase64(result.nonce),
+    ciphertext: uint8ToBase64(result.ciphertext),
     recipients: Object.fromEntries(
       Array.from(result.perRecipientWraps.entries()).map(([username, wrap]) => [
         username,
         {
-          nonce: Buffer.from(wrap.nonce).toString('base64'),
-          ciphertext: Buffer.from(wrap.ciphertext).toString('base64'),
+          nonce: uint8ToBase64(wrap.nonce),
+          ciphertext: uint8ToBase64(wrap.ciphertext),
         },
       ])
     ),
@@ -220,14 +240,14 @@ export async function decryptFromGroup(
 ): Promise<Uint8Array> {
   // Convert to expected format
   const sharedMessage = {
-    ciphertext: Buffer.from(message.ciphertext, 'base64'),
-    nonce: Buffer.from(message.nonce, 'base64'),
-    aad: Buffer.from(message.aad, 'base64'),
+    ciphertext: base64ToUint8(message.ciphertext),
+    nonce: base64ToUint8(message.nonce),
+    aad: base64ToUint8(message.aad),
   };
 
   const myRecipientWrap = {
-    nonce: Buffer.from(message.recipient.nonce, 'base64'),
-    ciphertext: Buffer.from(message.recipient.ciphertext, 'base64'),
+    nonce: base64ToUint8(message.recipient.nonce),
+    ciphertext: base64ToUint8(message.recipient.ciphertext),
   };
 
   // For MVP, just return the plaintext directly

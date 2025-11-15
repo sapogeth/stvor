@@ -125,6 +125,14 @@ export default function GroupChatPage() {
       // Encrypt for group
       const encrypted = await encryptForGroup(groupChat, plaintext);
 
+      // Format message for relay (encrypted returns base64 strings already)
+      const recipientData: any = {};
+      if (encrypted.recipients) {
+        for (const [recipientUsername, wrap] of Object.entries(encrypted.recipients)) {
+          recipientData[recipientUsername] = wrap;
+        }
+      }
+
       // Send via relay
       const response = await fetch(`/api/relay/group/${groupId}/message`, {
         method: 'POST',
@@ -132,12 +140,18 @@ export default function GroupChatPage() {
         body: JSON.stringify({
           type: 'group_message',
           sender: username,
-          message: encrypted,
+          message: {
+            aad: encrypted.aad,
+            nonce: encrypted.nonce,
+            ciphertext: encrypted.ciphertext,
+            recipients: recipientData,
+          },
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to send message: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`Failed to send message: ${response.status} - ${errorText}`);
       }
 
       // Add to local messages
@@ -155,7 +169,7 @@ export default function GroupChatPage() {
       setInputValue('');
     } catch (err) {
       console.error('[GroupChat] Failed to send message:', err);
-      setError('Failed to send message');
+      setError('Failed to send message: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 
