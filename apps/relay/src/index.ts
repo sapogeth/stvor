@@ -11,6 +11,7 @@ import jwt from '@fastify/jwt';
 import { createStorageAdapter, type IStorageAdapter } from './storage/index';
 import { type PrekeyBundle } from './storage/interfaces';
 import { normalizeUsername } from './utils/normalize';
+import { setupWebSocket } from './websocket';
 import * as crypto from 'crypto';
 import DOMPurify from 'isomorphic-dompurify';
 
@@ -1633,11 +1634,7 @@ console.log('[Posts] ✅ Post endpoints registered: POST /posts, GET /posts/feed
 
 async function start() {
   try {
-    // FIRST: Start server (so /healthz responds)
-    await fastify.listen({ port: PORT, host: HOST });
-    console.log(`🔐 Ilyazh Relay starting on ${HOST}:${PORT}`);
-
-    // THEN: Initialize storage
+    // FIRST: Initialize storage BEFORE starting server
     const effectiveStorageType = (global as any).STORAGE_TYPE_OVERRIDE || STORAGE_TYPE;
 
     try {
@@ -1653,6 +1650,13 @@ async function start() {
       storageReady = true;
       console.log('[Storage] ✅ memory (fallback) initialized');
     }
+
+    // SECOND: Setup WebSocket before starting server
+    await setupWebSocket(fastify);
+
+    // THIRD: Start server (so /healthz and /ws respond)
+    await fastify.listen({ port: PORT, host: HOST });
+    console.log(`🔐 Ilyazh Relay starting on ${HOST}:${PORT}`);
 
     console.log(`[Dev] ALLOW_DEV_AUTOCREATE: ${ALLOW_DEV_AUTOCREATE}`);
 
