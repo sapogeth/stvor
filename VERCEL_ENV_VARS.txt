@@ -1,0 +1,139 @@
+================================================================================
+VERCEL ENVIRONMENT VARIABLES - QUICK SETUP
+================================================================================
+
+🔗 LINK: https://vercel.com/dashboard → Your Project → Settings → Environment Variables
+
+================================================================================
+REQUIRED VARIABLES (CRITICAL - MUST BE SET)
+================================================================================
+
+Variable Name:   RELAY_BASE_URL
+Value:          https://ilyazhrelay-production.up.railway.app
+Scope:          Production
+Why:            Allows /api/relay/* proxy routes to forward requests to relay server
+
+
+Variable Name:   NEXT_PUBLIC_RELAY_URL
+Value:          https://ilyazhrelay-production.up.railway.app
+Scope:          Production
+Why:            Allows browser WebSocket connections to relay server
+
+
+Variable Name:   CLERK_SECRET_KEY
+Value:          sk_live_... (get from https://dashboard.clerk.com/apps/YOUR_APP/api-keys)
+Scope:          Production
+Why:            Required for JWT authentication and session management
+
+
+Variable Name:   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+Value:          pk_live_... (get from https://dashboard.clerk.com/apps/YOUR_APP/api-keys)
+Scope:          Production
+Why:            Required for Clerk authentication UI
+
+
+================================================================================
+OPTIONAL VARIABLES (DEBUG - KEEP AT 0 IN PRODUCTION)
+================================================================================
+
+Variable Name:   NEXT_PUBLIC_DEBUG_CRYPTO
+Value:          0 (must be 0 in production)
+Scope:          Production
+
+
+Variable Name:   NEXT_PUBLIC_DEBUG_AUTH
+Value:          0 (must be 0 in production)
+Scope:          Production
+
+
+Variable Name:   NEXT_PUBLIC_DEBUG_SYNC
+Value:          0 (must be 0 in production)
+Scope:          Production
+
+
+Variable Name:   NEXT_PUBLIC_DEBUG_IDENTITY
+Value:          0 (must be 0 in production)
+Scope:          Production
+
+
+================================================================================
+STEP-BY-STEP SETUP INSTRUCTIONS
+================================================================================
+
+1. Open: https://vercel.com/dashboard
+
+2. Select your web app project (stvor-web or similar)
+
+3. Click: Settings (top navigation)
+
+4. Click: Environment Variables (left sidebar)
+
+5. For each variable above:
+   a. Click: + Add New
+   b. Enter Variable Name (e.g., RELAY_BASE_URL)
+   c. Enter Value (e.g., https://ilyazhrelay-production.up.railway.app)
+   d. Select Scope: Production
+   e. Click: Save
+
+6. After adding RELAY_BASE_URL and NEXT_PUBLIC_RELAY_URL:
+   a. Vercel will automatically redeploy
+   b. OR click: "Deployments" → "Deploy" to force redeploy
+   c. Wait 2-3 minutes for deployment to complete
+
+7. Test the application:
+   a. Go to: https://stvor-web.vercel.app/groups
+   b. Create a group
+   c. Accept an invitation
+   d. Send a message in group
+   e. Verify no 502 errors
+
+
+================================================================================
+VERIFICATION
+================================================================================
+
+✅ Deployment successful when:
+  • Vercel shows "Production" deployment as "Ready"
+  • Group invitations page loads without 404
+  • Group messages send without 502 errors
+  • Navigation between pages works
+
+
+❌ If still getting errors:
+  • Check all 4 required variables are set
+  • Verify Railway relay server is running
+  • Check relay URL is accessible: https://ilyazhrelay-production.up.railway.app
+  • See PRODUCTION_FIXES.md for troubleshooting
+
+
+================================================================================
+IMPORTANT NOTES
+================================================================================
+
+⚠️  DO NOT:
+  • Commit .env files to git
+  • Store secrets in code
+  • Use development Clerk keys in production
+  • Disable debug flags (they default to 0 anyway)
+
+✅ DO:
+  • Set variables in Vercel dashboard
+  • Use production Clerk keys
+  • Keep variables updated if relay server URL changes
+  • Verify variables after making changes
+
+
+================================================================================
+HELPFUL LINKS
+================================================================================
+
+Vercel Dashboard:          https://vercel.com/dashboard
+Clerk API Keys:            https://dashboard.clerk.com/apps/YOUR_APP/api-keys
+Railway Relay Server:      https://railway.app/dashboard
+Documentation:             See ENVIRONMENT_SETUP.md and PRODUCTION_FIXES.md
+
+
+================================================================================
+LAST UPDATED: 2025-11-16
+STATUS: READY FOR CONFIGURATION
+================================================================================
