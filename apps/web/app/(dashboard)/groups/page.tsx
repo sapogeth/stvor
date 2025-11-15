@@ -196,7 +196,7 @@ export default function GroupsPage() {
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Groups</h1>
             <div className="flex gap-4">
               <Link
-                href="/(dashboard)/chats"
+                href="/chats"
                 className="px-4 py-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-700 rounded-lg transition"
               >
                 1-on-1 Chat
@@ -237,7 +237,7 @@ export default function GroupsPage() {
                 key={group.groupId}
                 className="bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-lg transition border border-gray-200 dark:border-gray-700 overflow-hidden"
               >
-                <Link href={`/(dashboard)/groups/${group.groupId}`} className="block p-6 hover:bg-gray-50 dark:hover:bg-gray-700">
+                <Link href={`/groups/${group.groupId}`} className="block p-6 hover:bg-gray-50 dark:hover:bg-gray-700">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
                     {group.groupName}
                   </h3>
@@ -262,7 +262,7 @@ export default function GroupsPage() {
                 </Link>
                 <div className="border-t border-gray-200 dark:border-gray-700 px-6 py-3 flex gap-2">
                   <Link
-                    href={`/(dashboard)/groups/${group.groupId}`}
+                    href={`/groups/${group.groupId}`}
                     className="flex-1 text-center px-3 py-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-gray-700 rounded transition text-sm"
                   >
                     Open
