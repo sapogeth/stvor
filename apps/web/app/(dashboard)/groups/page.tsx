@@ -86,6 +86,8 @@ export default function GroupsPage() {
       for (const member of selectedMembers) {
         try {
           const invitationId = generateInvitationId(groupId, member);
+
+          // Store in IndexedDB for local fallback
           await storeGroupInvitation({
             invitationId,
             groupId,
@@ -97,8 +99,31 @@ export default function GroupsPage() {
             status: 'pending',
           });
 
-          // TODO: Send WebSocket notification to member when they're online
-          console.log(`[Groups] ✅ Invitation stored for ${member}`);
+          // Also store on server so other devices/browsers can see it
+          try {
+            const serverRes = await fetch('/api/invitations/store', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                invitationId,
+                groupId,
+                groupName,
+                creatorUsername: username,
+                creatorDisplayName: user?.firstName || username,
+                recipientUsername: member,
+              }),
+            });
+
+            if (serverRes.ok) {
+              console.log(`[Groups] ✅ Invitation stored on server for ${member}`);
+            } else {
+              console.warn(`[Groups] ⚠️ Failed to store on server for ${member}:`, serverRes.status);
+            }
+          } catch (serverErr) {
+            console.error(`[Groups] Server error storing invitation for ${member}:`, serverErr);
+          }
+
+          console.log(`[Groups] ✅ Invitation created for ${member}`);
         } catch (err) {
           console.error(`[Groups] Failed to create invitation for ${member}:`, err);
         }

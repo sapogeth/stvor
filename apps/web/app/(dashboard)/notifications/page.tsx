@@ -40,10 +40,27 @@ export default function NotificationsPage() {
     const loadInvitations = async () => {
       if (!username) return;
       try {
-        const invites = await getPendingInvitations(username);
-        setGroupInvitations(invites);
+        // Try to load from server first
+        const serverRes = await fetch(`/api/invitations/pending?username=${encodeURIComponent(username)}`);
+        if (serverRes.ok) {
+          const { invitations } = await serverRes.json();
+          console.log(`[Notifications] Loaded ${invitations.length} invitations from server`);
+          setGroupInvitations(invitations);
+        } else {
+          // Fallback to IndexedDB if server fails
+          console.warn('[Notifications] Server load failed, using IndexedDB fallback');
+          const invites = await getPendingInvitations(username);
+          setGroupInvitations(invites);
+        }
       } catch (err) {
         console.error('[Notifications] Failed to load invitations:', err);
+        // Fallback to IndexedDB
+        try {
+          const invites = await getPendingInvitations(username);
+          setGroupInvitations(invites);
+        } catch (fallbackErr) {
+          console.error('[Notifications] Fallback also failed:', fallbackErr);
+        }
       } finally {
         setLoading(false);
       }
@@ -136,8 +153,26 @@ export default function NotificationsPage() {
   const handleAcceptInvitation = async (invitation: GroupInvitation) => {
     setProcessingInvite(invitation.invitationId);
     try {
+      // Update locally
       await acceptGroupInvitation(invitation.invitationId);
       setGroupInvitations((prev) => prev.filter((inv) => inv.invitationId !== invitation.invitationId));
+
+      // Also update on server
+      try {
+        const serverRes = await fetch('/api/invitations/accept', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ invitationId: invitation.invitationId }),
+        });
+        if (serverRes.ok) {
+          console.log('[Notifications] ✅ Invitation accepted on server');
+        } else {
+          console.warn('[Notifications] ⚠️ Server accept failed:', serverRes.status);
+        }
+      } catch (serverErr) {
+        console.error('[Notifications] Server accept error:', serverErr);
+      }
+
       // Navigate to the group
       router.push(`/groups/${invitation.groupId}`);
     } catch (err) {
@@ -151,8 +186,25 @@ export default function NotificationsPage() {
   const handleRejectInvitation = async (invitationId: string) => {
     setProcessingInvite(invitationId);
     try {
+      // Update locally
       await rejectGroupInvitation(invitationId);
       setGroupInvitations((prev) => prev.filter((inv) => inv.invitationId !== invitationId));
+
+      // Also update on server
+      try {
+        const serverRes = await fetch('/api/invitations/reject', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ invitationId }),
+        });
+        if (serverRes.ok) {
+          console.log('[Notifications] ✅ Invitation rejected on server');
+        } else {
+          console.warn('[Notifications] ⚠️ Server reject failed:', serverRes.status);
+        }
+      } catch (serverErr) {
+        console.error('[Notifications] Server reject error:', serverErr);
+      }
     } catch (err) {
       console.error('[Notifications] Failed to reject invitation:', err);
       alert('Failed to reject invitation');
