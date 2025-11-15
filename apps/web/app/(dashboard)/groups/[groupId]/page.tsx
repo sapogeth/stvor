@@ -13,6 +13,7 @@ import { useWebSocket } from '@/lib/websocket-client';
 import { useChatRealtime } from '@/lib/use-chat-realtime';
 import { TypingIndicator, OnlineUsers } from '@/components/TypingIndicator';
 import { loadGroupChat, decryptFromGroup, encryptForGroup, StoredGroupChat } from '@/lib/group-chat';
+import { hasGroupInvitation } from '@/lib/group-invitations';
 
 const getRelayUrl = () => {
   if (typeof window === 'undefined') return 'http://localhost:3001';
@@ -42,14 +43,15 @@ export default function GroupChatPage() {
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAuthorized, setIsAuthorized] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const username = user?.username || user?.firstName || 'unknown';
   const wsUrl = getRelayUrl().replace('http://', 'ws://');
 
-  // Load group chat from IndexedDB
+  // Load group chat from IndexedDB and check authorization
   useEffect(() => {
-    if (!groupId) return;
+    if (!groupId || !username) return;
 
     const load = async () => {
       try {
@@ -59,8 +61,31 @@ export default function GroupChatPage() {
           setLoading(false);
           return;
         }
-        setGroupChat(group);
-        setLoading(false);
+
+        // Check if user is the creator (automatically authorized)
+        const isCreator = group.myRole === 'admin';
+
+        // Check if user is a participant in the group
+        const isParticipant = group.participants.includes(username);
+
+        if (isCreator || isParticipant) {
+          setGroupChat(group);
+          setIsAuthorized(true);
+          setLoading(false);
+        } else {
+          // User is not creator or participant, check if they have an invitation
+          const hasInvitation = await hasGroupInvitation(username, groupId);
+          if (hasInvitation) {
+            // They have a pending invitation, allow them to view
+            setGroupChat(group);
+            setIsAuthorized(false);
+            setError('You need to accept the invitation first');
+            setLoading(false);
+          } else {
+            setError('You do not have access to this group. Ask the creator to invite you.');
+            setLoading(false);
+          }
+        }
       } catch (err) {
         console.error('[GroupChat] Failed to load group:', err);
         setError('Failed to load group');
@@ -69,14 +94,14 @@ export default function GroupChatPage() {
     };
 
     load();
-  }, [groupId]);
+  }, [groupId, username]);
 
-  // WebSocket real-time features
+  // WebSocket real-time features (only enabled if authorized)
   const { connected, typingUsers, onlineUsers, sendTypingIndicator, sendReadReceipt } = useChatRealtime({
     chatId: groupId,
     username,
     wsUrl,
-    enabled: !!groupChat,
+    enabled: !!groupChat && isAuthorized,
     onMessage: async (msg) => {
       if (msg.type === 'message' && msg.chatId === groupId) {
         // Decrypt message
@@ -115,7 +140,7 @@ export default function GroupChatPage() {
 
   // Handle message send
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || !groupChat || !connected) {
+    if (!inputValue.trim() || !groupChat || !connected || !isAuthorized) {
       return;
     }
 
@@ -264,6 +289,22 @@ export default function GroupChatPage() {
 
       {/* Input */}
       <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+        {!isAuthorized && !error?.includes('not have access') ? (
+          <div className="max-w-6xl mx-auto">
+            <div className="p-4 bg-yellow-50 dark:bg-yellow-900 border border-yellow-200 dark:border-yellow-700 rounded-lg mb-4">
+              <p className="text-yellow-800 dark:text-yellow-200 text-sm">
+                You have been invited to this group. Go to your notifications and accept the invitation to start chatting.
+              </p>
+              <Link
+                href="/(dashboard)/notifications"
+                className="text-yellow-700 dark:text-yellow-300 hover:underline text-sm mt-2 inline-block"
+              >
+                View Invitations →
+              </Link>
+            </div>
+          </div>
+        ) : null}
+
         <div className="max-w-6xl mx-auto flex gap-2">
           <input
             type="text"
@@ -282,11 +323,11 @@ export default function GroupChatPage() {
             }}
             placeholder="Type a message... (end-to-end encrypted)"
             className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            disabled={!connected}
+            disabled={!connected || !isAuthorized}
           />
           <button
             onClick={handleSendMessage}
-            disabled={!connected || !inputValue.trim()}
+            disabled={!connected || !inputValue.trim() || !isAuthorized}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
           >
             Send

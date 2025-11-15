@@ -1,13 +1,17 @@
 'use client';
 
 /**
- * Notifications Page - All/Posts/Mentions tabs
+ * Notifications Page - All/Posts/Mentions/Invitations tabs
  */
 
-import { useState } from 'react';
-import { Heart, MessageCircle, Repeat, User, MoreHorizontal } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useUser } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
+import { Heart, MessageCircle, Repeat, User, MoreHorizontal, Users, Check, X } from 'lucide-react';
+import { getPendingInvitations, acceptGroupInvitation, rejectGroupInvitation } from '@/lib/group-invitations';
+import type { GroupInvitation } from '@/lib/group-invitations';
 
-type NotificationType = 'like' | 'reply' | 'mention' | 'repost';
+type NotificationType = 'like' | 'reply' | 'mention' | 'repost' | 'group_invite';
 
 interface Notification {
   id: number;
@@ -17,13 +21,39 @@ interface Notification {
   content?: string;
   timestamp: string;
   counts?: { likes?: number; comments?: number; shares?: number };
+  groupInvitation?: GroupInvitation;
 }
 
 export default function NotificationsPage() {
-  const [activeTab, setActiveTab] = useState<'all' | 'posts' | 'mentions'>('all');
+  const { user } = useUser();
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<'all' | 'posts' | 'mentions' | 'invitations'>('all');
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [groupInvitations, setGroupInvitations] = useState<GroupInvitation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [processingInvite, setProcessingInvite] = useState<string | null>(null);
+
+  const username = user?.username || user?.firstName || '';
+
+  // Load group invitations on mount
+  useEffect(() => {
+    const loadInvitations = async () => {
+      if (!username) return;
+      try {
+        const invites = await getPendingInvitations(username);
+        setGroupInvitations(invites);
+      } catch (err) {
+        console.error('[Notifications] Failed to load invitations:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadInvitations();
+  }, [username]);
 
   // Mock notifications data
-  const notifications: Notification[] = [
+  const mockNotifications: Notification[] = [
     {
       id: 1,
       type: 'reply',
@@ -79,6 +109,8 @@ export default function NotificationsPage() {
         return <MessageCircle className="w-8 h-8 text-purple-500 fill-purple-500" />;
       case 'mention':
         return <User className="w-8 h-8 text-green-500" />;
+      case 'group_invite':
+        return <Users className="w-8 h-8 text-indigo-500" />;
       default:
         return null;
     }
@@ -94,8 +126,38 @@ export default function NotificationsPage() {
         return `${user} New Post`;
       case 'mention':
         return `${user} mentioned you`;
+      case 'group_invite':
+        return `${user} invited you to a group`;
       default:
         return '';
+    }
+  };
+
+  const handleAcceptInvitation = async (invitation: GroupInvitation) => {
+    setProcessingInvite(invitation.invitationId);
+    try {
+      await acceptGroupInvitation(invitation.invitationId);
+      setGroupInvitations((prev) => prev.filter((inv) => inv.invitationId !== invitation.invitationId));
+      // Navigate to the group
+      router.push(`/(dashboard)/groups/${invitation.groupId}`);
+    } catch (err) {
+      console.error('[Notifications] Failed to accept invitation:', err);
+      alert('Failed to accept invitation');
+    } finally {
+      setProcessingInvite(null);
+    }
+  };
+
+  const handleRejectInvitation = async (invitationId: string) => {
+    setProcessingInvite(invitationId);
+    try {
+      await rejectGroupInvitation(invitationId);
+      setGroupInvitations((prev) => prev.filter((inv) => inv.invitationId !== invitationId));
+    } catch (err) {
+      console.error('[Notifications] Failed to reject invitation:', err);
+      alert('Failed to reject invitation');
+    } finally {
+      setProcessingInvite(null);
     }
   };
 
@@ -103,6 +165,10 @@ export default function NotificationsPage() {
     { key: 'all' as const, label: 'All' },
     { key: 'posts' as const, label: 'Posts' },
     { key: 'mentions' as const, label: 'Mentions' },
+    {
+      key: 'invitations' as const,
+      label: `Invitations ${groupInvitations.length > 0 ? `(${groupInvitations.length})` : ''}`
+    },
   ];
 
   return (
@@ -138,7 +204,68 @@ export default function NotificationsPage() {
 
         {/* Notifications List */}
         <div className="divide-y divide-gray-800">
-          {notifications.map((notification) => (
+          {/* Show group invitations when in invitations tab */}
+          {(activeTab === 'all' || activeTab === 'invitations') && groupInvitations.length > 0 && (
+            <>
+              {groupInvitations.map((invitation) => (
+                <div
+                  key={invitation.invitationId}
+                  className="p-4 hover:bg-gray-900/50 transition group relative border-l-4 border-indigo-500"
+                >
+                  <div className="flex space-x-3">
+                    {/* Icon */}
+                    <div className="flex-shrink-0 pt-1">
+                      {renderNotificationIcon('group_invite')}
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      {/* User and Group Info */}
+                      <div className="flex items-center space-x-2 mb-1">
+                        <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center">
+                          <Users className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-bold">{invitation.creatorDisplayName || invitation.creatorUsername}</span>
+                            <span className="text-gray-500 text-sm">@{invitation.creatorUsername}</span>
+                            <span className="text-gray-500 text-sm">·</span>
+                            <span className="text-gray-500 text-sm">{new Date(invitation.createdAt).toLocaleDateString()}</span>
+                          </div>
+                          <div className="text-sm text-gray-400 mt-1">
+                            Invited you to join <span className="font-semibold text-indigo-400">{invitation.groupName}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          onClick={() => handleAcceptInvitation(invitation)}
+                          disabled={processingInvite === invitation.invitationId}
+                          className="flex items-center gap-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <Check className="w-4 h-4" />
+                          Accept
+                        </button>
+                        <button
+                          onClick={() => handleRejectInvitation(invitation.invitationId)}
+                          disabled={processingInvite === invitation.invitationId}
+                          className="flex items-center gap-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <X className="w-4 h-4" />
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* Show regular notifications */}
+          {(activeTab === 'all' || activeTab !== 'invitations') && mockNotifications.map((notification) => (
             <div
               key={notification.id}
               className="p-4 hover:bg-gray-900/50 transition cursor-pointer group relative"
@@ -206,12 +333,29 @@ export default function NotificationsPage() {
           ))}
         </div>
 
+        {/* Empty State */}
+        {activeTab === 'invitations' && groupInvitations.length === 0 && (
+          <div className="p-12 text-center text-gray-500">
+            <div className="text-6xl mb-4">📨</div>
+            <h3 className="text-xl font-semibold mb-2">No pending invitations</h3>
+            <p className="text-sm">When you get group invitations, they'll show up here.</p>
+          </div>
+        )}
+
         {/* Empty State for Posts/Mentions tabs */}
-        {activeTab !== 'all' && (
+        {activeTab === 'posts' && (
           <div className="p-12 text-center text-gray-500">
             <div className="text-6xl mb-4">📭</div>
-            <h3 className="text-xl font-semibold mb-2">No {activeTab} yet</h3>
-            <p className="text-sm">When you get {activeTab}, they'll show up here.</p>
+            <h3 className="text-xl font-semibold mb-2">No posts yet</h3>
+            <p className="text-sm">When you get posts, they'll show up here.</p>
+          </div>
+        )}
+
+        {activeTab === 'mentions' && (
+          <div className="p-12 text-center text-gray-500">
+            <div className="text-6xl mb-4">📭</div>
+            <h3 className="text-xl font-semibold mb-2">No mentions yet</h3>
+            <p className="text-sm">When you get mentions, they'll show up here.</p>
           </div>
         )}
       </div>

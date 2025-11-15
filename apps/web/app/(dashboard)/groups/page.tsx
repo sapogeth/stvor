@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { listGroupChats, deleteGroupChat, generateRandomGroupId, createGroupChat, StoredGroupChat } from '@/lib/group-chat';
 import { getOrCreateIdentity } from '@/lib/identity';
+import { storeGroupInvitation, generateInvitationId } from '@/lib/group-invitations';
 import type { IdentityKeyPair } from '@ilyazh/crypto';
 
 export default function GroupsPage() {
@@ -80,11 +81,37 @@ export default function GroupsPage() {
         memberIdentities
       );
 
+      // Send invitations to all selected members
+      console.log(`[Groups] Sending invitations to ${selectedMembers.length} members...`);
+      for (const member of selectedMembers) {
+        try {
+          const invitationId = generateInvitationId(groupId, member);
+          await storeGroupInvitation({
+            invitationId,
+            groupId,
+            groupName,
+            creatorUsername: username,
+            creatorDisplayName: user?.firstName || username,
+            recipientUsername: member,
+            createdAt: Date.now(),
+            status: 'pending',
+          });
+
+          // TODO: Send WebSocket notification to member when they're online
+          console.log(`[Groups] ✅ Invitation stored for ${member}`);
+        } catch (err) {
+          console.error(`[Groups] Failed to create invitation for ${member}:`, err);
+        }
+      }
+
       // Add to list and close dialog
       setGroups((prev) => [newGroup, ...prev]);
       setGroupName('');
       setSelectedMembers([]);
       setShowCreateDialog(false);
+
+      // Show success message
+      alert(`Group created! Invitations sent to ${selectedMembers.length} members.`);
 
       // Navigate to new group
       router.push(`/(dashboard)/groups/${groupId}`);
