@@ -66,14 +66,17 @@ RUN addgroup -S relay 2>/dev/null || true && \
     adduser -S -G relay relay 2>/dev/null || true
 USER node
 
+# Copy entrypoint script (must be before USER directive for permissions)
+# Actually, skip the script - just run node directly
+# Railway healthcheck will be handled by the app itself
+
 # Expose port (Railway/Render will set PORT environment variable at runtime)
 EXPOSE 3001
 
-# Health check endpoint for production monitoring
-# Disabled for now - Railway has issues with healthchecks
-# The server will still be reachable via port 3001
-# HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
-#   CMD curl -f http://localhost:3001/healthz || exit 1
+# Health check - Railway will probe this endpoint
+# Start-period of 120s to allow async server initialization
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+  CMD curl -f http://localhost:3001/healthz || exit 1
 
 # Start relay server
 CMD ["node", "apps/relay/dist/index.js"]
