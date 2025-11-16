@@ -5,7 +5,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from '@fastify/websocket';
-import websocketPlugin from '@fastify/websocket';
+import fastifyWebsocket from '@fastify/websocket';
 import { normalizeUsername } from './utils/normalize';
 
 // ==================== Types ====================
@@ -468,7 +468,7 @@ export async function setupWebSocket(fastify: FastifyInstance) {
   const wsManager = new WebSocketManager();
 
   // Register WebSocket plugin
-  await fastify.register(websocketPlugin);
+  await fastify.register(fastifyWebsocket);
 
   /**
    * WebSocket endpoint: /ws
