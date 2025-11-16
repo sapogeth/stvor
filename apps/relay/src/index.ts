@@ -1775,15 +1775,23 @@ async function start() {
     wsManager = await setupWebSocket(fastify);
 
     // THIRD: Start server (so /healthz and /ws respond)
+    console.log(`[Server] Fastify is listening on ${HOST}:${PORT}...`);
     await fastify.listen({ port: PORT, host: HOST });
-    console.log(`🔐 Ilyazh Relay starting on ${HOST}:${PORT}`);
+    console.log(`[Server] ✅ LISTENING on ${HOST}:${PORT}`);
+    console.log(`🔐 Ilyazh Relay STARTED successfully`);
 
     console.log(`[Dev] ALLOW_DEV_AUTOCREATE: ${ALLOW_DEV_AUTOCREATE}`);
 
     // Start periodic cleanup job for expired messages
     startPeriodicCleanup();
   } catch (err) {
-    console.error('[Server] Fatal error:', err);
+    console.error('[Server] ❌ Fatal startup error:', err);
+    console.error('[Server] Error details:', {
+      message: (err as Error).message,
+      code: (err as any).code,
+      errno: (err as any).errno,
+      syscall: (err as any).syscall,
+    });
     process.exit(1);
   }
 }
