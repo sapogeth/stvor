@@ -1752,6 +1752,8 @@ console.log('[Posts] ✅ Post endpoints registered: POST /posts, GET /posts/feed
 
 async function start() {
   try {
+    console.log(`[Server] Starting Ilyazh Relay on ${HOST}:${PORT}`);
+
     // FIRST: Initialize storage BEFORE starting server
     const effectiveStorageType = (global as any).STORAGE_TYPE_OVERRIDE || STORAGE_TYPE;
 

@@ -66,13 +66,14 @@ RUN addgroup -S relay 2>/dev/null || true && \
     adduser -S -G relay relay 2>/dev/null || true
 USER node
 
-# Expose port (Railway/Render will set $PORT dynamically)
-# Default to 3001 if not set
-EXPOSE ${PORT:-3001}
+# Expose port (Railway/Render will set PORT environment variable at runtime)
+EXPOSE 3001
 
 # Health check endpoint for production monitoring
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:${PORT:-3001}/healthz || exit 1
+# Note: Railway sets PORT at runtime, server reads from env var
+# Try multiple ports in case PORT env is set to something different
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
+  CMD curl -f http://localhost:3001/healthz || curl -f http://localhost:${PORT:-3001}/healthz || exit 1
 
 # Start relay server
 CMD ["node", "apps/relay/dist/index.js"]
