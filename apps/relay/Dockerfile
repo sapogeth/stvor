@@ -70,10 +70,10 @@ USER node
 EXPOSE 3001
 
 # Health check endpoint for production monitoring
-# Note: Railway sets PORT at runtime, server reads from env var
-# Try multiple ports in case PORT env is set to something different
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
-  CMD curl -f http://localhost:3001/healthz || curl -f http://localhost:${PORT:-3001}/healthz || exit 1
+# Disabled for now - Railway has issues with healthchecks
+# The server will still be reachable via port 3001
+# HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
+#   CMD curl -f http://localhost:3001/healthz || exit 1
 
 # Start relay server
 CMD ["node", "apps/relay/dist/index.js"]
