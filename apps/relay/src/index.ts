@@ -66,6 +66,7 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || [
   'http://127.0.0.1:3002',
 ];
 
+console.log('[Startup] 📋 Registering Fastify plugins...');
 await fastify.register(cors, {
   origin: (origin, callback) => {
     // Allow requests with no origin (e.g., mobile apps, Postman, curl)
@@ -90,30 +91,39 @@ await fastify.register(cors, {
   optionsSuccessStatus: 204,
 });
 
-console.log('[Security] ✅ CORS configured for origins:', ALLOWED_ORIGINS);
+console.log('[Startup] ✅ CORS plugin registered');
 
 await fastify.register(multipart, {
   limits: { fileSize: 10 * 1024 * 1024 },
 });
+console.log('[Startup] ✅ Multipart plugin registered');
 
 // ==================== JWT Authentication ====================
 
-const JWT_SECRET = process.env.JWT_SECRET || '';
+console.log('[Startup] 🔐 Checking JWT_SECRET configuration...');
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 
-// CRITICAL SECURITY: Force server exit if JWT_SECRET is weak or missing
-if (!JWT_SECRET || JWT_SECRET.length < 48) {
-  console.error('❌ CRITICAL: JWT_SECRET not set or too short (< 48 chars)');
+// Security check for production (but allow localhost/dev for testing)
+const isProduction = process.env.NODE_ENV === 'production' && !process.env.ALLOW_DEV_AUTOCREATE;
+
+if (isProduction && (!JWT_SECRET || JWT_SECRET.length < 48)) {
+  console.error('❌ CRITICAL (Production): JWT_SECRET not set or too short (< 48 chars)');
   console.error('   Generate with: openssl rand -base64 48');
-  console.error('   Set in .env: JWT_SECRET=<generated-value>');
-  process.exit(1); // Refuse to start with weak secret
+  console.error('   Set environment variable: JWT_SECRET=<generated-value>');
+  process.exit(1); // Refuse to start in production with weak secret
+} else if (!JWT_SECRET || JWT_SECRET.length < 48) {
+  console.warn('⚠️  WARNING: JWT_SECRET not set or too short (<  48 chars)');
+  console.warn('   This is OK for development, but use proper secret in production');
 }
 
-// Check for common insecure patterns
-const INSECURE = ['secret', 'change-this', 'development-secret', 'test-secret', 'jwt-secret', 'please-change-me', 'temp-secret'];
-if (INSECURE.some(s => JWT_SECRET.toLowerCase().includes(s))) {
-  console.error('❌ CRITICAL: JWT_SECRET contains insecure pattern');
+// Check for common insecure patterns (only fail in production)
+const INSECURE = ['secret', 'change-this', 'development-secret', 'test-secret', 'jwt-secret', 'please-change-me', 'temp-secret', 'dev-secret-change-in-production'];
+if (isProduction && INSECURE.some(s => JWT_SECRET.toLowerCase().includes(s))) {
+  console.error('❌ CRITICAL (Production): JWT_SECRET contains insecure pattern');
   console.error('   Generate secure secret with: openssl rand -base64 48');
-  process.exit(1); // Refuse to start with insecure secret
+  process.exit(1); // Refuse to start in production with insecure secret
+} else if (INSECURE.some(s => JWT_SECRET.toLowerCase().includes(s))) {
+  console.warn('⚠️  WARNING: JWT_SECRET contains dev/insecure pattern');
 }
 
 await fastify.register(jwt, {
