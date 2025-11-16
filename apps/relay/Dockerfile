@@ -73,11 +73,7 @@ USER node
 # Expose port (Railway/Render will set PORT environment variable at runtime)
 EXPOSE 3001
 
-# HEALTHCHECK - Verify server is responsive
-# Railway sets PORT env var if needed (defaults to 3001)
-# Check both 3001 and any alternative port Railway might use
-HEALTHCHECK --start-period=30s --interval=10s --timeout=5s --retries=3 \
-  CMD curl -f http://127.0.0.1:3001/healthz || curl -f http://127.0.0.1:8080/healthz || exit 1
-
 # Start relay server
+# Railway automatically uses /health or /healthz endpoint for health checks
+# We expose /healthz in the Node app and let the platform manage monitoring
 CMD ["node", "apps/relay/dist/index.js"]

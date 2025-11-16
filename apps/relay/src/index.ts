@@ -248,16 +248,26 @@ async function rateLimit(request: any, reply: any, key: string, limit: number, w
 
 // ==================== Observability Endpoints ====================
 
-fastify.get('/healthz', async () => {
-  if (!storage || !storageReady) {
-    return { status: 'starting', storage: 'initializing', version: '0.8.0' };
-  }
+// Health check endpoints - both /health and /healthz are used by different platforms
+fastify.get('/health', async () => {
+  // Simple liveness probe - just check if server is running
+  // Used by Railway, Render, and other platforms
+  return { status: 'ok', timestamp: Date.now() };
+});
 
+fastify.get('/healthz', async () => {
+  // Always return 200 OK immediately - server is running once this endpoint responds
+  // The Fastify listener wouldn't be active if the server wasn't ready
   try {
+    if (!storage || !storageReady) {
+      return { status: 'starting', ready: false, version: '0.8.0' };
+    }
+
     const healthy = await storage.isHealthy();
-    return { status: healthy ? 'ok' : 'degraded', storage: STORAGE_TYPE, version: '0.8.0' };
+    return { status: healthy ? 'ok' : 'degraded', ready: true, version: '0.8.0' };
   } catch (err) {
-    return { status: 'error', storage: STORAGE_TYPE, error: (err as Error).message, version: '0.8.0' };
+    // Still return 200 - the endpoint itself is working, storage might be temporarily unavailable
+    return { status: 'error', ready: false, error: (err as Error).message, version: '0.8.0' };
   }
 });
 
