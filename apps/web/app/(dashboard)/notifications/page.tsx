@@ -35,32 +35,17 @@ export default function NotificationsPage() {
 
   const username = user?.username || user?.firstName || '';
 
-  // Load group invitations on mount
+  // Load group invitations on mount from IndexedDB
   useEffect(() => {
     const loadInvitations = async () => {
       if (!username) return;
       try {
-        // Try to load from server first
-        const serverRes = await fetch(`/api/invitations/pending?username=${encodeURIComponent(username)}`);
-        if (serverRes.ok) {
-          const { invitations } = await serverRes.json();
-          console.log(`[Notifications] Loaded ${invitations.length} invitations from server`);
-          setGroupInvitations(invitations);
-        } else {
-          // Fallback to IndexedDB if server fails
-          console.warn('[Notifications] Server load failed, using IndexedDB fallback');
-          const invites = await getPendingInvitations(username);
-          setGroupInvitations(invites);
-        }
+        // Load directly from IndexedDB (reliable, no server dependency)
+        const invites = await getPendingInvitations(username);
+        console.log(`[Notifications] Loaded ${invites.length} invitations from IndexedDB`);
+        setGroupInvitations(invites);
       } catch (err) {
-        console.error('[Notifications] Failed to load invitations:', err);
-        // Fallback to IndexedDB
-        try {
-          const invites = await getPendingInvitations(username);
-          setGroupInvitations(invites);
-        } catch (fallbackErr) {
-          console.error('[Notifications] Fallback also failed:', fallbackErr);
-        }
+        console.error('[Notifications] Failed to load invitations from IndexedDB:', err);
       } finally {
         setLoading(false);
       }
