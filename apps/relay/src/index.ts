@@ -1280,10 +1280,11 @@ fastify.post<{ Params: { groupId: string }, Body: GroupMessageBody }>(
     }
 
     // Broadcast to all recipients via WebSocket
+    const messageTimestamp = Date.now();
     let deliveredCount = 0;
 
     for (const [recipientUsername, wrappedData] of Object.entries(groupMessage.recipients)) {
-      // Check if recipient is connected
+      // Check if recipient is connected to this group's WebSocket
       if (wsManager) {
         const recipientConnected = wsManager.getConnectedUsers(groupId).includes(recipientUsername);
 
@@ -1299,14 +1300,16 @@ fastify.post<{ Params: { groupId: string }, Body: GroupMessageBody }>(
               ciphertext: groupMessage.ciphertext,
               recipient: wrappedData,
             },
-            timestamp: Date.now(),
+            timestamp: messageTimestamp,
           });
           deliveredCount++;
+        } else {
+          console.log(`[GroupMessage] Recipient ${recipientUsername} not connected to group ${groupId.slice(0, 12)}... - message will be missed`);
         }
       }
     }
 
-    console.log(`[GroupMessage] Group message in ${groupId.slice(0, 12)}... delivered to ${deliveredCount} recipients`);
+    console.log(`[GroupMessage] Group message in ${groupId.slice(0, 12)}... delivered to ${deliveredCount}/${Object.keys(groupMessage.recipients).length} recipients`);
 
     return {
       success: true,
@@ -1319,6 +1322,57 @@ fastify.post<{ Params: { groupId: string }, Body: GroupMessageBody }>(
 );
 
 console.log('[Routes] ✅ Group message endpoint: POST /group/:groupId/message');
+
+// ==================== Group Invitations ====================
+
+interface GroupInvitationBody {
+  groupId: string;
+  groupName: string;
+  creatorUsername: string;
+  creatorDisplayName: string;
+  recipientUsername: string;
+}
+
+fastify.post<{ Body: GroupInvitationBody }>(
+  '/group/invite/notify',
+  async (request, reply) => {
+    const { groupId, groupName, creatorUsername, creatorDisplayName, recipientUsername } = request.body;
+
+    if (!groupId || !recipientUsername || !creatorUsername) {
+      return reply.code(400).send({ error: 'Missing required fields' });
+    }
+
+    // Normalize recipient username
+    const recipientNormalized = recipientUsername.trim().toLowerCase();
+
+    // Send real-time notification via WebSocket if recipient is connected
+    if (wsManager) {
+      const sent = wsManager.sendToClient(recipientNormalized, {
+        type: 'group_invitation',
+        groupId,
+        groupName,
+        creator: creatorDisplayName || creatorUsername,
+        creatorUsername,
+        recipientUsername: recipientNormalized,
+        timestamp: Date.now(),
+      });
+
+      if (sent) {
+        console.log(`[GroupInvite] ✅ Real-time notification sent to ${recipientNormalized} for group "${groupName}"`);
+      } else {
+        console.log(`[GroupInvite] ⚠️  Recipient ${recipientNormalized} not connected - will see invitation on next login`);
+      }
+    }
+
+    return {
+      success: true,
+      recipientUsername: recipientNormalized,
+      notified: wsManager ? wsManager.getConnectedUsers('*').includes(recipientNormalized) : false,
+    };
+  }
+);
+
+console.log('[Routes] ✅ Group invitation notification endpoint: POST /group/invite/notify');
 
 // ==================== Sync Messages ====================
 

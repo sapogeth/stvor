@@ -58,6 +58,28 @@ export function useChatRealtime(options: UseChatRealtimeOptions) {
         return;
       }
 
+      // Handle group invitations globally (not chat-specific)
+      if (msg.type === 'group_invitation') {
+        console.log('[ChatRealtime] Received group invitation:', msg);
+        // Store the invitation in IndexedDB
+        if (typeof window !== 'undefined') {
+          import('@/lib/group-invitations').then(({ storeGroupInvitation }) => {
+            storeGroupInvitation({
+              invitationId: `${msg.groupId}-${msg.creatorUsername}`,
+              groupId: msg.groupId || '',
+              groupName: msg.groupName || '',
+              creatorUsername: msg.creatorUsername || '',
+              creatorDisplayName: msg.creator || msg.creatorUsername || '',
+              recipientUsername: msg.recipientUsername || username,
+              createdAt: msg.timestamp || Date.now(),
+              status: 'pending',
+            }).catch(err => console.error('[ChatRealtime] Failed to store invitation:', err));
+          }).catch(err => console.error('[ChatRealtime] Failed to import:', err));
+        }
+        // Trigger a notification or update state as needed
+        return;
+      }
+
       switch (msg.type) {
         case 'message':
           // Forward to consumer

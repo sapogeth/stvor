@@ -123,6 +123,30 @@ export default function GroupsPage() {
             console.error(`[Groups] Server error storing invitation for ${member}:`, serverErr);
           }
 
+          // Send real-time notification via relay
+          try {
+            const relayUrl = process.env.NEXT_PUBLIC_RELAY_URL || 'http://localhost:3001';
+            const notifyRes = await fetch(`${relayUrl}/group/invite/notify`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                groupId,
+                groupName,
+                creatorUsername: username,
+                creatorDisplayName: user?.firstName || username,
+                recipientUsername: member,
+              }),
+            });
+
+            if (notifyRes.ok) {
+              console.log(`[Groups] ✅ Real-time notification sent to ${member}`);
+            } else {
+              console.warn(`[Groups] ⚠️ Failed to send real-time notification to ${member}`);
+            }
+          } catch (notifyErr) {
+            console.warn(`[Groups] Could not send real-time notification to ${member}:`, notifyErr);
+          }
+
           console.log(`[Groups] ✅ Invitation created for ${member}`);
         } catch (err) {
           console.error(`[Groups] Failed to create invitation for ${member}:`, err);
