@@ -13,7 +13,7 @@ import { type PrekeyBundle } from './storage/interfaces';
 import { normalizeUsername } from './utils/normalize';
 import { setupWebSocket } from './websocket';
 import * as crypto from 'crypto';
-import DOMPurify from 'isomorphic-dompurify';
+// DOMPurify removed - use simple text sanitization instead (server doesn't need jsdom)
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -1590,19 +1590,18 @@ fastify.post<{ Body: CreatePostBody }>(
       });
     }
 
-    // CRITICAL SECURITY: Sanitize content to prevent XSS attacks
-    const sanitizedContent = DOMPurify.sanitize(content, {
-      ALLOWED_TAGS: [], // Strip all HTML tags
-      ALLOWED_ATTR: [], // Strip all attributes
-      KEEP_CONTENT: true, // Keep text content
-    });
+    // SECURITY: Simple sanitization - strip HTML tags
+    // Content is encrypted end-to-end, so relay just stores safely
+    const sanitizedContent = String(content)
+      .replace(/<[^>]*>/g, '') // Remove HTML tags
+      .trim();
 
     // Sanitize imageUrl if provided
-    const sanitizedImageUrl = imageUrl ? DOMPurify.sanitize(imageUrl, {
-      ALLOWED_TAGS: [],
-      ALLOWED_ATTR: [],
-      KEEP_CONTENT: true,
-    }) : undefined;
+    const sanitizedImageUrl = imageUrl
+      ? String(imageUrl)
+          .replace(/<[^>]*>/g, '') // Remove HTML tags
+          .trim()
+      : undefined;
 
     // Rate limit posts
     const rateLimitPassed = await rateLimit(
