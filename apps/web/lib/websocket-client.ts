@@ -10,12 +10,18 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 // ==================== Types ====================
 
 export interface WSMessage {
-  type: 'message' | 'typing' | 'read' | 'ping' | 'pong' | 'presence' | 'error';
+  type: 'message' | 'typing' | 'read' | 'ping' | 'pong' | 'presence' | 'error' | 'group_invitation';
   chatId?: string;
   senderId?: string;
   recipientId?: string;
   content?: any;
   timestamp?: number;
+  // Group invitation fields
+  groupId?: string;
+  groupName?: string;
+  creator?: string;
+  creatorUsername?: string;
+  recipientUsername?: string;
 }
 
 export interface WSConnectionConfig {
