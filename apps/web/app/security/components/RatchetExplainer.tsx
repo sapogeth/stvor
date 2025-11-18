@@ -46,21 +46,21 @@ export function RatchetExplainer({ onClose }: RatchetExplainerProps) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-4xl max-h-[90vh] overflow-auto">
-        <CardHeader className="flex flex-row items-center justify-between border-b">
+      <Card className="w-full max-w-6xl max-h-[95vh] overflow-auto">
+        <CardHeader className="flex flex-row items-center justify-between border-b sticky top-0 bg-white dark:bg-gray-900 z-10">
           <CardTitle>Почему каждое сообщение — новое начало</CardTitle>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
             <X className="w-5 h-5" />
           </button>
         </CardHeader>
 
-        <CardContent className="p-8">
+        <CardContent className="p-6 sm:p-8">
           {/* Progress */}
-          <div className="grid grid-cols-7 gap-1 mb-8">
+          <div className="grid grid-cols-7 gap-1 mb-8 overflow-x-auto">
             {steps.map((step, idx) => (
-              <div key={step} className="flex flex-col items-center">
+              <div key={step} className="flex flex-col items-center flex-shrink-0">
                 <div
-                  className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all cursor-pointer hover:scale-110 ${
+                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all cursor-pointer hover:scale-110 ${
                     idx < currentStepIndex
                       ? 'bg-green-500 text-white'
                       : idx === currentStepIndex
@@ -76,7 +76,7 @@ export function RatchetExplainer({ onClose }: RatchetExplainerProps) {
           </div>
 
           {/* Main content */}
-          <div className="grid grid-cols-2 gap-8 mb-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 mb-8">
             {/* Left - Steps list */}
             <div className="space-y-2">
               <h3 className="font-semibold text-sm text-gray-600 dark:text-gray-400">ПРОЦЕСС</h3>
@@ -103,16 +103,19 @@ export function RatchetExplainer({ onClose }: RatchetExplainerProps) {
               ))}
             </div>
 
-            {/* Right - Visualization */}
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-6 min-h-96 flex flex-col items-center justify-center">
-              <RatchetVisualization step={currentStep} />
-            </div>
-          </div>
+            {/* Right content */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Visualization */}
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-6 min-h-80 flex flex-col items-center justify-center">
+                <RatchetVisualization step={currentStep} />
+              </div>
 
-          {/* Description */}
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-8">
-            <h4 className="font-semibold mb-2">{getRatchetStepTitle(currentStep)}</h4>
-            <p className="text-sm text-gray-700 dark:text-gray-300">{getRatchetStepDescription(currentStep)}</p>
+              {/* Description */}
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 sm:p-6">
+                <h4 className="font-semibold mb-2 text-base sm:text-lg">{getRatchetStepTitle(currentStep)}</h4>
+                <p className="text-sm sm:text-base text-gray-700 dark:text-gray-300 leading-relaxed">{getRatchetStepDescription(currentStep)}</p>
+              </div>
+            </div>
           </div>
 
           {/* Navigation */}

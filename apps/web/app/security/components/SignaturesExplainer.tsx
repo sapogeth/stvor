@@ -31,17 +31,18 @@ export function SignaturesExplainer({ onClose }: SignaturesExplainerProps) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-4xl max-h-[90vh] overflow-auto">
-        <CardHeader className="flex flex-row items-center justify-between border-b">
+      <Card className="w-full max-w-6xl max-h-[95vh] overflow-auto">
+        <CardHeader className="flex flex-row items-center justify-between border-b sticky top-0 bg-white dark:bg-gray-900 z-10">
           <CardTitle>Двойные Подписи: Аутентификация</CardTitle>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
             <X className="w-5 h-5" />
           </button>
         </CardHeader>
 
-        <CardContent className="p-8">
-          <div className="grid grid-cols-2 gap-8 mb-8">
-            <div className="space-y-2">
+        <CardContent className="p-6 sm:p-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 mb-8">
+            {/* Sidebar - Steps */}
+            <div className="lg:col-span-1 space-y-2">
               <h3 className="font-semibold text-sm text-gray-600 dark:text-gray-400">ПРОЦЕСС</h3>
               {[
                 { id: 'intro', label: '📝 Введение' },
@@ -65,14 +66,19 @@ export function SignaturesExplainer({ onClose }: SignaturesExplainerProps) {
               ))}
             </div>
 
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-6 min-h-96 flex flex-col items-center justify-center">
-              <SignaturesVisualization step={currentStep} />
-            </div>
-          </div>
+            {/* Main Content - Visualization and Description */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Visualization */}
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-6 min-h-80 flex flex-col items-center justify-center">
+                <SignaturesVisualization step={currentStep} />
+              </div>
 
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-8">
-            <h4 className="font-semibold mb-2">{getSignaturesStepTitle(currentStep)}</h4>
-            <p className="text-sm text-gray-700 dark:text-gray-300">{getSignaturesStepDescription(currentStep)}</p>
+              {/* Description */}
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 sm:p-6">
+                <h4 className="font-semibold mb-2 text-base sm:text-lg">{getSignaturesStepTitle(currentStep)}</h4>
+                <p className="text-sm sm:text-base text-gray-700 dark:text-gray-300 leading-relaxed">{getSignaturesStepDescription(currentStep)}</p>
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center justify-between">
