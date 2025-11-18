@@ -2,278 +2,150 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { SecurityHub } from './components/SecurityHub';
+import { KeystoreExplainer } from './components/KeystoreExplainer';
+import { RatchetExplainer } from './components/RatchetExplainer';
+import { HandshakeExplainer } from './components/HandshakeExplainer';
+import { ChatVisualization } from './components/ChatVisualization';
+import { ChevronLeft, Home } from 'lucide-react';
 
-export default function SecurityPage() {
-  const [sessionData, setSessionData] = useState({
-    sessionId: 'a7b3c9d2e5f1a8b4c6d7e9f2a3b5c8d1e4f7a9b2c5d8e1f4a7b3c9d2e5f1a8b4',
-    currentEpoch: 0,
-    messagesThisEpoch: 0,
-    totalMessages: 0,
-    epochStartTime: Date.now(),
-    sessionStartTime: Date.now(),
-    nextRekeyIn: 0,
-    sessionExpiresIn: 0,
-  });
+type ExplainerType = 'handshake' | 'ratchet' | 'keystore' | 'signatures' | 'relay' | 'group-chat' | null;
+
+export default function SecurityCenterPage() {
+  const [activeExplainer, setActiveExplainer] = useState<ExplainerType>(null);
+  const [showChatViz, setShowChatViz] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem('ilyazh_username');
-    if (!stored) {
-      window.location.href = '/';
+    setIsMounted(true);
+    // Optional: Check if user is logged in
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('ilyazh_username') : null;
+    if (!stored && typeof window !== 'undefined') {
+      // Don't redirect, just show message
+      console.log('Not authenticated, showing public security center');
     }
-
-    // Update timers
-    const interval = setInterval(() => {
-      const now = Date.now();
-      const epochAge = now - sessionData.epochStartTime;
-      const sessionAge = now - sessionData.sessionStartTime;
-
-      const REKEY_TIME_LIMIT = 24 * 60 * 60 * 1000; // 24h
-      const SESSION_TIME_CAP = 7 * 24 * 60 * 60 * 1000; // 7d
-
-      setSessionData((prev) => ({
-        ...prev,
-        nextRekeyIn: Math.max(0, REKEY_TIME_LIMIT - epochAge),
-        sessionExpiresIn: Math.max(0, SESSION_TIME_CAP - sessionAge),
-      }));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [sessionData.epochStartTime, sessionData.sessionStartTime]);
-
-  const formatTime = (ms: number) => {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    if (days > 0) return `${days}d ${hours % 24}h`;
-    if (hours > 0) return `${hours}h ${minutes % 60}m`;
-    if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
-    return `${seconds}s`;
-  };
-
-  const REKEY_MESSAGE_LIMIT = 1 << 20; // 2^20
-  const SESSION_MESSAGE_CAP = Math.pow(2, 32);
-
-  const epochProgress = (sessionData.messagesThisEpoch / REKEY_MESSAGE_LIMIT) * 100;
-  const sessionProgress = (sessionData.totalMessages / SESSION_MESSAGE_CAP) * 100;
+  }, []);
 
   return (
-    <main className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
-      <div className="max-w-4xl mx-auto">
-        <Link href="/" className="text-blue-500 hover:underline text-sm mb-4 block">
-          ← Back to Home
-        </Link>
+    <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+      {/* Header */}
+      <header className="border-b border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/80 backdrop-blur sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 transition-colors">
+            <Home className="w-5 h-5" />
+            <span className="text-sm">На главную</span>
+          </Link>
 
-        <h1 className="text-4xl font-bold mb-2">🔒 Security Dashboard</h1>
-        <p className="text-gray-600 dark:text-gray-400 mb-8">
-          Session Invariants & Cadence Enforcement
-        </p>
+          <h1 className="text-2xl font-bold">🔒 Центр Безопасности</h1>
 
-        {/* Session ID */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">Session Information</h2>
-          <div className="space-y-3">
-            <div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Session ID (sid)</div>
-              <div className="font-mono text-xs bg-gray-100 dark:bg-gray-700 p-2 rounded mt-1 break-all">
-                {sessionData.sessionId}
-              </div>
-              <div className="text-xs text-green-600 dark:text-green-400 mt-1">
-                ✓ Included in AAD of every record (normative requirement)
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 mt-4">
-              <div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">Current Epoch</div>
-                <div className="text-2xl font-bold">{sessionData.currentEpoch}</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">Total Messages</div>
-                <div className="text-2xl font-bold">{sessionData.totalMessages.toLocaleString()}</div>
-              </div>
-            </div>
-          </div>
+          <div className="w-20" /> {/* Spacer for centering */}
         </div>
+      </header>
 
-        {/* Cadence Enforcement */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">Mandated Re-encapsulation Cadence</h2>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {/* Main content */}
+        {!activeExplainer && !showChatViz ? (
+          <>
+            {/* Security Hub */}
+            <SecurityHub onSelectComponent={(componentId) => {
+              setActiveExplainer(componentId as ExplainerType);
+            }} />
 
-          {/* Epoch Limits */}
-          <div className="mb-6">
-            <div className="flex justify-between items-center mb-2">
-              <div className="text-sm font-medium">Epoch Message Limit</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">
-                {sessionData.messagesThisEpoch.toLocaleString()} / {REKEY_MESSAGE_LIMIT.toLocaleString()} (2^20)
+            {/* Chat Visualization Section */}
+            <div className="mt-16 pt-12 border-t border-gray-200 dark:border-gray-700">
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-3xl font-bold mb-2">Полная Демонстрация</h2>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Посмотри, как все компоненты работают вместе в реальном чате
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setShowChatViz(true)}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-semibold hover:shadow-lg transition-all hover:scale-105"
+                >
+                  <span className="text-lg">▶</span>
+                  Запустить визуализацию чата
+                </button>
               </div>
             </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
-              <div
-                className={`h-3 rounded-full transition-all ${
-                  epochProgress > 80 ? 'bg-red-500' : epochProgress > 50 ? 'bg-yellow-500' : 'bg-green-500'
-                }`}
-                style={{ width: `${Math.min(100, epochProgress)}%` }}
-              />
+
+            {/* Educational section */}
+            <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-semibold mb-3">📚 Быстрая справка</h3>
+                <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                  <li>• <strong>Hybrid</strong>: Классический + Пост-квантовый ключ обмен</li>
+                  <li>• <strong>Forward Secrecy</strong>: Каждое сообщение — новый ключ</li>
+                  <li>• <strong>E2E Encryption</strong>: Сервер не видит содержимое</li>
+                  <li>• <strong>Mandated Rekey</strong>: Новые ключи каждые 1М сообщений/24ч</li>
+                </ul>
+              </div>
+
+              <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-semibold mb-3">🛡️ Защита от чего?</h3>
+                <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                  <li>✓ Классических компьютеров (нет приватного ключа на сервере)</li>
+                  <li>✓ Квантовых компьютеров (ML-KEM-768 стойкий)</li>
+                  <li>✓ Перехвата в сети (end-to-end encryption)</li>
+                  <li>✓ Компрометации одного сообщения (forward secrecy)</li>
+                </ul>
+              </div>
             </div>
-            <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-              {epochProgress > 90 && '⚠️ Approaching limit - rekey required'}
+          </>
+        ) : showChatViz ? (
+          <div className="space-y-6">
+            <button
+              onClick={() => setShowChatViz(false)}
+              className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-semibold mb-4"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Назад к компонентам
+            </button>
+
+            <ChatVisualization />
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <button
+              onClick={() => setActiveExplainer(null)}
+              className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-semibold mb-4"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Назад к компонентам
+            </button>
+
+            {/* Explainers will be rendered as modals below */}
+          </div>
+        )}
+
+        {/* Explainer modals */}
+        {activeExplainer === 'keystore' && <KeystoreExplainer onClose={() => setActiveExplainer(null)} />}
+        {activeExplainer === 'ratchet' && <RatchetExplainer onClose={() => setActiveExplainer(null)} />}
+        {activeExplainer === 'handshake' && <HandshakeExplainer onClose={() => setActiveExplainer(null)} />}
+
+        {/* Placeholder for other explainers */}
+        {activeExplainer && !['keystore', 'ratchet', 'handshake'].includes(activeExplainer) && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-8 max-w-2xl w-full">
+              <h2 className="text-2xl font-bold mb-4 capitalize">
+                {activeExplainer === 'signatures' && '✍️ Двойные Подписи'}
+                {activeExplainer === 'relay' && '🚀 Relay Server'}
+                {activeExplainer === 'group-chat' && '👥 Групповые Чаты'}
+              </h2>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
+                Детальная визуализация этого компонента еще в разработке. Скоро будет доступна!
+              </p>
+              <button
+                onClick={() => setActiveExplainer(null)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Закрыть
+              </button>
             </div>
           </div>
-
-          <div className="mb-6">
-            <div className="flex justify-between items-center mb-2">
-              <div className="text-sm font-medium">Epoch Time Limit</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">
-                Next rekey in: {formatTime(sessionData.nextRekeyIn)}
-              </div>
-            </div>
-            <div className="text-xs text-gray-600 dark:text-gray-400">
-              Maximum 24 hours per epoch (enforced)
-            </div>
-          </div>
-
-          {/* Session Caps */}
-          <div className="border-t dark:border-gray-700 pt-4">
-            <div className="text-sm font-medium mb-2">Session Hard Caps</div>
-
-            <div className="mb-4">
-              <div className="flex justify-between items-center mb-1">
-                <div className="text-xs">Total Messages</div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">
-                  {sessionData.totalMessages.toLocaleString()} / {SESSION_MESSAGE_CAP.toLocaleString()} (2^32)
-                </div>
-              </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                <div
-                  className="bg-blue-500 h-2 rounded-full"
-                  style={{ width: `${Math.min(100, sessionProgress)}%` }}
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <div className="text-xs">Session Age</div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">
-                  Expires in: {formatTime(sessionData.sessionExpiresIn)}
-                </div>
-              </div>
-              <div className="text-xs text-gray-600 dark:text-gray-400">
-                Maximum 7 days (604,800 seconds)
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Protocol Invariants */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">Protocol Invariants</h2>
-          <div className="space-y-3">
-            <div className="flex items-start space-x-3">
-              <div className="text-green-500 text-xl">✓</div>
-              <div className="flex-1">
-                <div className="font-medium">sid-in-AAD</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  Session ID included in AAD of every encrypted record
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-start space-x-3">
-              <div className="text-green-500 text-xl">✓</div>
-              <div className="flex-1">
-                <div className="font-medium">Dual Signatures</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  Both Ed25519 and ML-DSA-65 verified during handshake (default mode)
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-start space-x-3">
-              <div className="text-green-500 text-xl">✓</div>
-              <div className="flex-1">
-                <div className="font-medium">Nonce Policy</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  R64 || C32 structure (ratchet ID + monotonic counter) prevents reuse
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-start space-x-3">
-              <div className="text-green-500 text-xl">✓</div>
-              <div className="flex-1">
-                <div className="font-medium">Key Erasure</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  Message keys zeroized immediately after use
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-start space-x-3">
-              <div className="text-green-500 text-xl">✓</div>
-              <div className="flex-1">
-                <div className="font-medium">Hybrid Security</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  X25519 + ML-KEM-768 combiner ensures security if either primitive is secure
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-start space-x-3">
-              <div className="text-green-500 text-xl">✓</div>
-              <div className="flex-1">
-                <div className="font-medium">Transcript Binding</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  Handshake transcript hashed with SHA-384, signatures cover full context
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Cryptographic Suite */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-semibold mb-4">Cryptographic Suite</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <div className="font-medium mb-2">Key Exchange</div>
-              <ul className="space-y-1 text-gray-600 dark:text-gray-400">
-                <li>• Classical: X25519 (Curve25519 DH)</li>
-                <li>• Post-Quantum: ML-KEM-768 (FIPS 203)</li>
-              </ul>
-            </div>
-
-            <div>
-              <div className="font-medium mb-2">Signatures</div>
-              <ul className="space-y-1 text-gray-600 dark:text-gray-400">
-                <li>• Classical: Ed25519</li>
-                <li>• Post-Quantum: ML-DSA-65 (FIPS 204)</li>
-              </ul>
-            </div>
-
-            <div>
-              <div className="font-medium mb-2">Key Derivation</div>
-              <ul className="space-y-1 text-gray-600 dark:text-gray-400">
-                <li>• HKDF-SHA-384</li>
-                <li>• Domain-separated labels</li>
-              </ul>
-            </div>
-
-            <div>
-              <div className="font-medium mb-2">Encryption</div>
-              <ul className="space-y-1 text-gray-600 dark:text-gray-400">
-                <li>• AES-256-GCM (AEAD)</li>
-                <li>• 12-byte nonce, 16-byte tag</li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="mt-4 pt-4 border-t dark:border-gray-700 text-xs text-gray-600 dark:text-gray-400">
-            Protocol: Ilyazh-Web3E2E v0.8 • Wire format: CBOR • All keys stored client-side only
-          </div>
-        </div>
+        )}
       </div>
     </main>
   );
