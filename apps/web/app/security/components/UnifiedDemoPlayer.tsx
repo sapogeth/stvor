@@ -216,7 +216,7 @@ export function UnifiedDemoPlayer({ onClose }: UnifiedDemoPlayerProps) {
       <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto">
         <div className="w-full max-w-6xl space-y-4">
           {/* Visualization */}
-          <div className="bg-gray-900 rounded-lg p-4 sm:p-6 flex items-center justify-center border border-gray-700 min-h-48 sm:min-h-64">
+          <div className="bg-gray-900 rounded-lg p-4 sm:p-6 flex items-center justify-center border border-gray-700 min-h-64 sm:min-h-80">
             <DemoVisualization frame={currentFrame} frameIndex={currentFrameIndex} />
           </div>
 
@@ -344,7 +344,7 @@ function DemoVisualization({ frame, frameIndex }: DemoVisualizationProps) {
   const isDetailFrame = frameIndex % 2 === 1;
 
   return (
-    <svg className="w-full h-40 sm:h-56 md:h-64 mx-auto" viewBox="0 0 1000 500" preserveAspectRatio="xMidYMid meet">
+    <svg className="w-full h-48 sm:h-64 md:h-80 mx-auto" viewBox="0 0 1000 500" preserveAspectRatio="xMidYMid meet">
       <defs>
         <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#3B82F6" />
