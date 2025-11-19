@@ -1,12 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { DefenseInDepthExample } from '@/components/DefenseInDepthExample';
 
 export default function SecurityPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'e2e' | 'defense' | 'test' | 'docs'>('overview');
-  const [username, setUsername] = useState('demo-user');
-  const [recipient, setRecipient] = useState('alice');
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px', fontFamily: 'system-ui', background: '#ffffff', color: '#000' }}>
@@ -255,37 +252,120 @@ export default function SecurityPage() {
           <section>
             <h2 style={{ color: '#000', marginBottom: '20px' }}>🧪 Test Defense-in-Depth Features</h2>
             <p style={{ fontSize: '1.05em', marginBottom: '30px', color: '#222' }}>
-              Interactive testing of all three security mechanisms.
+              Interactive demonstration of all three security mechanisms. Currently, the interactive test component is under development.
+              See the code examples and documentation below.
             </p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '30px', padding: '20px', background: '#f9f9f9', borderRadius: '8px' }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#000' }}>Your Username:</label>
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter username"
-                  style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px', boxSizing: 'border-box', color: '#000' }}
-                />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '40px' }}>
+              {/* RelayPinner Test */}
+              <div style={{ border: '2px solid #007bff', borderRadius: '8px', padding: '20px', background: '#f0f7ff' }}>
+                <h3 style={{ color: '#007bff', marginBottom: '10px' }}>🌐 Test RelayPinner</h3>
+                <p style={{ color: '#222', marginBottom: '10px', fontSize: '0.9em' }}>
+                  Network identity verification with Ed25519 challenge-response
+                </p>
+                <pre style={{ background: '#fff', padding: '12px', borderRadius: '4px', overflow: 'auto', fontSize: '0.75em', color: '#000' }}>
+{`const pinner = new RelayPinner({
+  relayUrl: 'wss://relay.example.com',
+  expectedIdentityKeyHash: 'abc123...',
+  configCreatedAt: Date.now()
+});
+
+const isVerified = await pinner
+  .verifyRelayIdentity(websocket);
+
+if (!isVerified) {
+  throw new Error('Relay fake!');
+}`}
+                </pre>
               </div>
-              <div>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#000' }}>Recipient:</label>
-                <input
-                  type="text"
-                  value={recipient}
-                  onChange={(e) => setRecipient(e.target.value)}
-                  placeholder="Enter recipient username"
-                  style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px', boxSizing: 'border-box', color: '#000' }}
-                />
+
+              {/* Message Padding Test */}
+              <div style={{ border: '2px solid #5cb85c', borderRadius: '8px', padding: '20px', background: '#f0fff4' }}>
+                <h3 style={{ color: '#5cb85c', marginBottom: '10px' }}>📦 Test Message Padding</h3>
+                <p style={{ color: '#222', marginBottom: '10px', fontSize: '0.9em' }}>
+                  Adaptive padding to hide message length
+                </p>
+                <pre style={{ background: '#fff', padding: '12px', borderRadius: '4px', overflow: 'auto', fontSize: '0.75em', color: '#000' }}>
+{`const message = "hi";  // 2 bytes
+const padded = padMessage(message, {
+  enabled: true,
+  blockSize: 256,
+  alwaysPad: false,
+  jitterPercent: 10
+});
+
+// Result: 256 bytes total
+// (2 bytes message + 254 random bytes)
+
+const unpadded = unpadMessage(padded, 256);
+// Result: "hi"`}
+                </pre>
+              </div>
+
+              {/* Privacy Controls Test */}
+              <div style={{ border: '2px solid #f0ad4e', borderRadius: '8px', padding: '20px', background: '#fffbf0' }}>
+                <h3 style={{ color: '#f0ad4e', marginBottom: '10px' }}>👤 Test Privacy Controls</h3>
+                <p style={{ color: '#222', marginBottom: '10px', fontSize: '0.9em' }}>
+                  User consent and timing obfuscation
+                </p>
+                <pre style={{ background: '#fff', padding: '12px', borderRadius: '4px', overflow: 'auto', fontSize: '0.75em', color: '#000' }}>
+{`const privacyMgr =
+  new PrivacyConfigManager({
+    typingIndicatorEnabled: true,
+    readReceiptEnabled: true,
+    presenceIndicatorEnabled: false,
+    typingIndicatorDebounceMs: 2000,
+    typingIndicatorJitterMs: 1000
+  });
+
+// Send with obfuscation:
+// - Debounce: max 2000ms
+// - Jitter: ±1000ms random
+// - Batch: max 5 events
+await privacyMgr.sendTypingIndicator(
+  'alice',
+  sendFn
+);`}
+                </pre>
+              </div>
+
+              {/* Integration Example */}
+              <div style={{ border: '2px solid #6f42c1', borderRadius: '8px', padding: '20px', background: '#f8f7ff' }}>
+                <h3 style={{ color: '#6f42c1', marginBottom: '10px' }}>🔗 Integration in Chat</h3>
+                <p style={{ color: '#222', marginBottom: '10px', fontSize: '0.9em' }}>
+                  How to use in your main chat component
+                </p>
+                <pre style={{ background: '#fff', padding: '12px', borderRadius: '4px', overflow: 'auto', fontSize: '0.75em', color: '#000' }}>
+{`// 1. Initialize security managers
+const relayPinner = new RelayPinner(config);
+const privacyMgr = new PrivacyConfigManager({
+  typingIndicatorEnabled: true
+});
+
+// 2. Verify relay on connect
+const isSecure = await
+  relayPinner.verifyRelayIdentity(ws);
+
+// 3. Pad messages before sending
+const padded = padMessage(message,
+  paddingConfig);
+
+// 4. Send with privacy enforcement
+await privacyMgr.sendTypingIndicator(
+  recipient, sendFn);`}
+                </pre>
               </div>
             </div>
 
-            <DefenseInDepthExample
-              username={username}
-              recipient={recipient}
-              chatId={`${username}-${recipient}`.toLowerCase()}
-            />
+            <div style={{ background: '#fff3cd', border: '1px solid #ffc107', borderRadius: '8px', padding: '20px' }}>
+              <h3 style={{ color: '#856404', marginBottom: '10px' }}>💡 Next Steps</h3>
+              <ul style={{ color: '#222', paddingLeft: '20px', lineHeight: '1.8' }}>
+                <li><strong>Integrate RelayPinner:</strong> Call <code style={{ background: '#fff', padding: '2px 4px', borderRadius: '2px' }}>verifyRelayIdentity()</code> when WebSocket connects</li>
+                <li><strong>Add Message Padding:</strong> Wrap message encryption with <code style={{ background: '#fff', padding: '2px 4px', borderRadius: '2px' }}>padMessage()</code></li>
+                <li><strong>Enable Privacy:</strong> Initialize <code style={{ background: '#fff', padding: '2px 4px', borderRadius: '2px' }}>PrivacyConfigManager</code> for user controls</li>
+                <li><strong>Test in Chat:</strong> See code examples above and check <code style={{ background: '#fff', padding: '2px 4px', borderRadius: '2px' }}>DefenseInDepthExample.tsx</code> for full implementation</li>
+              </ul>
+            </div>
           </section>
         )}
 
