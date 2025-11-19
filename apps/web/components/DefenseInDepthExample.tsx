@@ -139,6 +139,7 @@ export function DefenseInDepthExample({
           | 512
           | 1024) || 256,
         jitterPercent: parseInt(process.env.REACT_APP_PADDING_JITTER_PERCENT || '10'),
+        alwaysPad: false,
       };
 
       const padded = padMessage(plaintext, paddingConfig);
@@ -205,7 +206,7 @@ export function DefenseInDepthExample({
     const initialSettings: Partial<PrivacySettings> = {
       typingIndicatorEnabled: process.env.REACT_APP_PRIVACY_TYPING_ENABLED === 'true',
       readReceiptEnabled: process.env.REACT_APP_PRIVACY_READ_RECEIPT_ENABLED === 'true',
-      presenceEnabled: process.env.REACT_APP_PRIVACY_PRESENCE_ENABLED === 'true',
+      presenceIndicatorEnabled: process.env.REACT_APP_PRIVACY_PRESENCE_ENABLED === 'true',
       typingIndicatorDebounceMs: parseInt(
         process.env.REACT_APP_TYPING_DEBOUNCE_MS || '2000'
       ),
@@ -430,9 +431,9 @@ export function DefenseInDepthExample({
             <label>
               <input
                 type="checkbox"
-                checked={privacySettings.presenceEnabled || false}
+                checked={privacySettings.presenceIndicatorEnabled || false}
                 onChange={(e) =>
-                  handlePrivacySettingChange('presenceEnabled', e.target.checked)
+                  handlePrivacySettingChange('presenceIndicatorEnabled', e.target.checked)
                 }
               />
               Show online status

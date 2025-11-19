@@ -19,7 +19,7 @@
 
 import { sha256 } from '@noble/hashes/sha256';
 import { hkdf } from '@noble/hashes/hkdf';
-import type { CryptoState } from './ratchet.js';
+import type { RatchetState } from './ratchet.js';
 
 // ============================================================================
 // PART 1: RELAY NETWORK INTEGRITY (EREBUS Mitigation)

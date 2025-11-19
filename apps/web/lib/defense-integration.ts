@@ -24,7 +24,7 @@ import {
   type PrivacySettings,
   DEFAULT_PADDING_CONFIG,
   DEFAULT_PRIVACY_SETTINGS
-} from '@ilyazh/crypto/defense-in-depth';
+} from '@ilyazh/crypto';
 
 // ============================================================================
 // WebSocket Connection Manager (with Relay Pinning)
