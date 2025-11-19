@@ -30,10 +30,14 @@ import {
   isLikelyEncryptedBlob,
   hashTranscript,
   AADMismatchError,
+  padMessage,
+  unpadMessage,
+  PrivacyConfigManager,
   type IdentityKeyPair,
   type HandshakeState,
   type PrekeyBundle,
   type HandshakeMessage as CryptoHandshakeMessage,
+  type PrivacySettings,
 } from '@ilyazh/crypto';
 import { getOrCreateIdentity, fetchPeerIdentity, createAuthHeaders } from '@/lib/identity';
 import {
@@ -206,6 +210,10 @@ export default function ChatPage() {
   const [showSafetyNumber, setShowSafetyNumber] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Defense-in-Depth Security
+  const privacyManagerRef = useRef<PrivacyConfigManager | null>(null);
+  const paddingConfigRef = useRef<any>(null);
+
   // PART 3: Per-chat cursor tracking (persists across renders, doesn't trigger re-render)
   const cursorsRef = useRef<Record<string, number>>({});
 
@@ -279,6 +287,36 @@ export default function ChatPage() {
         }
 
         console.log('[Chat] E2E crypto initialization complete');
+
+        // Initialize Defense-in-Depth Security
+        console.log('[Chat] Initializing Defense-in-Depth security...');
+
+        // Initialize Privacy Manager with user settings
+        const privacySettings: Partial<PrivacySettings> = {
+          typingIndicatorEnabled: process.env.REACT_APP_PRIVACY_TYPING_ENABLED === 'true',
+          readReceiptEnabled: process.env.REACT_APP_PRIVACY_READ_RECEIPT_ENABLED === 'true',
+          presenceIndicatorEnabled: process.env.REACT_APP_PRIVACY_PRESENCE_ENABLED === 'true',
+          typingIndicatorDebounceMs: parseInt(process.env.REACT_APP_TYPING_DEBOUNCE_MS || '2000'),
+          typingIndicatorJitterMs: parseInt(process.env.REACT_APP_TYPING_JITTER_MS || '1000'),
+          typingIndicatorBatchSize: parseInt(process.env.REACT_APP_TYPING_BATCH_SIZE || '5'),
+        };
+        privacyManagerRef.current = new PrivacyConfigManager(privacySettings);
+        console.log('[Chat] Privacy Manager initialized');
+
+        // Setup Message Padding configuration
+        paddingConfigRef.current = {
+          enabled: process.env.REACT_APP_PADDING_ENABLED === 'true',
+          blockSize: (parseInt(process.env.REACT_APP_PADDING_BLOCK_SIZE || '256') as 256 | 512 | 1024) || 256,
+          alwaysPad: false,
+          jitterPercent: parseInt(process.env.REACT_APP_PADDING_JITTER_PERCENT || '10'),
+        };
+        console.log('[Chat] Message Padding config loaded:', {
+          enabled: paddingConfigRef.current.enabled,
+          blockSize: paddingConfigRef.current.blockSize,
+          jitterPercent: paddingConfigRef.current.jitterPercent,
+        });
+
+        console.log('[Chat] ✅ Defense-in-Depth initialization complete');
       } catch (err) {
         console.error('[Chat] Failed to initialize E2E crypto:', err);
         alert('Failed to initialize encryption keys. Please refresh or set your username in settings.');
@@ -955,6 +993,17 @@ export default function ChatPage() {
                 // NOTE: Replay protection now handled by nonce deduplication BEFORE decryption (line 691)
                 // This prevents false positives when relay returns duplicates with different entry IDs
 
+                // DEFENSE-IN-DEPTH: Remove message padding (traffic analysis resistance)
+                let unpadded = plaintext;
+                if (paddingConfigRef.current?.enabled) {
+                  unpadded = unpadMessage(plaintext, paddingConfigRef.current.blockSize);
+                  console.log('[Message] 📦 Message padding removed:', {
+                    paddedLength: plaintext.length,
+                    unpaddedLength: unpadded.length,
+                    paddingBytes: plaintext.length - unpadded.length,
+                  });
+                }
+
                 // Apply state changes and persist
                 currentRatchetState = newState;
                 setRatchetState(newState);
@@ -963,7 +1012,7 @@ export default function ChatPage() {
                 // This ensures ratchet state is persisted across page refreshes
                 await keystore.saveSession(newState.sessionId, msg.from, newState);
 
-                messageText = new TextDecoder().decode(plaintext);
+                messageText = new TextDecoder().decode(unpadded);
                 isEncrypted = true;
                 logInfo('message', 'Successfully decrypted message', { plaintext: redactPlaintext(plaintext) });
               } catch (encError) {
@@ -1028,12 +1077,18 @@ export default function ChatPage() {
                         const newState = result.newState;
 
                         // ✅ Retry succeeded (replay protection already handled by nonce dedupe)
+                        // DEFENSE-IN-DEPTH: Remove message padding
+                        let unpadded = plaintext;
+                        if (paddingConfigRef.current?.enabled) {
+                          unpadded = unpadMessage(plaintext, paddingConfigRef.current.blockSize);
+                        }
+
                         // Apply state changes and persist
                         currentRatchetState = newState;
                         setRatchetState(newState);
                         await keystore.saveSession(newState.sessionId, msg.from, newState);
 
-                        messageText = new TextDecoder().decode(plaintext);
+                        messageText = new TextDecoder().decode(unpadded);
                         isEncrypted = true;
                         logInfo('message', 'Successfully decrypted message', { plaintext: redactPlaintext(plaintext) });
                       } catch (retryErr) {
@@ -1132,13 +1187,20 @@ export default function ChatPage() {
                       // ✅ Replay protection already handled by nonce dedupe (line 691)
                       // Decrypt message with new session
                       const { plaintext, newState } = await decryptMessage(newSession, encryptedRecord);
+
+                      // DEFENSE-IN-DEPTH: Remove message padding
+                      let unpadded = plaintext;
+                      if (paddingConfigRef.current?.enabled) {
+                        unpadded = unpadMessage(plaintext, paddingConfigRef.current.blockSize);
+                      }
+
                       currentRatchetState = newState;
                       setRatchetState(newState);
 
                       // Save updated session state
                       await keystore.saveSession(newState.sessionId, msg.from, newState);
 
-                      messageText = new TextDecoder().decode(plaintext);
+                      messageText = new TextDecoder().decode(unpadded);
                       isEncrypted = true;
                       logInfo('ratchet', 'Successfully decrypted with refreshed session', {
                         plaintext: redactPlaintext(plaintext)
@@ -1207,10 +1269,17 @@ export default function ChatPage() {
                     try {
                       // ✅ Replay protection already handled by nonce dedupe (line 691)
                       const { plaintext, newState } = await decryptMessage(newSession, encryptedRecord);
+
+                      // DEFENSE-IN-DEPTH: Remove message padding
+                      let unpadded = plaintext;
+                      if (paddingConfigRef.current?.enabled) {
+                        unpadded = unpadMessage(plaintext, paddingConfigRef.current.blockSize);
+                      }
+
                       currentRatchetState = newState;
                       setRatchetState(newState);
                       await keystore.saveSession(newState.sessionId, msg.from, newState);
-                      messageText = new TextDecoder().decode(plaintext);
+                      messageText = new TextDecoder().decode(unpadded);
                       isEncrypted = true;
                       logInfo('message', 'Successfully decrypted after auto-heal', {
                         plaintext: redactPlaintext(plaintext)
@@ -1659,10 +1728,23 @@ export default function ChatPage() {
         console.log('[Send] - Session version:', inlineSession.version);
         console.log('[Send] - sendCounter:', inlineSession.sendCounter);
 
+        // DEFENSE-IN-DEPTH: Apply message padding (traffic analysis resistance)
+        let plaintextToEncrypt: Uint8Array = new TextEncoder().encode(messageText);
+        const originalLength = plaintextToEncrypt.length;
+
+        if (paddingConfigRef.current?.enabled) {
+          plaintextToEncrypt = padMessage(plaintextToEncrypt, paddingConfigRef.current) as Uint8Array;
+          console.log('[Send] 📦 Message padding applied:', {
+            originalLength,
+            paddedLength: plaintextToEncrypt.length,
+            overhead: plaintextToEncrypt.length - originalLength,
+            blockSize: paddingConfigRef.current.blockSize,
+          });
+        }
+
         // Encrypt message using ratchet
-        const plaintext = new TextEncoder().encode(messageText);
         const encryptStartTime = Date.now();
-        const { record, newState } = await encryptMessage(ratchetState, plaintext);
+        const { record, newState } = await encryptMessage(ratchetState, plaintextToEncrypt);
         const encryptDuration = Date.now() - encryptStartTime;
 
         console.log('[Send] ✅ Message encrypted successfully');
