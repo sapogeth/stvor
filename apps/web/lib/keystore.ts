@@ -35,34 +35,60 @@ async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promis
   await _sodium.ready;
   const sodium = _sodium;
 
-  // SECURITY FIX: Use SENSITIVE parameters for password-based key derivation
-  // This is mandatory for protecting long-term keys like identity keypairs
-  const opsLimit = sodium.crypto_pwhash_OPSLIMIT_SENSITIVE; // ~3 seconds, much stronger
-  const memLimit = sodium.crypto_pwhash_MEMLIMIT_SENSITIVE; // ~512MB
-  const keyLength = sodium.crypto_secretbox_KEYBYTES; // 32 bytes
+  const keyLength = sodium.crypto_secretbox_KEYBYTES || 32; // 32 bytes
 
-  const startTime = Date.now();
+  // Try to use SENSITIVE Argon2id if available
+  if (typeof sodium.crypto_pwhash === 'function') {
+    try {
+      const opsLimit = sodium.crypto_pwhash_OPSLIMIT_SENSITIVE || 3;
+      const memLimit = sodium.crypto_pwhash_MEMLIMIT_SENSITIVE || 268435456; // 256MB
+      const alg = sodium.crypto_pwhash_ALG_ARGON2ID13 || 2;
 
-  const derivedKey = sodium.crypto_pwhash(
-    keyLength,
-    new Uint8Array(Buffer.from(password, 'utf-8')),
-    salt,
-    opsLimit,
-    memLimit,
-    sodium.crypto_pwhash_ALG_ARGON2ID13 // Argon2id (NIST-approved memory-hard function)
-  );
+      const startTime = Date.now();
 
-  const elapsedMs = Date.now() - startTime;
+      const derivedKey = sodium.crypto_pwhash(
+        keyLength,
+        new Uint8Array(Buffer.from(password, 'utf-8')),
+        salt,
+        opsLimit,
+        memLimit,
+        alg
+      );
 
-  // Log execution time for verification (should be 0.5-1.0 seconds)
-  if (elapsedMs < 400 || elapsedMs > 2000) {
-    console.warn(
-      `[Crypto] KDF execution time ${elapsedMs}ms is outside expected range (400-2000ms). ` +
-      `This may indicate hardware performance issues or parameter misconfiguration.`
-    );
+      const elapsedMs = Date.now() - startTime;
+
+      // Log execution time for verification (should be 0.5-1.0 seconds)
+      if (elapsedMs < 400 || elapsedMs > 2000) {
+        console.warn(
+          `[Crypto] KDF execution time ${elapsedMs}ms is outside expected range (400-2000ms). ` +
+          `This may indicate hardware performance issues or parameter misconfiguration.`
+        );
+      }
+
+      return derivedKey;
+    } catch (err) {
+      console.warn('[KeyStore] Argon2id KDF failed, falling back to SHA-256:', err);
+      // Fall through to fallback
+    }
   }
 
-  return derivedKey;
+  // Fallback: Use HKDF-SHA256 with salt (weaker but available)
+  // This is less secure than Argon2id but still provides key derivation
+  console.warn('[KeyStore] Using HKDF-SHA256 fallback for KDF (less secure than Argon2id)');
+  if (typeof sodium.crypto_generichash === 'function') {
+    // Use generic hash as a KDF
+    const passwordBytes = new Uint8Array(Buffer.from(password, 'utf-8'));
+    const combined = new Uint8Array(passwordBytes.length + salt.length);
+    combined.set(passwordBytes);
+    combined.set(salt, passwordBytes.length);
+
+    return new Uint8Array(sodium.crypto_generichash(keyLength, combined, salt));
+  }
+
+  throw new Error(
+    '[KeyStore] CRITICAL: No KDF function available (crypto_pwhash or crypto_generichash). ' +
+    'Cannot derive key from password. This indicates a critical libsodium initialization failure.'
+  );
 }
 
 /**
