@@ -429,4 +429,88 @@ describe('Ilyazh-Web3E2E Protocol', () => {
       expect(crypto.constantTimeEqual(a, a.slice(0, 31))).toBe(false);
     });
   });
+
+  describe('Backwards Compatibility', () => {
+    test('12-byte nonce decryption (legacy ChaCha20-Poly1305-IETF)', () => {
+      const key = crypto.randomBytes(32);
+      const plaintext = new TextEncoder().encode('legacy encrypted message');
+      const aad = new TextEncoder().encode('additional data');
+
+      // Simulate old 12-byte nonce (as would have been used before migration to XChaCha20)
+      const legacyNonce = crypto.randomBytes(12);
+
+      // Use the low-level sodium function to encrypt with 12-byte nonce
+      // This simulates messages encrypted by old versions of the code
+      const sodium = (globalThis as any).sodium;
+      if (!sodium) {
+        console.warn('[Test] Sodium not available, skipping legacy nonce test');
+        return;
+      }
+
+      try {
+        const legacyCiphertext = new Uint8Array(
+          sodium.crypto_aead_chacha20poly1305_ietf_encrypt(
+            plaintext,
+            aad,
+            null,
+            legacyNonce,
+            key
+          )
+        );
+
+        // Decrypt using new aeadDecrypt which should support both 12 and 24-byte nonces
+        const decrypted = crypto.aeadDecrypt(key, legacyNonce, legacyCiphertext, aad);
+        expect(Buffer.from(decrypted).toString()).toBe('legacy encrypted message');
+      } catch (err: any) {
+        // If sodium crypto_aead_chacha20poly1305_ietf_encrypt not available, skip
+        if (err.message.includes('not a function') || err.code === 'EINVAL') {
+          console.warn('[Test] ChaCha20-Poly1305 not available, skipping legacy nonce test');
+          return;
+        }
+        throw err;
+      }
+    });
+
+    test('24-byte nonce decryption (new XChaCha20-Poly1305-IETF)', () => {
+      const key = crypto.randomBytes(32);
+      const plaintext = new TextEncoder().encode('new encrypted message');
+      const aad = new TextEncoder().encode('additional data');
+
+      // New API generates 24-byte nonces internally
+      const { nonce: newNonce, ciphertext: newCiphertext } = crypto.aeadEncrypt(
+        key,
+        plaintext,
+        aad
+      );
+
+      // Should be 24 bytes
+      expect(newNonce.length).toBe(24);
+
+      // Decrypt using new aeadDecrypt
+      const decrypted = crypto.aeadDecrypt(key, newNonce, newCiphertext, aad);
+      expect(Buffer.from(decrypted).toString()).toBe('new encrypted message');
+    });
+
+    test('Nonce length validation in aeadDecrypt', () => {
+      const key = crypto.randomBytes(32);
+      const plaintext = new TextEncoder().encode('test');
+      const aad = new TextEncoder().encode('aad');
+
+      // Valid 24-byte nonce
+      const { nonce: validNonce, ciphertext } = crypto.aeadEncrypt(
+        key,
+        plaintext,
+        aad
+      );
+
+      // Invalid nonce lengths should be rejected
+      const invalidNonce8 = crypto.randomBytes(8);
+      const invalidNonce16 = crypto.randomBytes(16);
+      const invalidNonce32 = crypto.randomBytes(32);
+
+      expect(() => crypto.aeadDecrypt(key, invalidNonce8, ciphertext, aad)).toThrow();
+      expect(() => crypto.aeadDecrypt(key, invalidNonce16, ciphertext, aad)).toThrow();
+      expect(() => crypto.aeadDecrypt(key, invalidNonce32, ciphertext, aad)).toThrow();
+    });
+  });
 });

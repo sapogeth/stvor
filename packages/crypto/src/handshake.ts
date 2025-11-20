@@ -119,8 +119,10 @@ export async function generatePrekeyBundle(
   try {
     mlkemKeyPair = await prim.generateMLKEMKeyPair();
   } catch (err: any) {
-    if (err.code === 'PQ_NOT_READY') {
+    if (err.code === 'MLKEM_UNAVAILABLE' || err.code === 'PQ_NOT_READY') {
       // Silent fallback: empty ML-KEM keys for classical-only mode
+      // This allows prekey bundles to be generated in browser environments
+      // where PQ modules are not available
       mlkemKeyPair = {
         publicKey: new Uint8Array(constants.ML_KEM_768_PUBLIC_KEY_LENGTH),
         secretKey: new Uint8Array(constants.ML_KEM_768_SECRET_KEY_LENGTH),
@@ -158,8 +160,11 @@ export async function generatePrekeyBundle(
   try {
     mldsaSignature = await prim.mldsaSign(bundleData, identity.mldsa.secretKey);
   } catch (err: any) {
-    if (err.code === 'PQ_NOT_READY') {
+    if (err.code === 'MLDSA_UNAVAILABLE') {
       // Silent fallback: empty ML-DSA signature for classical-only mode
+      // This allows prekey bundles to be generated in browser environments
+      // where PQ modules are not available
+      console.warn('[Handshake] ML-DSA unavailable for prekey bundle, using classical-only mode');
       mldsaSignature = new Uint8Array(constants.ML_DSA_65_SIGNATURE_LENGTH);
     } else {
       throw err;

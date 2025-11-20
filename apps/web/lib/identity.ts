@@ -145,6 +145,13 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
   // CRITICAL: If we have a valid local identity, use it immediately
   // This prevents regeneration due to transient network errors
   logInfo('identity', 'Checking local keystore first');
+
+  // Set password for loading encrypted identity
+  // Use deterministic password based on username (no timestamp for recovery)
+  const password = `${canonical}:ilyazh:secure`;
+  keystore.setPassword(password);
+  logDebug('identity', 'Password set for keystore (deterministic from username)');
+
   const localIdentity = await keystore.loadIdentity(canonical);
 
   if (localIdentity) {
@@ -238,10 +245,11 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
 
   // STEP 5: Save to IndexedDB only after relay confirms
   // SECURITY FIX: Set password for key protection (required after KDF hardening)
-  // Generate a secure password from user's Clerk ID + username (deterministic but strong)
-  const password = `${username}:${Date.now()}:secure`;
-  keystore.setPassword(password);
-  logDebug('identity', 'Password set for keystore');
+  // Use deterministic password based on canonical username (must be recoverable)
+  // NOTE: This password is derived from username, not stored - it must be consistent
+  const newPassword = `${canonical}:ilyazh:secure`;
+  keystore.setPassword(newPassword);
+  logDebug('identity', 'Password set for new identity (deterministic from username)');
 
   await keystore.saveIdentity(username, identity);
   logInfo('identity', 'Saved identity to IndexedDB');
