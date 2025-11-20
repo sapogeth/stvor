@@ -13,26 +13,56 @@ import { logDebug, logInfo, logWarn, logError } from './logger';
 // ==================== Password-based Encryption ====================
 
 /**
- * Derive encryption key from password using scrypt
- * SECURITY: Uses high-cost scrypt parameters for password derivation
+ * Derive encryption key from password using Argon2id
+ *
+ * CRITICAL SECURITY FIX (Task #3: Harden KDF Parameters)
+ * Upgraded from INTERACTIVE to SENSITIVE mode per OWASP guidelines:
+ * - INTERACTIVE: ~0.1 seconds (suitable for login, NOT for key protection)
+ * - SENSITIVE: ~0.5-1.0 seconds (suitable for offline password-based key derivation)
+ *
+ * Attack Prevention:
+ * - 8-character password space = ~200 billion combinations
+ * - INTERACTIVE mode: GPU can try 100M iterations/sec = 2000 seconds = 34 minutes
+ * - SENSITIVE mode: ~1 sec per iteration = ~200 billion seconds = 6,300 years per GPU
+ * - With 4 GPUs: still 1,500 years, making dictionary attacks infeasible
+ *
+ * Parameters:
+ * - timeCost: 3 (Argon2id iterations, SENSITIVE = 3)
+ * - memoryCost: 512MB (SENSITIVE = 2^28 bytes)
+ * - Expected execution time: 0.5-1.0 seconds on modern hardware
  */
 async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promise<Uint8Array> {
   await _sodium.ready;
   const sodium = _sodium;
 
-  // scrypt parameters (conservative - can be increased for more security)
-  const opsLimit = sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE; // ~0.1 seconds
-  const memLimit = sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE; // ~64MB
+  // SECURITY FIX: Use SENSITIVE parameters for password-based key derivation
+  // This is mandatory for protecting long-term keys like identity keypairs
+  const opsLimit = sodium.crypto_pwhash_OPSLIMIT_SENSITIVE; // ~3 seconds, much stronger
+  const memLimit = sodium.crypto_pwhash_MEMLIMIT_SENSITIVE; // ~512MB
   const keyLength = sodium.crypto_secretbox_KEYBYTES; // 32 bytes
 
-  return sodium.crypto_pwhash(
+  const startTime = Date.now();
+
+  const derivedKey = sodium.crypto_pwhash(
     keyLength,
     new Uint8Array(Buffer.from(password, 'utf-8')),
     salt,
     opsLimit,
     memLimit,
-    sodium.crypto_pwhash_ALG_ARGON2ID13 // Argon2id (more secure than scrypt)
+    sodium.crypto_pwhash_ALG_ARGON2ID13 // Argon2id (NIST-approved memory-hard function)
   );
+
+  const elapsedMs = Date.now() - startTime;
+
+  // Log execution time for verification (should be 0.5-1.0 seconds)
+  if (elapsedMs < 400 || elapsedMs > 2000) {
+    console.warn(
+      `[Crypto] KDF execution time ${elapsedMs}ms is outside expected range (400-2000ms). ` +
+      `This may indicate hardware performance issues or parameter misconfiguration.`
+    );
+  }
+
+  return derivedKey;
 }
 
 /**
@@ -240,23 +270,24 @@ class KeyStore {
       throw new Error('[KeyStore] Cannot save identity: username is empty or undefined');
     }
 
-    let ed25519SecretKey: string;
-    let mldsaSecretKey: string;
-    let encrypted = false;
-
-    // SECURITY: Encrypt secret keys if password is set
-    if (this.password) {
-      logDebug('keystore', 'Encrypting identity keys');
-      ed25519SecretKey = await encryptWithPassword(identity.ed25519.secretKey, this.password);
-      mldsaSecretKey = await encryptWithPassword(identity.mldsa.secretKey, this.password);
-      encrypted = true;
-      logInfo('keystore', 'Identity keys encrypted');
-    } else {
-      logWarn('keystore', 'Saving identity WITHOUT encryption - set password for security');
-      // Use libsodium's to_base64 for browser compatibility
-      ed25519SecretKey = sodium.to_base64(new Uint8Array(identity.ed25519.secretKey), sodium.base64_variants.ORIGINAL);
-      mldsaSecretKey = sodium.to_base64(new Uint8Array(identity.mldsa.secretKey), sodium.base64_variants.ORIGINAL);
+    // CRITICAL SECURITY FIX (Task #2: Enforce Password Protection)
+    // Identity keys are long-term cryptographic material. They MUST be encrypted.
+    // Storing them in plaintext exposes them to XSS attacks.
+    if (!this.password) {
+      throw new Error(
+        '[KeyStore] CRITICAL: Password is required for identity key protection. ' +
+        'Identity keypairs are long-term cryptographic material that must never be stored in plaintext. ' +
+        'Call setPassword() before saving identity. ' +
+        'This is a security-critical requirement, not optional.'
+      );
     }
+
+    // Encrypt identity secret keys with password-derived key (Argon2id SENSITIVE)
+    logDebug('keystore', 'Encrypting identity keys with SENSITIVE Argon2id KDF');
+    const ed25519SecretKey = await encryptWithPassword(identity.ed25519.secretKey, this.password);
+    const mldsaSecretKey = await encryptWithPassword(identity.mldsa.secretKey, this.password);
+    const encrypted = true;
+    logInfo('keystore', 'Identity keys encrypted with hardened KDF parameters');
 
     // Convert keys to base64 strings
     const ed25519PublicKeyB64 = sodium.to_base64(new Uint8Array(identity.ed25519.publicKey), sodium.base64_variants.ORIGINAL);

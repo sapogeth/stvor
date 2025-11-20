@@ -116,26 +116,22 @@ export function buildAAD(
 }
 
 /**
- * Build nonce: R64 || C32
- * R64 = ratchet ID (big-endian)
- * C32 = counter (big-endian)
+ * DEPRECATED: buildNonce() is no longer used
+ *
+ * SECURITY FIX (Task #1): Nonce generation now handled by aeadEncrypt()
+ * - Previous deterministic nonce (ratchetId || counter) is UNSAFE
+ * - Nonce reuse occurs on session state loss/recovery
+ * - aeadEncrypt() now generates random 24-byte nonce for every message
+ * - This eliminates session state dependencies for nonce uniqueness
+ *
+ * This function kept for reference only. DO NOT USE.
  */
 export function buildNonce(ratchetId: bigint, counter: number): Uint8Array {
-  if (counter >= 0xFFFFFFFF) {
-    throw new Error('Counter overflow - rekey required');
-  }
-
-  const nonce = new Uint8Array(constants.AEAD_NONCE_LENGTH);
-
-  // R64 (first 8 bytes)
-  const ratchetView = new DataView(nonce.buffer, 0, 8);
-  ratchetView.setBigUint64(0, ratchetId, false);
-
-  // C32 (next 4 bytes)
-  const counterView = new DataView(nonce.buffer, 8, 4);
-  counterView.setUint32(0, counter, false);
-
-  return nonce;
+  throw new Error(
+    'DEPRECATED: buildNonce() must not be used. ' +
+    'Nonce generation is now handled by aeadEncrypt() with random 24-byte nonces. ' +
+    'See primitives.ts for security fix details.'
+  );
 }
 
 /**
@@ -169,6 +165,11 @@ function deriveMessageKey(
 
 /**
  * Encrypt a message
+ *
+ * SECURITY FIX (Task #1): aeadEncrypt() now generates random nonce internally
+ * - No longer uses deterministic nonce = ratchetId || counter
+ * - Nonce is returned as part of EncryptedRecord
+ * - Wire format: AAD || nonce(24) || ciphertext || auth_tag(16)
  */
 export async function encryptMessage(
   state: RatchetState,
@@ -185,18 +186,16 @@ export async function encryptMessage(
   // Derive message key
   const { messageKey, nextChainKey } = deriveMessageKey(state.sendChainKey, state.sessionId);
 
-  // Build nonce
-  const nonce = buildNonce(state.sendRatchetId, state.sendCounter);
-
-  // Build AAD with sid
+  // Build AAD with sid (AAD still includes ratchet state for integrity, but not nonce)
   const sequence = BigInt(state.totalMessages);
   const aad = buildAAD(state.sessionId, sequence, state.sendRatchetId);
 
   // Add padding to resist size correlation attacks
   const paddedPlaintext = prim.addPadding(plaintext);
 
-  // Encrypt
-  const ciphertext = prim.aeadEncrypt(messageKey, nonce, paddedPlaintext, aad);
+  // Encrypt - SECURITY FIX: aeadEncrypt now returns { nonce, ciphertext }
+  // Random nonce generated internally (24 bytes for XChaCha20)
+  const { nonce, ciphertext } = prim.aeadEncrypt(messageKey, paddedPlaintext, aad);
 
   // Zeroize message key and padded plaintext
   prim.zeroize(messageKey);

@@ -383,11 +383,16 @@ export async function generateMLDSAKeyPair(): Promise<MLDSAKeyPair> {
 
 export async function mldsaSign(message: Uint8Array, secretKey: Uint8Array): Promise<Uint8Array> {
   if (!mldsa65) {
-    // Browser fallback: no real ML-DSA in this environment
-    disablePQ('browser PQ ML-DSA unavailable at sign()');
-    // Return an explicit tagged dummy signature so both sides can reproduce/verify in dev
-    const enc = new TextEncoder();
-    return enc.encode('DEV-ML-DSA-SIGNATURE');
+    // CRITICAL SECURITY FIX: Fail hard instead of returning fake signatures
+    // Fake signatures compromise the entire dual-signature security model
+    const err: any = new Error(
+      'CRITICAL CRYPTO FAILURE: ML-DSA-65 module not initialized. ' +
+      'Post-quantum signatures are mandatory and cannot be bypassed. ' +
+      'This indicates a critical initialization error or environment incompatibility. ' +
+      'Application must terminate.'
+    );
+    err.code = 'MLDSA_UNAVAILABLE';
+    throw err;
   }
 
   if (secretKey.length !== constants.ML_DSA_65_SECRET_KEY_LENGTH) {
@@ -405,27 +410,29 @@ export async function mldsaSign(message: Uint8Array, secretKey: Uint8Array): Pro
 
 export async function mldsaVerify(signature: Uint8Array, message: Uint8Array, publicKey: Uint8Array): Promise<boolean> {
   if (!mldsa65) {
-    // If PQ was disabled earlier, accept only our dummy signature
-    const dec = new TextDecoder();
-    const sigStr = dec.decode(signature);
-    if (sigStr === 'DEV-ML-DSA-SIGNATURE') {
-      // Silent accept of dev signature in PQ-disabled mode
-      return true;
-    }
-    // Reject non-dev ML-DSA signature while PQ disabled (silent)
-    return false;
+    // CRITICAL SECURITY FIX: Fail hard instead of accepting fake signatures
+    // Accepting fake signatures bypasses the dual-signature security model
+    const err: any = new Error(
+      'CRITICAL CRYPTO FAILURE: ML-DSA-65 module not initialized during verification. ' +
+      'Post-quantum signature verification is mandatory and cannot be bypassed. ' +
+      'Application must terminate.'
+    );
+    err.code = 'MLDSA_UNAVAILABLE';
+    throw err;
   }
 
   if (signature.length !== constants.ML_DSA_65_SIGNATURE_LENGTH) {
-    return false;
+    throw new Error(`Invalid ML-DSA-65 signature length: expected ${constants.ML_DSA_65_SIGNATURE_LENGTH}, got ${signature.length}`);
   }
   if (publicKey.length !== constants.ML_DSA_65_PUBLIC_KEY_LENGTH) {
-    return false;
+    throw new Error(`Invalid ML-DSA-65 public key length: expected ${constants.ML_DSA_65_PUBLIC_KEY_LENGTH}, got ${publicKey.length}`);
   }
 
   try {
     return await mldsa65.verify(message, signature, publicKey);
   } catch (error) {
+    // Log verification failure but don't silently accept
+    console.error('[Crypto] ML-DSA-65 verification error:', error);
     return false;
   }
 }
@@ -441,22 +448,49 @@ export function hkdfSHA384(
   return hkdf(sha384, ikm, salt, info, length);
 }
 
-// ==================== ChaCha20-Poly1305-IETF (AEAD) ====================
+// ==================== XChaCha20-Poly1305 (AEAD with Random Nonce) ====================
+/**
+ * CRITICAL SECURITY FIX (Task #1: Nonce Reuse Prevention)
+ *
+ * Switched from deterministic nonce (ratchetId || counter) to XChaCha20-Poly1305
+ * with RANDOM 24-byte nonce for every encryption.
+ *
+ * Rationale:
+ * - Previous nonce = ratchetId (8) || counter (4) = deterministic
+ * - If session state lost/restored, nonces reused with same key
+ * - Nonce reuse in ChaCha20-Poly1305 breaks AEAD security (plaintext XOR revealed)
+ * - XChaCha20 (24-byte nonce) allows random nonces (2^192 space >> 2^32 messages per session)
+ * - Random nonce eliminates session state dependencies for nonce uniqueness
+ *
+ * Wire Format Change:
+ * - Encryption now includes nonce in output: nonce (24) || ciphertext || tag
+ * - Client must handle new format in wire.ts decoding
+ * - This is a BREAKING PROTOCOL change - version bump required
+ */
 
 export function aeadEncrypt(
   key: Uint8Array,
-  nonce: Uint8Array,
   plaintext: Uint8Array,
   aad: Uint8Array
-): Uint8Array {
+): { nonce: Uint8Array; ciphertext: Uint8Array } {
   if (key.length !== constants.AEAD_KEY_LENGTH) {
     throw new Error('Invalid AEAD key length');
   }
-  if (nonce.length !== constants.AEAD_NONCE_LENGTH) {
-    throw new Error('Invalid AEAD nonce length');
-  }
 
-  return (sodium as any).crypto_aead_chacha20poly1305_ietf_encrypt(plaintext, aad, null, nonce, key);
+  // SECURITY FIX: Generate random 24-byte nonce for every message
+  // XChaCha20-Poly1305 nonce space is 2^192, safe for random generation
+  const nonce = randomBytes(24); // 24 bytes for XChaCha20
+
+  // Encrypt using XChaCha20-Poly1305-IETF
+  const ciphertext = (sodium as any).crypto_aead_xchacha20poly1305_ietf_encrypt(
+    plaintext,
+    aad,
+    null,
+    nonce,
+    key
+  );
+
+  return { nonce, ciphertext };
 }
 
 export function aeadDecrypt(
@@ -468,11 +502,18 @@ export function aeadDecrypt(
   if (key.length !== constants.AEAD_KEY_LENGTH) {
     throw new Error('Invalid AEAD key length');
   }
-  if (nonce.length !== constants.AEAD_NONCE_LENGTH) {
-    throw new Error('Invalid AEAD nonce length');
+  if (nonce.length !== 24) {
+    throw new Error('Invalid XChaCha20 nonce length: expected 24 bytes');
   }
 
-  return (sodium as any).crypto_aead_chacha20poly1305_ietf_decrypt(null, ciphertext, aad, nonce, key);
+  // Decrypt using XChaCha20-Poly1305-IETF
+  return (sodium as any).crypto_aead_xchacha20poly1305_ietf_decrypt(
+    null,
+    ciphertext,
+    aad,
+    nonce,
+    key
+  );
 }
 
 // ==================== Random Bytes ====================
