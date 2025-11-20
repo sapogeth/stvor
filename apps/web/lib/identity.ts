@@ -13,6 +13,35 @@ import { keystore } from './keystore';
 import { getRelayUrl } from './relay-url';
 import { logDebug, logInfo, logWarn, logError, redactToken, redactPublicKey } from './logger';
 
+// ==================== Relay Identity Verification State ====================
+
+/**
+ * CRITICAL SECURITY: Track relay identity verification state
+ *
+ * When this flag is true, it indicates that identity verification against the relay
+ * failed - either due to network issues preventing verification or actual mismatches.
+ *
+ * Application MUST:
+ * 1. Call isRelayVerificationFailed() before trusting identity for critical operations
+ * 2. If true, alert user: "Could not verify identity with relay. Be cautious of impersonation."
+ * 3. In production, consider requiring explicit user confirmation before proceeding
+ * 4. Track failed verifications in telemetry for network debugging
+ *
+ * Note: We distinguish between:
+ * - Network timeouts (recoverable, app can retry)
+ * - Network errors (recoverable, app should continue with caution)
+ * - Verification failures (irrecoverable, indicates mismatch or tampering)
+ */
+let RELAY_VERIFICATION_FAILED = false;
+
+/**
+ * Check if relay identity verification failed
+ * Returns true if identity could not be verified against relay
+ */
+export function isRelayVerificationFailed(): boolean {
+  return RELAY_VERIFICATION_FAILED;
+}
+
 /**
  * Error thrown when identity exists on relay but private keys are missing locally
  * This indicates the user needs to re-enroll this device
@@ -180,11 +209,17 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
     logInfo('identity', 'Found existing local identity, using it (idempotent)');
     logInfo('identity', 'Identity loaded', { ed25519Public: redactPublicKey(localIdentity.ed25519.publicKey) });
 
-    // OPTIONAL: Verify it matches relay (but don't fail if network is down)
+    // CRITICAL: Verify it matches relay (with proper timeout and error handling)
+    // We distinguish between:
+    // 1. Network timeouts (recoverable, but security-degraded)
+    // 2. Network errors (recoverable, but security-degraded)
+    // 3. Verification failures (irrecoverable, indicates mismatch/tampering)
     const relayUrl = getRelayUrl();
+    let verificationSucceeded = false;
+
     try {
       const response = await fetch(`${relayUrl}/directory/${username}`, {
-        signal: AbortSignal.timeout(3000) // 3s timeout
+        signal: AbortSignal.timeout(10000) // 10s timeout (more forgiving for prod networks)
       });
       if (response.ok) {
         const data = await response.json();
@@ -193,19 +228,44 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
 
         if (remoteEd25519Hex !== localEd25519Hex) {
           logError('identity', 'CRITICAL: Local identity differs from relay');
-          logError('identity', 'This should never happen - suggests database corruption');
+          logError('identity', 'This should never happen - suggests database corruption or tampering');
           logError('identity', 'Local key', { key: localEd25519Hex.slice(0, 32) + '...' });
           logError('identity', 'Remote key', { key: remoteEd25519Hex.slice(0, 32) + '...' });
+          RELAY_VERIFICATION_FAILED = true;
           throw new Error('Identity mismatch: local vs relay. Clear browser data and re-register.');
         }
-        logInfo('identity', 'Local identity verified against relay');
+        logInfo('identity', 'Local identity verified against relay ✓');
+        verificationSucceeded = true;
       }
     } catch (err) {
-      // Network error is OK - we have local identity, that's what matters
+      // Check if this is an identity mismatch error (non-recoverable)
       if (err instanceof Error && err.message.includes('Identity mismatch')) {
-        throw err; // Re-throw mismatch errors
+        throw err; // Re-throw mismatch errors immediately
       }
-      logWarn('identity', 'Could not verify against relay (network issue), continuing with local identity');
+
+      // Network timeout: recoverable but security-degraded
+      if (err instanceof Error && err.name === 'AbortError') {
+        RELAY_VERIFICATION_FAILED = true;
+        logWarn('identity', '⚠️  Relay verification TIMEOUT (10s) - identity not verified');
+        logWarn('identity', '⚠️  Possible causes: slow network, relay overloaded, relay offline');
+        logWarn('identity', '⚠️  Using local identity WITHOUT relay confirmation');
+        logWarn('identity', '⚠️  Risk: Client is vulnerable to impersonation if relay is compromised');
+      } else {
+        // Other network error: recoverable but security-degraded
+        RELAY_VERIFICATION_FAILED = true;
+        logWarn('identity', '⚠️  Relay verification FAILED (network error) - identity not verified');
+        logWarn('identity', '⚠️  Error details:', { error: err });
+        logWarn('identity', '⚠️  Using local identity WITHOUT relay confirmation');
+        logWarn('identity', '⚠️  Risk: Client is vulnerable to impersonation if relay is compromised');
+      }
+    }
+
+    if (!verificationSucceeded) {
+      logWarn('identity', 'IMPORTANT: Relay verification did not complete. Application should:');
+      logWarn('identity', '1. Call isRelayVerificationFailed() to detect this condition');
+      logWarn('identity', '2. Show user warning: "Could not verify identity with relay"');
+      logWarn('identity', '3. Consider requiring explicit user confirmation before proceeding');
+      logWarn('identity', '4. Track this in telemetry for network debugging');
     }
 
     return localIdentity;
