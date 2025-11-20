@@ -74,13 +74,17 @@ async function encryptWithPassword(plaintext: Uint8Array, password: string): Pro
   const sodium = _sodium;
 
   // Generate random salt for password derivation
-  const salt = sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES); // 16 bytes
+  // Use standard size: 16 bytes for Argon2id
+  const SALT_BYTES = sodium.crypto_pwhash_SALTBYTES || 16;
+  const salt = sodium.randombytes_buf(SALT_BYTES);
 
   // Derive encryption key from password
   const key = await deriveKeyFromPassword(password, salt);
 
   // Generate random nonce for XChaCha20-Poly1305
-  const nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES); // 24 bytes
+  // Use standard size: 24 bytes for XChaCha20
+  const NONCE_BYTES = sodium.crypto_secretbox_NONCEBYTES || 24;
+  const nonce = sodium.randombytes_buf(NONCE_BYTES);
 
   // Encrypt with XChaCha20-Poly1305-IETF
   const ciphertext = sodium.crypto_secretbox_easy(plaintext, nonce, key);
@@ -107,8 +111,9 @@ async function decryptWithPassword(encryptedBase64: string, password: string): P
   const combined = sodium.from_base64(encryptedBase64, sodium.base64_variants.ORIGINAL);
 
   // Extract salt, nonce, ciphertext
-  const saltLength = sodium.crypto_pwhash_SALTBYTES; // 16
-  const nonceLength = sodium.crypto_secretbox_NONCEBYTES; // 24
+  // Use standard sizes: 16 bytes for salt, 24 bytes for nonce
+  const saltLength = sodium.crypto_pwhash_SALTBYTES || 16;
+  const nonceLength = sodium.crypto_secretbox_NONCEBYTES || 24;
 
   const salt = combined.slice(0, saltLength);
   const nonce = combined.slice(saltLength, saltLength + nonceLength);
