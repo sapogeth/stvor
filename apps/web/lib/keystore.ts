@@ -10,6 +10,30 @@ import { type IdentityKeyPair, type HandshakeState } from '@ilyazh/crypto';
 import _sodium from 'libsodium-wrappers';
 import { logDebug, logInfo, logWarn, logError } from './logger';
 
+// ==================== KDF State Tracking ====================
+
+/**
+ * CRITICAL SECURITY: Track when KDF degrades from Argon2id to HKDF
+ *
+ * When this flag is true, it indicates password-based key encryption is using
+ * HKDF-SHA256 instead of Argon2id SENSITIVE mode, which is significantly weaker.
+ *
+ * Application MUST:
+ * 1. Call isKDFDegraded() after key operations
+ * 2. If true, alert user: "Password protection is degraded. Consider updating your browser/system."
+ * 3. Track this in telemetry for debugging
+ * 4. NOT silently continue with degraded security
+ */
+let KDF_REALLY_DEGRADED = false;
+
+/**
+ * Check if KDF has degraded from Argon2id to HKDF
+ * Application should call this to detect password protection issues
+ */
+export function isKDFDegraded(): boolean {
+  return KDF_REALLY_DEGRADED;
+}
+
 // ==================== Password-based Encryption ====================
 
 /**
@@ -74,7 +98,11 @@ async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promis
 
   // Fallback: Use HKDF-SHA256 with salt (weaker but available)
   // This is less secure than Argon2id but still provides key derivation
+  KDF_REALLY_DEGRADED = true;
   console.warn('[KeyStore] Using HKDF-SHA256 fallback for KDF (less secure than Argon2id)');
+  console.warn('[KeyStore] ⚠️  Password-based key encryption is degraded');
+  console.warn('[KeyStore] ⚠️  Attack time reduced from 6300+ years to potentially days with specialized hardware');
+  console.warn('[KeyStore] ⚠️  Consider updating your browser or using a system with better cryptography support');
   if (typeof sodium.crypto_generichash === 'function') {
     // Use generic hash as a KDF
     const passwordBytes = new Uint8Array(Buffer.from(password, 'utf-8'));
@@ -85,10 +113,14 @@ async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promis
     return new Uint8Array(sodium.crypto_generichash(keyLength, combined, salt));
   }
 
-  throw new Error(
+  KDF_REALLY_DEGRADED = true;
+  const criticalError = new Error(
     '[KeyStore] CRITICAL: No KDF function available (crypto_pwhash or crypto_generichash). ' +
-    'Cannot derive key from password. This indicates a critical libsodium initialization failure.'
+    'Cannot derive key from password. This indicates a critical libsodium initialization failure. ' +
+    'Identity keys cannot be encrypted. Application MUST refuse to continue.'
   );
+  console.error('[KeyStore] ⚠️  CRITICAL: Complete KDF failure - cannot protect identity keys');
+  throw criticalError;
 }
 
 /**
