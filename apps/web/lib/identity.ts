@@ -54,18 +54,39 @@ async function ensureFreshKeystore(): Promise<void> {
       await keystore.deleteDatabase();
       logInfo('identity', 'Old keystore cleared');
 
-      // Clear JWT tokens
-      const keys = Object.keys(localStorage);
-      for (const key of keys) {
-        if (key.startsWith('jwt_token_')) {
+      // Nuclear option: manually delete all ilyazh-related IndexedDB and localStorage keys
+      // This ensures no stale data remains after migration
+      const allKeys = Object.keys(localStorage);
+      for (const key of allKeys) {
+        if (key.startsWith('jwt_token_') || key.includes('ilyazh') || key.includes('keystore')) {
           localStorage.removeItem(key);
+          logDebug('identity', `Removed localStorage key: ${key}`);
         }
       }
-      logInfo('identity', 'Old JWT tokens cleared');
+      logInfo('identity', 'Old JWT tokens and cache cleared');
+
+      // Try to list all IndexedDB databases and delete them
+      if (typeof indexedDB !== 'undefined' && indexedDB.databases) {
+        try {
+          const dbs = await indexedDB.databases();
+          for (const db of dbs) {
+            if (db.name && db.name.includes('ilyazh')) {
+              const deleteReq = indexedDB.deleteDatabase(db.name);
+              await new Promise((resolve, reject) => {
+                deleteReq.onsuccess = resolve;
+                deleteReq.onerror = reject;
+              });
+              logInfo('identity', `Deleted IndexedDB: ${db.name}`);
+            }
+          }
+        } catch (err) {
+          logWarn('identity', 'Could not enumerate IndexedDB databases', { error: err });
+        }
+      }
 
       // Update migration version
       localStorage.setItem('ilyazh-keystore-migration-version', currentVersion);
-      logInfo('identity', 'Migration complete');
+      logInfo('identity', 'Migration complete - all old data cleared');
     } catch (err) {
       logError('identity', 'Migration failed', { error: err });
       // Continue anyway - worst case, user has to clear manually
