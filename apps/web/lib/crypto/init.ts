@@ -13,6 +13,8 @@
 
 import { getCryptoOrThrow, getCryptoStatus } from '@/lib/runtime/crypto-safe';
 import { initCrypto as initPrimitives } from '@ilyazh/crypto';
+import { debugLibsodiumAvailability } from '@/lib/keystore';
+import { validateProductionEnvironment } from '@/lib/production-guard';
 
 /**
  * Initialization state machine
@@ -59,6 +61,10 @@ export async function initCryptoOnce(): Promise<void> {
   initState = 'initializing';
   initPromise = (async () => {
     try {
+      // Step 0: Validate production environment (Clerk keys, relay keys)
+      console.log('[crypto-init] Validating production environment...');
+      validateProductionEnvironment();
+
       // Step 1: Validate WebCrypto environment
       const { ce } = getCryptoOrThrow();
       console.log('[crypto-init] WebCrypto available:', {
@@ -74,12 +80,18 @@ export async function initCryptoOnce(): Promise<void> {
       await initPrimitives();
       console.log('[crypto-init] libsodium ready');
 
-      // Step 3: Initialize liboqs WASM (when available)
-      // Currently mocked; will add real initialization when liboqs-wasm is integrated
-      // Example:
-      // console.log('[crypto-init] Loading liboqs WASM...');
-      // await oqs.ready;
-      // console.log('[crypto-init] liboqs ready');
+      // Step 2.5: Debug libsodium availability (KDF validation)
+      console.log('[crypto-init] Checking KDF availability...');
+      await debugLibsodiumAvailability();
+
+      // Step 3: Initialize liboqs WASM (PQ cryptography)
+      console.log('[crypto-init] Loading liboqs WASM...');
+      const { initPQBrowser } = await import('@ilyazh/crypto');
+      const { pqAvailable, pqReallyUnavailable } = await initPQBrowser();
+      console.log('[crypto-init] liboqs initialization result:', {
+        pqAvailable,
+        pqReallyUnavailable,
+      });
 
       // Step 4: Warm up IndexedDB keystore
       // Open the database to ensure it's ready for first access

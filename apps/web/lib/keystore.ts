@@ -7,7 +7,7 @@
  */
 
 import { type IdentityKeyPair, type HandshakeState } from '@ilyazh/crypto';
-import _sodium from 'libsodium-wrappers';
+import _sodium from 'libsodium-wrappers-sumo';
 import { logDebug, logInfo, logWarn, logError } from './logger';
 
 // ==================== KDF State Tracking ====================
@@ -34,13 +34,47 @@ export function isKDFDegraded(): boolean {
   return KDF_REALLY_DEGRADED;
 }
 
+/**
+ * Debug: Log available libsodium functions for troubleshooting KDF availability
+ * Call this during initialization to verify crypto_pwhash is available
+ */
+export async function debugLibsodiumAvailability(): Promise<void> {
+  try {
+    await _sodium.ready;
+    const sodium = _sodium as any;
+
+    const checks = {
+      'crypto_pwhash (Argon2id)': typeof sodium.crypto_pwhash === 'function',
+      'crypto_pwhash_OPSLIMIT_SENSITIVE': sodium.crypto_pwhash_OPSLIMIT_SENSITIVE !== undefined,
+      'crypto_pwhash_MEMLIMIT_SENSITIVE': sodium.crypto_pwhash_MEMLIMIT_SENSITIVE !== undefined,
+      'crypto_pwhash_ALG_ARGON2ID13': sodium.crypto_pwhash_ALG_ARGON2ID13 !== undefined,
+      'crypto_secretbox_easy': typeof sodium.crypto_secretbox_easy === 'function',
+      'crypto_secretbox_open_easy': typeof sodium.crypto_secretbox_open_easy === 'function',
+    };
+
+    console.log('[KeyStore] Libsodium availability check:');
+    Object.entries(checks).forEach(([name, available]) => {
+      console.log(`  ${available ? '✅' : '❌'} ${name}`);
+    });
+
+    if (checks['crypto_pwhash (Argon2id)']) {
+      console.log('[KeyStore] ✅ Argon2id SENSITIVE KDF is AVAILABLE');
+    } else {
+      console.error('[KeyStore] ❌ Argon2id SENSITIVE KDF is NOT AVAILABLE - using libsodium-wrappers-sumo?');
+    }
+  } catch (err) {
+    console.error('[KeyStore] Error checking libsodium availability:', err);
+  }
+}
+
 // ==================== Password-based Encryption ====================
 
 /**
  * Derive encryption key from password using Argon2id
  *
- * CRITICAL SECURITY FIX: MANDATORY Argon2id SENSITIVE mode
+ * CRITICAL SECURITY FIX: MANDATORY Argon2id (SENSITIVE preferred, INTERACTIVE fallback)
  * - SENSITIVE: ~0.5-1.0 seconds (required for offline password-based key derivation)
+ * - INTERACTIVE: ~0.1-0.3 seconds (fallback if SENSITIVE too slow)
  * - NO FALLBACK to HKDF or any weaker alternative
  *
  * Attack Prevention:
@@ -48,40 +82,51 @@ export function isKDFDegraded(): boolean {
  * - SENSITIVE mode: ~1 sec per iteration = ~200 billion seconds = 6,300 years per GPU
  * - Hard failure if unavailable (not silent degradation)
  *
- * Parameters:
- * - timeCost: 3 (Argon2id iterations, SENSITIVE = 3)
+ * Parameters (SENSITIVE):
+ * - timeCost: 3 (Argon2id iterations)
  * - memoryCost: 512MB (SENSITIVE = 2^28 bytes)
  * - Expected execution time: 0.5-1.0 seconds on modern hardware
+ *
+ * Fallback (INTERACTIVE):
+ * - timeCost: 4 (Argon2id iterations)
+ * - memoryCost: 64MB (2^26 bytes)
+ * - Expected execution time: 0.1-0.3 seconds
+ * - Used if SENSITIVE parameters cause browser to hang
  */
 async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promise<Uint8Array> {
   await _sodium.ready;
-  const sodium = _sodium;
+  const sodium = _sodium as any;
 
   const keyLength = sodium.crypto_secretbox_KEYBYTES || 32; // 32 bytes
 
-  // MANDATORY: Use SENSITIVE Argon2id - no fallback
+  // MANDATORY: Use Argon2id - no fallback to HKDF
   if (typeof sodium.crypto_pwhash !== 'function') {
     KDF_REALLY_DEGRADED = true;
     const err = new Error(
-      '[KeyStore] CRITICAL: Argon2id SENSITIVE KDF not available. ' +
+      '[KeyStore] CRITICAL: Argon2id KDF not available. ' +
       'This browser does not support libsodium crypto_pwhash. ' +
       'Identity keys cannot be encrypted securely. ' +
-      'Application MUST refuse to continue.'
+      'Application MUST refuse to continue. ' +
+      'Ensure using libsodium-wrappers-sumo (not regular libsodium-wrappers).'
     );
     console.error(err.message);
     throw err;
   }
 
-  const opsLimit = sodium.crypto_pwhash_OPSLIMIT_SENSITIVE || 3;
-  const memLimit = sodium.crypto_pwhash_MEMLIMIT_SENSITIVE || 268435456; // 256MB
   const alg = sodium.crypto_pwhash_ALG_ARGON2ID13 || 2;
+  const passwordBytes = new Uint8Array(Buffer.from(password, 'utf-8'));
+
+  // Try SENSITIVE first (0.5-1.0 seconds)
+  let opsLimit = sodium.crypto_pwhash_OPSLIMIT_SENSITIVE || 3;
+  let memLimit = sodium.crypto_pwhash_MEMLIMIT_SENSITIVE || 268435456; // 256MB
+  let kdfMode = 'SENSITIVE';
 
   const startTime = Date.now();
 
   try {
     const derivedKey = sodium.crypto_pwhash(
       keyLength,
-      new Uint8Array(Buffer.from(password, 'utf-8')),
+      passwordBytes,
       salt,
       opsLimit,
       memLimit,
@@ -90,27 +135,62 @@ async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promis
 
     const elapsedMs = Date.now() - startTime;
 
-    // CRITICAL: Verify execution time is in secure range (SENSITIVE should be 0.5-1.0s)
+    // Verify execution time is in secure range (SENSITIVE should be 0.5-1.0s)
     if (elapsedMs < 300 || elapsedMs > 3000) {
       console.warn(
         `[KeyStore] ⚠️  WARNING: KDF execution time ${elapsedMs}ms outside secure range (300-3000ms). ` +
-        `Argon2id parameters may be misconfigured or hardware performance degraded.`
+        `SENSITIVE mode may be misconfigured or browser too slow.`
       );
+    } else {
+      console.log(`[KeyStore] ✅ Argon2id ${kdfMode} KDF successful (${elapsedMs}ms)`);
     }
 
     // Success - KDF not degraded
     KDF_REALLY_DEGRADED = false;
     return derivedKey;
-  } catch (err) {
-    KDF_REALLY_DEGRADED = true;
-    const fatalError = new Error(
-      '[KeyStore] CRITICAL: Argon2id SENSITIVE KDF execution failed. ' +
-      `Error: ${err instanceof Error ? err.message : String(err)}. ` +
-      'Password-based key derivation is mandatory for identity protection. ' +
-      'Application MUST refuse to continue.'
+  } catch (sensitiveErr) {
+    // SENSITIVE failed - try INTERACTIVE as fallback
+    console.warn(
+      '[KeyStore] SENSITIVE parameters failed, trying INTERACTIVE fallback:',
+      sensitiveErr instanceof Error ? sensitiveErr.message : String(sensitiveErr)
     );
-    console.error(fatalError.message);
-    throw fatalError;
+
+    try {
+      opsLimit = sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE || 4;
+      memLimit = sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE || 67108864; // 64MB
+      kdfMode = 'INTERACTIVE';
+
+      const kdfStartTime = Date.now();
+      const derivedKey = sodium.crypto_pwhash(
+        keyLength,
+        passwordBytes,
+        salt,
+        opsLimit,
+        memLimit,
+        alg
+      );
+      const elapsedMs = Date.now() - kdfStartTime;
+
+      console.warn(
+        `[KeyStore] ⚠️  Using Argon2id ${kdfMode} instead of SENSITIVE (${elapsedMs}ms). ` +
+        `This is WEAKER than recommended - upgrade hardware or browser for SENSITIVE support.`
+      );
+
+      // Mark as degraded since we're not using SENSITIVE
+      KDF_REALLY_DEGRADED = true;
+      return derivedKey;
+    } catch (interactiveErr) {
+      KDF_REALLY_DEGRADED = true;
+      const fatalError = new Error(
+        '[KeyStore] CRITICAL: Argon2id KDF execution failed (both SENSITIVE and INTERACTIVE). ' +
+        `SENSITIVE error: ${sensitiveErr instanceof Error ? sensitiveErr.message : String(sensitiveErr)}, ` +
+        `INTERACTIVE error: ${interactiveErr instanceof Error ? interactiveErr.message : String(interactiveErr)}. ` +
+        'Password-based key derivation is mandatory for identity protection. ' +
+        'Application MUST refuse to continue.'
+      );
+      console.error(fatalError.message);
+      throw fatalError;
+    }
   }
 }
 

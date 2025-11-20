@@ -12,10 +12,10 @@ export * from './skipped-keys.js';
 export * from './group-chat.js';
 
 // ============================================================================
-// Security Detection Functions (Defense-in-Depth)
+// PQ Initialization (Browser WASM Loading)
 // ============================================================================
 
-export { isPQReallyUnavailable } from './primitives.js';
+export { initPQBrowser, isPQAvailable, isPQReallyUnavailable } from './pq-browser.js';
 
 // ============================================================================
 // Defense-in-Depth Security Module (KAIST NetS&P Lab)
