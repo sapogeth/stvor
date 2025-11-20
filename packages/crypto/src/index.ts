@@ -12,6 +12,12 @@ export * from './skipped-keys.js';
 export * from './group-chat.js';
 
 // ============================================================================
+// Security Detection Functions (Defense-in-Depth)
+// ============================================================================
+
+export { isPQReallyUnavailable } from './primitives.js';
+
+// ============================================================================
 // Defense-in-Depth Security Module (KAIST NetS&P Lab)
 // @see https://ieeexplore.ieee.org/document/9152701 (EREBUS)
 // @see https://ieeexplore.ieee.org/document/9519425 (DNS-over-HTTPS Privacy)
