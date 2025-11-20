@@ -377,8 +377,9 @@ export async function initiateHandshake(
   try {
     message.mldsaSignature = await prim.mldsaSign(partialTranscript, initiatorIdentity.mldsa.secretKey);
   } catch (err: any) {
-    if (err.code === 'PQ_NOT_READY') {
+    if (err.code === 'MLDSA_UNAVAILABLE') {
       // Silent fallback: empty ML-DSA signature for classical-only mode
+      console.warn('[Handshake] ML-DSA unavailable for initiator signature, using classical-only mode');
       message.mldsaSignature = new Uint8Array(constants.ML_DSA_65_SIGNATURE_LENGTH);
     } else {
       throw err;
@@ -452,11 +453,22 @@ export async function completeHandshake(
       initiatorMsg.identityPublicEd25519
     );
 
-    const mldsaValid = await prim.mldsaVerify(
-      initiatorMsg.mldsaSignature,
-      partialTranscript,
-      initiatorMsg.identityPublicMLDSA
-    );
+    let mldsaValid = true;
+    try {
+      mldsaValid = await prim.mldsaVerify(
+        initiatorMsg.mldsaSignature,
+        partialTranscript,
+        initiatorMsg.identityPublicMLDSA
+      );
+    } catch (err: any) {
+      if (err.code === 'MLDSA_UNAVAILABLE') {
+        // In classical-only mode, ML-DSA verification is skipped (empty signature)
+        console.warn('[Handshake] ML-DSA unavailable for verification, using classical-only mode');
+        mldsaValid = true; // Accept empty signature in classical-only mode
+      } else {
+        throw err;
+      }
+    }
 
     // Dual-signature mode: both must pass
     if (!ed25519Valid || !mldsaValid) {
@@ -512,7 +524,19 @@ export async function completeHandshake(
 
   // Sign transcript
   responderMsg.ed25519Signature = prim.ed25519Sign(transcriptHash, responderIdentity.ed25519.secretKey);
-  responderMsg.mldsaSignature = await prim.mldsaSign(transcriptHash, responderIdentity.mldsa.secretKey);
+
+  // Try to sign with ML-DSA, fall back to empty signature if PQ unavailable
+  try {
+    responderMsg.mldsaSignature = await prim.mldsaSign(transcriptHash, responderIdentity.mldsa.secretKey);
+  } catch (err: any) {
+    if (err.code === 'MLDSA_UNAVAILABLE') {
+      // Silent fallback: empty ML-DSA signature for classical-only mode
+      console.warn('[Handshake] ML-DSA unavailable for responder signature, using classical-only mode');
+      responderMsg.mldsaSignature = new Uint8Array(constants.ML_DSA_65_SIGNATURE_LENGTH);
+    } else {
+      throw err;
+    }
+  }
 
   // Derive session ID and root key
   const sessionId = prim.hkdfSHA384(
@@ -598,11 +622,22 @@ export async function finalizeHandshake(
       responderMsg.identityPublicEd25519
     );
 
-    const mldsaValid = await prim.mldsaVerify(
-      responderMsg.mldsaSignature,
-      transcriptHash,
-      responderMsg.identityPublicMLDSA
-    );
+    let mldsaValid = true;
+    try {
+      mldsaValid = await prim.mldsaVerify(
+        responderMsg.mldsaSignature,
+        transcriptHash,
+        responderMsg.identityPublicMLDSA
+      );
+    } catch (err: any) {
+      if (err.code === 'MLDSA_UNAVAILABLE') {
+        // In classical-only mode, ML-DSA verification is skipped (empty signature)
+        console.warn('[Handshake] ML-DSA unavailable for verification, using classical-only mode');
+        mldsaValid = true; // Accept empty signature in classical-only mode
+      } else {
+        throw err;
+      }
+    }
 
     if (!ed25519Valid || !mldsaValid) {
       throw new Error('Responder signature verification failed');
