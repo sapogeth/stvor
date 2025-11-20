@@ -10,6 +10,10 @@ export default {
       'ts-jest',
       {
         useESM: true,
+        tsconfig: {
+          lib: ['ES2022'],
+          types: ['jest', 'node'],
+        },
       },
     ],
   },

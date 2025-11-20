@@ -107,6 +107,11 @@ const MIN_WIRE_MESSAGE_LENGTH = 24;
 /**
  * Decode encrypted record from wire format
  * Validates structure and length before attempting CBOR decode
+ *
+ * BACKWARDS COMPATIBILITY FIX (XChaCha20-Poly1305 Migration):
+ * Supports both nonce formats:
+ * - Old format: 12-byte nonce (ChaCha20-Poly1305-IETF, deterministic)
+ * - New format: 24-byte nonce (XChaCha20-Poly1305-IETF, random)
  */
 export function decodeEncryptedMessage(data: Uint8Array): EncryptedRecord {
   // Validate input is a Uint8Array
@@ -142,9 +147,21 @@ export function decodeEncryptedMessage(data: Uint8Array): EncryptedRecord {
     throw new Error(`Missing required fields in wire message. Has: {type: ${wire.type}, aad: ${!!wire.aad}, nonce: ${!!wire.nonce}, ciphertext: ${!!wire.ciphertext}}`);
   }
 
+  // Decode nonce (support both 12-byte old and 24-byte new formats)
+  const nonce = Buffer.from(wire.nonce, 'base64');
+
+  // Validate nonce length (old format: 12 bytes, new format: 24 bytes)
+  if (nonce.length !== 12 && nonce.length !== 24) {
+    throw new Error(
+      `Invalid nonce length: ${nonce.length} bytes. ` +
+      `Expected 12 bytes (old ChaCha20) or 24 bytes (new XChaCha20). ` +
+      `This might indicate a protocol version mismatch or corrupted message.`
+    );
+  }
+
   return {
     aad: Buffer.from(wire.aad, 'base64'),
-    nonce: Buffer.from(wire.nonce, 'base64'),
+    nonce: nonce,
     ciphertext: Buffer.from(wire.ciphertext, 'base64'),
   };
 }

@@ -248,6 +248,10 @@ export function x25519(secretKey: Uint8Array, publicKey: Uint8Array): Uint8Array
   return sodium.crypto_scalarmult(secretKey, publicKey);
 }
 
+export function x25519PublicFromSecret(secretKey: Uint8Array): Uint8Array {
+  return sodium.crypto_scalarmult_base(secretKey);
+}
+
 // ==================== Ed25519 (Classical Signatures) ====================
 
 export interface Ed25519KeyPair {
@@ -399,7 +403,10 @@ export async function mldsaSign(message: Uint8Array, secretKey: Uint8Array): Pro
     throw new Error(`Invalid ML-DSA-65 secret key length: expected ${constants.ML_DSA_65_SECRET_KEY_LENGTH}, got ${secretKey.length}`);
   }
 
-  const signature = await mldsa65.sign(message, secretKey);
+  // Create fresh Uint8Array to ensure type validation passes with liboqs
+  // (some CBOR libraries return Buffer which might not pass strict instanceof checks)
+  const messageArray = new Uint8Array(message);
+  const signature = await mldsa65.sign(messageArray, secretKey);
 
   if (signature.length !== constants.ML_DSA_65_SIGNATURE_LENGTH) {
     throw new Error('ML-DSA-65 signature size mismatch');
@@ -502,18 +509,42 @@ export function aeadDecrypt(
   if (key.length !== constants.AEAD_KEY_LENGTH) {
     throw new Error('Invalid AEAD key length');
   }
-  if (nonce.length !== 24) {
-    throw new Error('Invalid XChaCha20 nonce length: expected 24 bytes');
-  }
 
-  // Decrypt using XChaCha20-Poly1305-IETF
-  return (sodium as any).crypto_aead_xchacha20poly1305_ietf_decrypt(
-    null,
-    ciphertext,
-    aad,
-    nonce,
-    key
-  );
+  // BACKWARDS COMPATIBILITY: Support both nonce formats
+  // Old format: 12-byte nonce (ChaCha20-Poly1305-IETF)
+  // New format: 24-byte nonce (XChaCha20-Poly1305-IETF)
+
+  if (nonce.length === 24) {
+    // New format: XChaCha20-Poly1305-IETF (random 24-byte nonce)
+    return (sodium as any).crypto_aead_xchacha20poly1305_ietf_decrypt(
+      null,
+      ciphertext,
+      aad,
+      nonce,
+      key
+    );
+  } else if (nonce.length === 12) {
+    // Old format: ChaCha20-Poly1305-IETF (deterministic 12-byte nonce)
+    // Support legacy messages for migration period
+    console.warn(
+      '[AEAD] Decrypting with legacy 12-byte nonce (ChaCha20). ' +
+      'This message was sent before XChaCha20 migration. ' +
+      'Consider re-encrypting with new format.'
+    );
+    return (sodium as any).crypto_aead_chacha20poly1305_ietf_decrypt(
+      null,
+      ciphertext,
+      aad,
+      nonce,
+      key
+    );
+  } else {
+    throw new Error(
+      `Invalid AEAD nonce length: ${nonce.length} bytes. ` +
+      `Expected 12 bytes (legacy ChaCha20) or 24 bytes (XChaCha20). ` +
+      `This might indicate a protocol version mismatch or corrupted message.`
+    );
+  }
 }
 
 // ==================== Random Bytes ====================

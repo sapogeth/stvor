@@ -337,21 +337,34 @@ export async function initiateHandshake(
   };
 
   // Build partial transcript for signature (without responder message yet)
-  const partialTranscript = encode({
+  // Include ML-KEM fields only if available (not in classical-only mode)
+  const hasPQKeys = responderPrekey.mlkemPublicKey && responderPrekey.mlkemPublicKey.length > 0;
+
+  const transcriptObj: any = {
     suite: constants.SUITE_ID,
     initiator: {
       identityEd: message.identityPublicEd25519,
       identityML: message.identityPublicMLDSA,
       ephX: message.ephemeralX25519,
-      ephML: message.ephemeralMLKEM,
     },
     responder: {
       identityEd: responderIdentityPubEd25519,
       identityML: responderIdentityPubMLDSA,
       prekeyX: responderPrekey.x25519Ephemeral,
-      prekeyML: responderPrekey.mlkemPublicKey,
     },
-  });
+  };
+
+  // Only include ephML if available
+  if (message.ephemeralMLKEM && message.ephemeralMLKEM.length > 0) {
+    transcriptObj.initiator.ephML = message.ephemeralMLKEM;
+  }
+  if (hasPQKeys) {
+    transcriptObj.responder.prekeyML = responderPrekey.mlkemPublicKey;
+  }
+
+  const partialTranscriptBuffer = encode(transcriptObj);
+  // Create a fresh Uint8Array to ensure liboqs type validation passes
+  const partialTranscript = new Uint8Array(partialTranscriptBuffer);
 
   message.ed25519Signature = prim.ed25519Sign(partialTranscript, initiatorIdentity.ed25519.secretKey);
 
@@ -386,19 +399,38 @@ export async function completeHandshake(
   await prim.ensureCryptoReady();
 
   // Verify initiator signatures
-  const partialTranscript = encode({
+  // Derive X25519 public key from secret key
+  const responderPrekeyX25519Pub = prim.x25519PublicFromSecret(responderPrekeyX25519Secret);
+
+  // Match the transcript structure from initiateHandshake
+  // NOTE: Both sides must encode the exact same data for signature verification
+  // In classical-only mode, omit ML-KEM keys from transcript
+  const hasPQKeys = responderPrekeyMLKEMSecret && responderPrekeyMLKEMSecret.length === constants.ML_KEM_768_SECRET_KEY_LENGTH;
+
+  const transcriptObj: any = {
     suite: constants.SUITE_ID,
     initiator: {
       identityEd: initiatorMsg.identityPublicEd25519,
       identityML: initiatorMsg.identityPublicMLDSA,
       ephX: initiatorMsg.ephemeralX25519,
-      ephML: initiatorMsg.ephemeralMLKEM,
     },
     responder: {
       identityEd: responderIdentity.ed25519.publicKey,
       identityML: responderIdentity.mldsa.publicKey,
+      prekeyX: responderPrekeyX25519Pub,
     },
-  });
+  };
+
+  // Only include ephML if available
+  if (initiatorMsg.ephemeralMLKEM && initiatorMsg.ephemeralMLKEM.length > 0) {
+    transcriptObj.initiator.ephML = initiatorMsg.ephemeralMLKEM;
+  }
+  // Can't include ML-KEM prekey since we only have secret key (can't derive public)
+  // This is a limitation of the current API that should be addressed
+
+  const partialTranscriptBuffer = encode(transcriptObj);
+  // Create fresh Uint8Array for crypto operations
+  const partialTranscript = new Uint8Array(partialTranscriptBuffer);
 
   // Check if we're in dev mode (synthetic keys/bundles) or PQ disabled
   const devModeKey = isDevModeKey(initiatorMsg.identityPublicEd25519);

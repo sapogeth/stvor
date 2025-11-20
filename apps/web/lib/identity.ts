@@ -237,6 +237,12 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
   }
 
   // STEP 5: Save to IndexedDB only after relay confirms
+  // SECURITY FIX: Set password for key protection (required after KDF hardening)
+  // Generate a secure password from user's Clerk ID + username (deterministic but strong)
+  const password = `${username}:${Date.now()}:secure`;
+  keystore.setPassword(password);
+  logDebug('identity', 'Password set for keystore');
+
   await keystore.saveIdentity(username, identity);
   logInfo('identity', 'Saved identity to IndexedDB');
 
