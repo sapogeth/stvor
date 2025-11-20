@@ -39,16 +39,14 @@ export function isKDFDegraded(): boolean {
 /**
  * Derive encryption key from password using Argon2id
  *
- * CRITICAL SECURITY FIX (Task #3: Harden KDF Parameters)
- * Upgraded from INTERACTIVE to SENSITIVE mode per OWASP guidelines:
- * - INTERACTIVE: ~0.1 seconds (suitable for login, NOT for key protection)
- * - SENSITIVE: ~0.5-1.0 seconds (suitable for offline password-based key derivation)
+ * CRITICAL SECURITY FIX: MANDATORY Argon2id SENSITIVE mode
+ * - SENSITIVE: ~0.5-1.0 seconds (required for offline password-based key derivation)
+ * - NO FALLBACK to HKDF or any weaker alternative
  *
  * Attack Prevention:
  * - 8-character password space = ~200 billion combinations
- * - INTERACTIVE mode: GPU can try 100M iterations/sec = 2000 seconds = 34 minutes
  * - SENSITIVE mode: ~1 sec per iteration = ~200 billion seconds = 6,300 years per GPU
- * - With 4 GPUs: still 1,500 years, making dictionary attacks infeasible
+ * - Hard failure if unavailable (not silent degradation)
  *
  * Parameters:
  * - timeCost: 3 (Argon2id iterations, SENSITIVE = 3)
@@ -61,66 +59,59 @@ async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promis
 
   const keyLength = sodium.crypto_secretbox_KEYBYTES || 32; // 32 bytes
 
-  // Try to use SENSITIVE Argon2id if available
-  if (typeof sodium.crypto_pwhash === 'function') {
-    try {
-      const opsLimit = sodium.crypto_pwhash_OPSLIMIT_SENSITIVE || 3;
-      const memLimit = sodium.crypto_pwhash_MEMLIMIT_SENSITIVE || 268435456; // 256MB
-      const alg = sodium.crypto_pwhash_ALG_ARGON2ID13 || 2;
+  // MANDATORY: Use SENSITIVE Argon2id - no fallback
+  if (typeof sodium.crypto_pwhash !== 'function') {
+    KDF_REALLY_DEGRADED = true;
+    const err = new Error(
+      '[KeyStore] CRITICAL: Argon2id SENSITIVE KDF not available. ' +
+      'This browser does not support libsodium crypto_pwhash. ' +
+      'Identity keys cannot be encrypted securely. ' +
+      'Application MUST refuse to continue.'
+    );
+    console.error(err.message);
+    throw err;
+  }
 
-      const startTime = Date.now();
+  const opsLimit = sodium.crypto_pwhash_OPSLIMIT_SENSITIVE || 3;
+  const memLimit = sodium.crypto_pwhash_MEMLIMIT_SENSITIVE || 268435456; // 256MB
+  const alg = sodium.crypto_pwhash_ALG_ARGON2ID13 || 2;
 
-      const derivedKey = sodium.crypto_pwhash(
-        keyLength,
-        new Uint8Array(Buffer.from(password, 'utf-8')),
-        salt,
-        opsLimit,
-        memLimit,
-        alg
+  const startTime = Date.now();
+
+  try {
+    const derivedKey = sodium.crypto_pwhash(
+      keyLength,
+      new Uint8Array(Buffer.from(password, 'utf-8')),
+      salt,
+      opsLimit,
+      memLimit,
+      alg
+    );
+
+    const elapsedMs = Date.now() - startTime;
+
+    // CRITICAL: Verify execution time is in secure range (SENSITIVE should be 0.5-1.0s)
+    if (elapsedMs < 300 || elapsedMs > 3000) {
+      console.warn(
+        `[KeyStore] ⚠️  WARNING: KDF execution time ${elapsedMs}ms outside secure range (300-3000ms). ` +
+        `Argon2id parameters may be misconfigured or hardware performance degraded.`
       );
-
-      const elapsedMs = Date.now() - startTime;
-
-      // Log execution time for verification (should be 0.5-1.0 seconds)
-      if (elapsedMs < 400 || elapsedMs > 2000) {
-        console.warn(
-          `[Crypto] KDF execution time ${elapsedMs}ms is outside expected range (400-2000ms). ` +
-          `This may indicate hardware performance issues or parameter misconfiguration.`
-        );
-      }
-
-      return derivedKey;
-    } catch (err) {
-      console.warn('[KeyStore] Argon2id KDF failed, falling back to SHA-256:', err);
-      // Fall through to fallback
     }
+
+    // Success - KDF not degraded
+    KDF_REALLY_DEGRADED = false;
+    return derivedKey;
+  } catch (err) {
+    KDF_REALLY_DEGRADED = true;
+    const fatalError = new Error(
+      '[KeyStore] CRITICAL: Argon2id SENSITIVE KDF execution failed. ' +
+      `Error: ${err instanceof Error ? err.message : String(err)}. ` +
+      'Password-based key derivation is mandatory for identity protection. ' +
+      'Application MUST refuse to continue.'
+    );
+    console.error(fatalError.message);
+    throw fatalError;
   }
-
-  // Fallback: Use HKDF-SHA256 with salt (weaker but available)
-  // This is less secure than Argon2id but still provides key derivation
-  KDF_REALLY_DEGRADED = true;
-  console.warn('[KeyStore] Using HKDF-SHA256 fallback for KDF (less secure than Argon2id)');
-  console.warn('[KeyStore] ⚠️  Password-based key encryption is degraded');
-  console.warn('[KeyStore] ⚠️  Attack time reduced from 6300+ years to potentially days with specialized hardware');
-  console.warn('[KeyStore] ⚠️  Consider updating your browser or using a system with better cryptography support');
-  if (typeof sodium.crypto_generichash === 'function') {
-    // Use generic hash as a KDF
-    const passwordBytes = new Uint8Array(Buffer.from(password, 'utf-8'));
-    const combined = new Uint8Array(passwordBytes.length + salt.length);
-    combined.set(passwordBytes);
-    combined.set(salt, passwordBytes.length);
-
-    return new Uint8Array(sodium.crypto_generichash(keyLength, combined, salt));
-  }
-
-  KDF_REALLY_DEGRADED = true;
-  const criticalError = new Error(
-    '[KeyStore] CRITICAL: No KDF function available (crypto_pwhash or crypto_generichash). ' +
-    'Cannot derive key from password. This indicates a critical libsodium initialization failure. ' +
-    'Identity keys cannot be encrypted. Application MUST refuse to continue.'
-  );
-  console.error('[KeyStore] ⚠️  CRITICAL: Complete KDF failure - cannot protect identity keys');
-  throw criticalError;
 }
 
 /**
@@ -350,6 +341,16 @@ class KeyStore {
     const ed25519SecretKey = await encryptWithPassword(identity.ed25519.secretKey, this.password);
     const mldsaSecretKey = await encryptWithPassword(identity.mldsa.secretKey, this.password);
     const encrypted = true;
+
+    // CRITICAL: Verify KDF did not degrade
+    if (isKDFDegraded()) {
+      throw new Error(
+        '[KeyStore] CRITICAL: KDF degradation detected during identity save. ' +
+        'Identity keys were not encrypted with Argon2id SENSITIVE. ' +
+        'Refusing to save unprotected keys.'
+      );
+    }
+
     logInfo('keystore', 'Identity keys encrypted with hardened KDF parameters');
 
     // Convert keys to base64 strings

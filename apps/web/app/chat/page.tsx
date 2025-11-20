@@ -1587,15 +1587,14 @@ export default function ChatPage() {
           );
         }
 
-        console.log('[Security] ✅ Prekey bundle Ed25519 signature verified successfully');
+        console.log('[Security] ✅ Prekey bundle signatures verified successfully');
       } else {
-        if (isRelayBundle) {
-          console.log('[Security] ⚠️ Relay test bundle detected - skipping signature verification');
-        } else if (isClassicalOnly) {
-          console.log('[Security] ⚠️ Classical-only mode (no PQ keys) - skipping signature verification');
-        } else {
-          console.log('[Security] ⚠️ Dev mode - skipping signature verification');
-        }
+        // ALL bundles MUST have valid signatures - no exceptions
+        throw new Error(
+          '[Security] CRITICAL: Prekey bundle signature verification FAILED. ' +
+          'Bundle rejected. This indicates either peer identity is compromised or relay tampering. ' +
+          'Session REJECTED.'
+        );
       }
 
       console.log('[Handshake] Initiating handshake with verified peer bundle...');

@@ -326,16 +326,27 @@ export async function generateMLKEMKeyPair(): Promise<MLKEMKeyPair> {
 }
 
 export async function mlkemEncapsulate(publicKey: Uint8Array): Promise<MLKEMEncapsulation> {
-  if (!mlkem768) {
-    const err: any = new Error('PQ_NOT_READY: ML-KEM-768 not available');
-    err.code = 'PQ_NOT_READY';
-    // Disable PQ for fallback to classical-only mode
-    disablePQ('mlkemEncapsulate called without ML-KEM instance');
+  // CRITICAL SECURITY: Reject encapsulation if PQ is unavailable (using stubs)
+  if (!mlkem768 || PQ_REALLY_UNAVAILABLE) {
+    const err: any = new Error(
+      'CRITICAL: ML-KEM-768 not available or using stubs. ' +
+      'Post-quantum key exchange is mandatory and cannot be bypassed. ' +
+      'Handshake MUST fail with hard error.'
+    );
+    err.code = 'PQ_NOT_AVAILABLE';
     throw err;
   }
 
   if (publicKey.length !== constants.ML_KEM_768_PUBLIC_KEY_LENGTH) {
     throw new Error(`Invalid ML-KEM-768 public key length: expected ${constants.ML_KEM_768_PUBLIC_KEY_LENGTH}, got ${publicKey.length}`);
+  }
+
+  // Validate that public key is NOT all zeros (stub detection)
+  const isZeros = publicKey.every(b => b === 0);
+  if (isZeros) {
+    const err: any = new Error('CRITICAL: ML-KEM public key is all zeros (stub/invalid). Handshake rejected.');
+    err.code = 'PQ_INVALID_KEY';
+    throw err;
   }
 
   const result = await mlkem768.encapsulate(publicKey);
@@ -345,6 +356,12 @@ export async function mlkemEncapsulate(publicKey: Uint8Array): Promise<MLKEMEnca
     throw new Error('ML-KEM-768 encapsulation size mismatch');
   }
 
+  // Validate ciphertext is NOT all zeros
+  const ctZeros = result.ciphertext.every(b => b === 0);
+  if (ctZeros) {
+    throw new Error('CRITICAL: ML-KEM ciphertext is all zeros (stub detected). Handshake rejected.');
+  }
+
   return {
     ciphertext: result.ciphertext,
     sharedSecret: result.sharedSecret,
@@ -352,11 +369,14 @@ export async function mlkemEncapsulate(publicKey: Uint8Array): Promise<MLKEMEnca
 }
 
 export async function mlkemDecapsulate(ciphertext: Uint8Array, secretKey: Uint8Array): Promise<Uint8Array> {
-  if (!mlkem768) {
-    const err: any = new Error('PQ_NOT_READY: ML-KEM-768 not available');
-    err.code = 'PQ_NOT_READY';
-    // Disable PQ for fallback to classical-only mode
-    disablePQ('mlkemDecapsulate called without ML-KEM instance');
+  // CRITICAL SECURITY: Reject decapsulation if PQ is unavailable (using stubs)
+  if (!mlkem768 || PQ_REALLY_UNAVAILABLE) {
+    const err: any = new Error(
+      'CRITICAL: ML-KEM-768 not available or using stubs. ' +
+      'Post-quantum key exchange is mandatory and cannot be bypassed. ' +
+      'Handshake MUST fail with hard error.'
+    );
+    err.code = 'PQ_NOT_AVAILABLE';
     throw err;
   }
 
@@ -365,6 +385,14 @@ export async function mlkemDecapsulate(ciphertext: Uint8Array, secretKey: Uint8A
   }
   if (secretKey.length !== constants.ML_KEM_768_SECRET_KEY_LENGTH) {
     throw new Error(`Invalid ML-KEM-768 secret key length: expected ${constants.ML_KEM_768_SECRET_KEY_LENGTH}, got ${secretKey.length}`);
+  }
+
+  // Validate that ciphertext is NOT all zeros (stub detection)
+  const ctZeros = ciphertext.every(b => b === 0);
+  if (ctZeros) {
+    const err: any = new Error('CRITICAL: ML-KEM ciphertext is all zeros (stub/invalid). Handshake rejected.');
+    err.code = 'PQ_INVALID_KEY';
+    throw err;
   }
 
   const sharedSecret = await mlkem768.decapsulate(ciphertext, secretKey);
@@ -404,14 +432,13 @@ export async function generateMLDSAKeyPair(): Promise<MLDSAKeyPair> {
 }
 
 export async function mldsaSign(message: Uint8Array, secretKey: Uint8Array): Promise<Uint8Array> {
-  if (!mldsa65) {
-    // CRITICAL SECURITY FIX: Fail hard instead of returning fake signatures
-    // Fake signatures compromise the entire dual-signature security model
+  // CRITICAL SECURITY: Reject signing if PQ is unavailable (using stubs)
+  if (!mldsa65 || PQ_REALLY_UNAVAILABLE) {
     const err: any = new Error(
-      'CRITICAL CRYPTO FAILURE: ML-DSA-65 module not initialized. ' +
+      'CRITICAL CRYPTO FAILURE: ML-DSA-65 module not initialized or using stubs. ' +
       'Post-quantum signatures are mandatory and cannot be bypassed. ' +
       'This indicates a critical initialization error or environment incompatibility. ' +
-      'Application must terminate.'
+      'Application must terminate. Handshake REJECTED.'
     );
     err.code = 'MLDSA_UNAVAILABLE';
     throw err;
@@ -419,6 +446,14 @@ export async function mldsaSign(message: Uint8Array, secretKey: Uint8Array): Pro
 
   if (secretKey.length !== constants.ML_DSA_65_SECRET_KEY_LENGTH) {
     throw new Error(`Invalid ML-DSA-65 secret key length: expected ${constants.ML_DSA_65_SECRET_KEY_LENGTH}, got ${secretKey.length}`);
+  }
+
+  // Validate that secret key is NOT all zeros (stub detection)
+  const isZeros = secretKey.every(b => b === 0);
+  if (isZeros) {
+    const err: any = new Error('CRITICAL: ML-DSA secret key is all zeros (stub/invalid). Signature rejected.');
+    err.code = 'PQ_INVALID_KEY';
+    throw err;
   }
 
   // Create fresh Uint8Array to ensure type validation passes with liboqs
@@ -430,17 +465,22 @@ export async function mldsaSign(message: Uint8Array, secretKey: Uint8Array): Pro
     throw new Error('ML-DSA-65 signature size mismatch');
   }
 
+  // Validate signature is NOT all zeros
+  const sigZeros = signature.every(b => b === 0);
+  if (sigZeros) {
+    throw new Error('CRITICAL: ML-DSA signature is all zeros (stub detected). Signature rejected.');
+  }
+
   return signature;
 }
 
 export async function mldsaVerify(signature: Uint8Array, message: Uint8Array, publicKey: Uint8Array): Promise<boolean> {
-  if (!mldsa65) {
-    // CRITICAL SECURITY FIX: Fail hard instead of accepting fake signatures
-    // Accepting fake signatures bypasses the dual-signature security model
+  // CRITICAL SECURITY: Reject verification if PQ is unavailable (using stubs)
+  if (!mldsa65 || PQ_REALLY_UNAVAILABLE) {
     const err: any = new Error(
-      'CRITICAL CRYPTO FAILURE: ML-DSA-65 module not initialized during verification. ' +
+      'CRITICAL CRYPTO FAILURE: ML-DSA-65 module not initialized or using stubs during verification. ' +
       'Post-quantum signature verification is mandatory and cannot be bypassed. ' +
-      'Application must terminate.'
+      'Application must terminate. Handshake REJECTED.'
     );
     err.code = 'MLDSA_UNAVAILABLE';
     throw err;
@@ -451,6 +491,14 @@ export async function mldsaVerify(signature: Uint8Array, message: Uint8Array, pu
   }
   if (publicKey.length !== constants.ML_DSA_65_PUBLIC_KEY_LENGTH) {
     throw new Error(`Invalid ML-DSA-65 public key length: expected ${constants.ML_DSA_65_PUBLIC_KEY_LENGTH}, got ${publicKey.length}`);
+  }
+
+  // Validate that public key is NOT all zeros (stub detection)
+  const keyZeros = publicKey.every(b => b === 0);
+  if (keyZeros) {
+    const err: any = new Error('CRITICAL: ML-DSA public key is all zeros (stub/invalid). Verification rejected.');
+    err.code = 'PQ_INVALID_KEY';
+    throw err;
   }
 
   try {

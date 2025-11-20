@@ -11,6 +11,7 @@
 import { generateIdentity, type IdentityKeyPair } from '@ilyazh/crypto';
 import { keystore } from './keystore';
 import { getRelayUrl } from './relay-url';
+import { verifyRelaySignature, isRelayIdentityVerified } from './relay-identity';
 import { logDebug, logInfo, logWarn, logError, redactToken, redactPublicKey } from './logger';
 
 // ==================== Relay Identity Verification State ====================
@@ -486,6 +487,7 @@ async function registerWithRelay(username: string, identity: IdentityKeyPair): P
 /**
  * Fetch a peer's identity from the relay directory
  * Returns their public identity keys
+ * CRITICAL: Verifies relay signature to detect impersonation
  *
  * @param username - Username (will be normalized: "Izahii" → "izahii")
  * @returns Peer's public identity keys
@@ -519,11 +521,38 @@ export async function fetchPeerIdentity(username: string): Promise<{
     return null;
   }
 
-  logInfo('identity', 'Peer identity fetched', { username: canonicalUsername });
+  // CRITICAL: Verify relay signed this bundle
+  if (!isRelayIdentityVerified()) {
+    throw new Error(
+      '[Identity] CRITICAL: Relay identity verification disabled. ' +
+      'Cannot verify bundle authenticity. Session REJECTED.'
+    );
+  }
+
+  const bundleData = new TextEncoder().encode(JSON.stringify({
+    username: canonicalUsername,
+    ed25519: data.identity.ed25519PublicKey || data.identity.identityEd25519,
+    mldsa: data.identity.mldsaPublicKey || data.identity.identityMLDSA,
+  }));
+
+  // HARD FAIL if signature missing or invalid
+  if (!data.relaySignature) {
+    throw new Error(
+      '[Identity] CRITICAL: Relay signature missing from identity bundle. ' +
+      'Peer identity cannot be verified. Session REJECTED. ' +
+      'This indicates relay compromise or misconfiguration.'
+    );
+  }
+
+  const signature = new Uint8Array(Buffer.from(data.relaySignature, 'base64'));
+  await verifyRelaySignature(bundleData, signature);
+
+  // Signature verified - safe to use
+  logInfo('identity', `Peer identity verified with relay signature (${canonicalUsername})`);
 
   return {
-    identityEd25519: new Uint8Array(Buffer.from(data.identity.identityEd25519, 'base64')),
-    identityMLDSA: new Uint8Array(Buffer.from(data.identity.identityMLDSA, 'base64')),
+    identityEd25519: new Uint8Array(Buffer.from(data.identity.identityEd25519 || data.identity.ed25519PublicKey, 'base64')),
+    identityMLDSA: new Uint8Array(Buffer.from(data.identity.identityMLDSA || data.identity.mldsaPublicKey, 'base64')),
   };
 }
 

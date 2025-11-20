@@ -42,6 +42,49 @@ function isDevModeKey(key: Uint8Array): boolean {
   return prefix === 'dev-';
 }
 
+/**
+ * CRITICAL: Validate ML-KEM public key is non-zero (not stub/placeholder)
+ */
+function validateMLKEMPublicKey(publicKey: Uint8Array | undefined): boolean {
+  if (!publicKey || publicKey.length === 0) {
+    return false; // Missing is invalid
+  }
+
+  if (publicKey.length !== constants.ML_KEM_768_PUBLIC_KEY_LENGTH) {
+    throw new Error(
+      `Invalid ML-KEM public key length: ${publicKey.length}, ` +
+      `expected ${constants.ML_KEM_768_PUBLIC_KEY_LENGTH}`
+    );
+  }
+
+  // Check if all zeros (stub detection)
+  const isZeros = publicKey.every(b => b === 0);
+  if (isZeros) {
+    throw new Error(
+      'CRITICAL: ML-KEM public key is all zeros. ' +
+      'This indicates a stub or uninitialized key. ' +
+      'Handshake REJECTED.'
+    );
+  }
+
+  return true;
+}
+
+/**
+ * CRITICAL: Block handshake if PQ is using stubs or unavailable
+ */
+async function validatePQRequired(): Promise<void> {
+  await prim.ensureCryptoReady();
+
+  if (prim.isPQReallyUnavailable?.()) {
+    throw new Error(
+      'CRITICAL: Post-quantum cryptography is unavailable (using stubs or failed to load). ' +
+      'Session establishment is BLOCKED. ' +
+      'User must update their browser or environment to use this application.'
+    );
+  }
+}
+
 export interface IdentityKeyPair {
   ed25519: prim.Ed25519KeyPair;
   mldsa: prim.MLDSAKeyPair;
@@ -139,24 +182,17 @@ export async function generatePrekeyBundle(
 ): Promise<PrekeyBundleWithSecrets> {
   await prim.ensureCryptoReady();
 
+  // CRITICAL: Validate PQ is not using stubs
+  await validatePQRequired();
+
   const x25519KeyPair = prim.generateX25519KeyPair();
 
-  // Try to generate ML-KEM keypair, fall back to classical if PQ unavailable
-  let mlkemKeyPair: prim.MLKEMKeyPair;
-  try {
-    mlkemKeyPair = await prim.generateMLKEMKeyPair();
-  } catch (err: any) {
-    if (err.code === 'MLKEM_UNAVAILABLE' || err.code === 'PQ_NOT_READY') {
-      // Silent fallback: empty ML-KEM keys for classical-only mode
-      // This allows prekey bundles to be generated in browser environments
-      // where PQ modules are not available
-      mlkemKeyPair = {
-        publicKey: new Uint8Array(constants.ML_KEM_768_PUBLIC_KEY_LENGTH),
-        secretKey: new Uint8Array(constants.ML_KEM_768_SECRET_KEY_LENGTH),
-      };
-    } else {
-      throw err;
-    }
+  // ML-KEM keypair is MANDATORY - no fallback
+  const mlkemKeyPair = await prim.generateMLKEMKeyPair();
+
+  // CRITICAL: Validate ML-KEM key is not all zeros
+  if (!validateMLKEMPublicKey(mlkemKeyPair.publicKey)) {
+    throw new Error('[Handshake] Generated ML-KEM public key is invalid (all zeros or wrong length)');
   }
 
   // IMPORTANT: Use same timestamp for signing and returning to ensure signature verification works
@@ -342,31 +378,33 @@ export async function initiateHandshake(
 ): Promise<{ message: HandshakeMessage; ephemeralX25519Secret: Uint8Array; ephemeralMLKEMSecret?: Uint8Array }> {
   await prim.ensureCryptoReady();
 
+  // CRITICAL: Validate PQ is not using stubs
+  await validatePQRequired();
+
   // Generate ephemeral keys
   const ephemeralX25519 = prim.generateX25519KeyPair();
 
-  // Try to generate ML-KEM keypair, fall back to classical if PQ unavailable
-  let ephemeralMLKEM: prim.MLKEMKeyPair | null = null;
-  let pqSupported = false; // Track if this side supports PQ
+  // ML-KEM keypair is MANDATORY - no fallback
+  const ephemeralMLKEM = await prim.generateMLKEMKeyPair();
+
+  // CRITICAL: Validate responder's ML-KEM public key
   try {
-    ephemeralMLKEM = await prim.generateMLKEMKeyPair();
-    pqSupported = true; // Successfully generated PQ key
-  } catch (err: any) {
-    if (err.code === 'PQ_NOT_READY') {
-      // No PQ support on this side
-      ephemeralMLKEM = null;
-      pqSupported = false;
-    } else {
-      throw err;
-    }
+    validateMLKEMPublicKey(responderPrekey.mlkemPublicKey);
+  } catch (err) {
+    throw new Error(
+      `[Handshake] CRITICAL: Responder prekey bundle has invalid ML-KEM public key. ` +
+      `Handshake REJECTED. ${err instanceof Error ? err.message : String(err)}`
+    );
   }
+
+  const pqSupported = true; // PQ support is MANDATORY
 
   const message: HandshakeMessage = {
     role: 'initiator',
     identityPublicEd25519: initiatorIdentity.ed25519.publicKey,
     identityPublicMLDSA: initiatorIdentity.mldsa.publicKey,
     ephemeralX25519: ephemeralX25519.publicKey,
-    ephemeralMLKEM: ephemeralMLKEM ? ephemeralMLKEM.publicKey : undefined,
+    ephemeralMLKEM: ephemeralMLKEM.publicKey,
     ed25519Signature: new Uint8Array(0), // placeholder
     mldsaSignature: new Uint8Array(0),
     pqSupported: pqSupported, // Signal PQ capability for downgrade detection
@@ -420,7 +458,7 @@ export async function initiateHandshake(
   return {
     message,
     ephemeralX25519Secret: ephemeralX25519.secretKey,
-    ephemeralMLKEMSecret: ephemeralMLKEM?.secretKey,
+    ephemeralMLKEMSecret: ephemeralMLKEM.secretKey,
   };
 }
 
@@ -435,13 +473,27 @@ export async function completeHandshake(
 ): Promise<{ message: HandshakeMessage; state: HandshakeState }> {
   await prim.ensureCryptoReady();
 
+  // CRITICAL: Validate PQ is not using stubs
+  await validatePQRequired();
+
   // Verify initiator signatures
   // Derive X25519 public key from secret key
   const responderPrekeyX25519Pub = prim.x25519PublicFromSecret(responderPrekeyX25519Secret);
 
+  // CRITICAL: Validate initiator's ML-KEM ephemeral key
+  if (initiatorMsg.ephemeralMLKEM && initiatorMsg.ephemeralMLKEM.length > 0) {
+    try {
+      validateMLKEMPublicKey(initiatorMsg.ephemeralMLKEM);
+    } catch (err) {
+      throw new Error(
+        `[Handshake] CRITICAL: Initiator ephemeral has invalid ML-KEM key. ` +
+        `Handshake REJECTED. ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
   // Match the transcript structure from initiateHandshake
   // NOTE: Both sides must encode the exact same data for signature verification
-  // In classical-only mode, omit ML-KEM keys from transcript
   const hasPQKeys = responderPrekeyMLKEMSecret && responderPrekeyMLKEMSecret.length === constants.ML_KEM_768_SECRET_KEY_LENGTH;
 
   const transcriptObj: any = {
@@ -469,42 +521,42 @@ export async function completeHandshake(
   // Create fresh Uint8Array for crypto operations
   const partialTranscript = new Uint8Array(partialTranscriptBuffer);
 
-  // Check if we're in dev mode (synthetic keys/bundles) or PQ disabled
+  // CRITICAL: Check for dev mode keys and REJECT
   const devModeKey = isDevModeKey(initiatorMsg.identityPublicEd25519);
-  const pqEnabled = prim.isPQEnabled?.() ?? true;
-  const devMode = devModeKey || !pqEnabled;
-
-  if (devMode) {
-    // Silent skip of dual-signature verification in dev mode or when PQ disabled
-  } else {
-    // Production mode: verify signatures
-    const ed25519Valid = prim.ed25519Verify(
-      initiatorMsg.ed25519Signature,
-      partialTranscript,
-      initiatorMsg.identityPublicEd25519
+  if (devModeKey) {
+    throw new Error(
+      '[Handshake] CRITICAL: Development mode key detected in handshake. ' +
+      'Dev keys are not allowed in production handshakes. ' +
+      'Session REJECTED. This indicates a dev/prod environment mismatch.'
     );
+  }
 
-    let mldsaValid = true;
-    try {
-      mldsaValid = await prim.mldsaVerify(
-        initiatorMsg.mldsaSignature,
-        partialTranscript,
-        initiatorMsg.identityPublicMLDSA
-      );
-    } catch (err: any) {
-      if (err.code === 'MLDSA_UNAVAILABLE') {
-        // In classical-only mode, ML-DSA verification is skipped (empty signature)
-        console.warn('[Handshake] ML-DSA unavailable for verification, using classical-only mode');
-        mldsaValid = true; // Accept empty signature in classical-only mode
-      } else {
-        throw err;
-      }
-    }
+  // ALWAYS verify signatures (no dev mode bypass)
+  const ed25519Valid = prim.ed25519Verify(
+    initiatorMsg.ed25519Signature,
+    partialTranscript,
+    initiatorMsg.identityPublicEd25519
+  );
 
-    // Dual-signature mode: both must pass
-    if (!ed25519Valid || !mldsaValid) {
-      throw new Error('Handshake signature verification failed');
+  let mldsaValid = true;
+  try {
+    mldsaValid = await prim.mldsaVerify(
+      initiatorMsg.mldsaSignature,
+      partialTranscript,
+      initiatorMsg.identityPublicMLDSA
+    );
+  } catch (err: any) {
+    if (err.code === 'MLDSA_UNAVAILABLE') {
+      // This should never happen because validatePQRequired() was called above
+      throw new Error('[Handshake] CRITICAL: ML-DSA unavailable during signature verification, but PQ is required');
+    } else {
+      throw err;
     }
+  }
+
+  // Dual-signature mode: both must pass
+  if (!ed25519Valid || !mldsaValid) {
+    throw new Error('Handshake signature verification failed');
   }
 
   // Perform X25519 DH
@@ -651,45 +703,48 @@ export async function finalizeHandshake(
 ): Promise<HandshakeState> {
   await prim.ensureCryptoReady();
 
+  // CRITICAL: Validate PQ is not using stubs
+  await validatePQRequired();
+
   // Build full transcript
   const transcript = buildTranscript(initiatorMsg, responderMsg, 'responder');
   const transcriptHash = prim.hashTranscript(transcript);
 
-  // Check if we're in dev mode (synthetic keys/bundles) or PQ disabled
+  // CRITICAL: Check for dev mode keys and REJECT
   const devModeKey = isDevModeKey(responderMsg.identityPublicEd25519);
-  const pqEnabled = prim.isPQEnabled?.() ?? true;
-  const devMode = devModeKey || !pqEnabled;
-
-  if (devMode) {
-    // Silent skip of responder dual-signature verification in dev mode or when PQ disabled
-  } else {
-    // Production mode: verify responder signatures
-    const ed25519Valid = prim.ed25519Verify(
-      responderMsg.ed25519Signature,
-      transcriptHash,
-      responderMsg.identityPublicEd25519
+  if (devModeKey) {
+    throw new Error(
+      '[Handshake] CRITICAL: Development mode key detected in responder handshake. ' +
+      'Dev keys are not allowed in production handshakes. ' +
+      'Session REJECTED. This indicates a dev/prod environment mismatch.'
     );
+  }
 
-    let mldsaValid = true;
-    try {
-      mldsaValid = await prim.mldsaVerify(
-        responderMsg.mldsaSignature,
-        transcriptHash,
-        responderMsg.identityPublicMLDSA
-      );
-    } catch (err: any) {
-      if (err.code === 'MLDSA_UNAVAILABLE') {
-        // In classical-only mode, ML-DSA verification is skipped (empty signature)
-        console.warn('[Handshake] ML-DSA unavailable for verification, using classical-only mode');
-        mldsaValid = true; // Accept empty signature in classical-only mode
-      } else {
-        throw err;
-      }
-    }
+  // ALWAYS verify responder signatures (no dev mode bypass)
+  const ed25519Valid = prim.ed25519Verify(
+    responderMsg.ed25519Signature,
+    transcriptHash,
+    responderMsg.identityPublicEd25519
+  );
 
-    if (!ed25519Valid || !mldsaValid) {
-      throw new Error('Responder signature verification failed');
+  let mldsaValid = true;
+  try {
+    mldsaValid = await prim.mldsaVerify(
+      responderMsg.mldsaSignature,
+      transcriptHash,
+      responderMsg.identityPublicMLDSA
+    );
+  } catch (err: any) {
+    if (err.code === 'MLDSA_UNAVAILABLE') {
+      // This should never happen because validatePQRequired() was called above
+      throw new Error('[Handshake] CRITICAL: ML-DSA unavailable during responder signature verification, but PQ is required');
+    } else {
+      throw err;
     }
+  }
+
+  if (!ed25519Valid || !mldsaValid) {
+    throw new Error('Responder signature verification failed');
   }
 
   // Perform X25519 DH
