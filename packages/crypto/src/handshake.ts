@@ -3,6 +3,27 @@
  * X25519 + ML-KEM-768 key exchange
  * Dual signatures: Ed25519 + ML-DSA-65 over transcript
  * sid derivation and key confirmation
+ *
+ * SECURITY ENHANCEMENTS:
+ *
+ * 1. POST-QUANTUM DOWNGRADE ATTACK DETECTION
+ *    - Both sides exchange pqSupported flag during handshake
+ *    - If both claim PQ support, pqMandatory is set to true
+ *    - This prevents "HARVEST NOW, DECRYPT LATER" attacks where:
+ *      * Attacker records encrypted messages today
+ *      * Attacker decrypts with quantum computer in future (if classical-only)
+ *    - Solution: If pqMandatory=true, messages MUST use PQ-wrapper at application layer
+ *
+ * 2. DOWNGRADE ATTACK WARNING SYSTEM
+ *    - If one side claims PQ support but other can't deliver, warning is logged
+ *    - completeHandshake(): Logs if initiator supports PQ but responder can't use ML-KEM
+ *    - finalizeHandshake(): Logs if responder supports PQ but initiator can't use ML-KEM
+ *    - Application should monitor warnings and alert users
+ *
+ * 3. GRACEFUL DEGRADATION WITH SECURITY TRACKING
+ *    - Sessions can work in classical-only mode (no ML-KEM/ML-DSA)
+ *    - But pqMandatory flag signals this is not optimal
+ *    - Ratchet layer enforces policy: if pqMandatory=true, messages are flagged
  */
 
 import * as prim from './primitives.js';
