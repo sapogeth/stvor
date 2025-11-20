@@ -24,8 +24,9 @@ let pqAvailable = false;
 let cryptoReady = false;
 let initPromise: Promise<void> | null = null;
 
-// PQ availability flag (for handshake dev mode detection)
-let PQ_ENABLED = true;
+// PQ availability flags
+let PQ_ENABLED = true; // Runtime disable flag (for wire format mismatches)
+let PQ_REALLY_UNAVAILABLE = false; // True if using inline stubs (not real PQ crypto)
 
 /**
  * Disable PQ cryptography (fallback to classical-only mode)
@@ -48,6 +49,19 @@ export function isPQEnabled(): boolean {
 }
 
 /**
+ * CRITICAL: Check if PQ modules are really unavailable (using stubs)
+ * This is different from isPQEnabled() because it distinguishes between:
+ * - Real PQ crypto available: pqReallyUnavailable = false
+ * - Stub PQ (inline fallback): pqReallyUnavailable = true
+ * - Disabled at runtime: pqReallyUnavailable = true + PQ_ENABLED = false
+ *
+ * Applications should alert users when this returns true
+ */
+export function isPQReallyUnavailable(): boolean {
+  return PQ_REALLY_UNAVAILABLE;
+}
+
+/**
  * Browser-safe PQ module loader
  * NO ../../../../dist references, NO import.meta, NO HTTP imports
  */
@@ -59,6 +73,9 @@ async function loadPQModules(): Promise<{ mlkem768: MLKEM768 | null; mldsa65: ML
     try {
       const pqBrowser = await import('./pq-browser.js');
       const result = await pqBrowser.initPQBrowser();
+
+      // CRITICAL: Track if PQ is really unavailable (using stubs)
+      PQ_REALLY_UNAVAILABLE = result.pqReallyUnavailable || false;
 
       if (!result.pqAvailable) {
         // Silent fallback to classical-only mode
@@ -76,6 +93,7 @@ async function loadPQModules(): Promise<{ mlkem768: MLKEM768 | null; mldsa65: ML
     } catch (error) {
       // Only log critical PQ load errors
       console.error('[Crypto] PQ load failed:', error);
+      PQ_REALLY_UNAVAILABLE = true; // Treat errors as real unavailability
       return {
         mlkem768: null,
         mldsa65: null,

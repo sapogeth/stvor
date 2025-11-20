@@ -10,13 +10,14 @@ let mldsa65Instance: MLDSA65 | null = null;
 let ML_KEM_768_INFO_INSTANCE: any = null;
 let ML_DSA_65_INFO_INSTANCE: any = null;
 let pqAvailable = false;
+let pqReallyUnavailable = false; // CRITICAL: true if using inline stubs (not real PQ crypto)
 
-export async function initPQBrowser(): Promise<{ pqAvailable: boolean }> {
+export async function initPQBrowser(): Promise<{ pqAvailable: boolean; pqReallyUnavailable: boolean }> {
   if (pqAvailable && mlkem768Instance && mldsa65Instance) {
-    return { pqAvailable: true };
+    return { pqAvailable: true, pqReallyUnavailable };
   }
 
-  // Strategy 1: Try npm-installed @openforge-sh/liboqs
+  // Strategy 1: Try npm-installed @openforge-sh/liboqs (REAL PQ CRYPTO)
   try {
     console.log('[PQ Browser] Attempting npm module load...');
     const { createMLKEM768, ML_KEM_768_INFO, createMLDSA65, ML_DSA_65_INFO } = await import('@openforge-sh/liboqs');
@@ -26,15 +27,16 @@ export async function initPQBrowser(): Promise<{ pqAvailable: boolean }> {
     ML_KEM_768_INFO_INSTANCE = ML_KEM_768_INFO;
     ML_DSA_65_INFO_INSTANCE = ML_DSA_65_INFO;
     pqAvailable = true;
+    pqReallyUnavailable = false; // Real PQ crypto loaded
 
-    console.log('[PQ Browser] ✅ Loaded from npm (@openforge-sh/liboqs)');
-    return { pqAvailable: true };
+    console.log('[PQ Browser] ✅ Loaded REAL PQ from npm (@openforge-sh/liboqs)');
+    return { pqAvailable: true, pqReallyUnavailable: false };
   } catch (npmError) {
-    console.warn('[PQ Browser] npm load failed:', npmError);
+    console.warn('[PQ Browser] npm load failed (real PQ unavailable):', npmError);
 
-    // Strategy 2: Use inline TypeScript stubs (no WASM)
+    // Strategy 2: Use inline TypeScript stubs (deterministic but NOT cryptographically secure)
     try {
-      console.log('[PQ Browser] Attempting inline fallback...');
+      console.log('[PQ Browser] Attempting inline fallback (stubs only)...');
       const inline = await import('./pq-inline.js');
 
       mlkem768Instance = await inline.createInlineMLKEM768() as any;
@@ -42,13 +44,18 @@ export async function initPQBrowser(): Promise<{ pqAvailable: boolean }> {
       ML_KEM_768_INFO_INSTANCE = inline.ML_KEM_768_INFO;
       ML_DSA_65_INFO_INSTANCE = inline.ML_DSA_65_INFO;
       pqAvailable = true;
+      pqReallyUnavailable = true; // Using STUB PQ (NOT REAL CRYPTO)
 
-      console.log('[PQ Browser] ✅ Loaded inline stubs (no real PQ)');
-      return { pqAvailable: true };
+      console.warn('[PQ Browser] ⚠️  Loaded STUB PQ (NOT cryptographically secure)');
+      console.warn('[PQ Browser] ⚠️  Post-quantum protection is UNAVAILABLE');
+      console.warn('[PQ Browser] ⚠️  Messages vulnerable to harvest-now-decrypt-later attacks');
+      console.warn('[PQ Browser] ⚠️  Consider using application-level PQ-wrapper');
+      return { pqAvailable: true, pqReallyUnavailable: true };
     } catch (inlineError) {
       console.error('[PQ Browser] All strategies failed:', inlineError);
       pqAvailable = false;
-      return { pqAvailable: false };
+      pqReallyUnavailable = true;
+      return { pqAvailable: false, pqReallyUnavailable: true };
     }
   }
 }
@@ -64,4 +71,8 @@ export function getPQ(): { mlkem768: MLKEM768 | null; mldsa65: MLDSA65 | null; m
 
 export function isPQAvailable(): boolean {
   return pqAvailable;
+}
+
+export function isPQReallyUnavailable(): boolean {
+  return pqReallyUnavailable;
 }
