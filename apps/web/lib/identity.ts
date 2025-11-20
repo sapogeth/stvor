@@ -32,7 +32,8 @@ export class IdentityReEnrollError extends Error {
 
 // Keystore version for migration
 // Increment this to force a clean keystore on all clients
-const KEYSTORE_MIGRATION_VERSION = 2;
+// Version 3: Deterministic password derivation (fixes recovery on page reload)
+const KEYSTORE_MIGRATION_VERSION = 3;
 
 /**
  * Ensure keystore is fresh and migrated
