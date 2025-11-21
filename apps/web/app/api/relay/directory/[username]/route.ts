@@ -40,13 +40,23 @@ export async function GET(
 
   console.log(`[Proxy] Directory GET /${username} -> 200`);
 
+  const ed25519 = data.identityPublicKey || data.identityEd25519 || data.ed25519;
+  const mldsa = data.identityMLDSA || '';
+  const relayPublicKey = data.relayPublicKey || null;
+
   return NextResponse.json({
     username,
-    identityPublicKey:
-      data.identityPublicKey || data.identityEd25519 || data.ed25519,
-    identityEd25519:
-      data.identityEd25519 || data.identityPublicKey || data.ed25519,
-    identityMLDSA: data.identityMLDSA || '',
+    // Nested identity object for client code compatibility
+    identity: {
+      ed25519,
+      identityEd25519: ed25519,
+      identityMLDSA: mldsa,
+      relayPublicKey,
+    },
+    // Flat fields for backward compatibility
+    identityPublicKey: ed25519,
+    identityEd25519: ed25519,
+    identityMLDSA: mldsa,
     prekeyBundle: data.prekeyBundle ?? data.prekeys ?? null,
     prekeySignature:
       data.prekeySignature ||
