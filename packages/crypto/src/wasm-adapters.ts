@@ -112,10 +112,12 @@ export async function createMLKEM768Adapter(): Promise<MLKEM768> {
     },
 
     info: {
-      publicKeyLength: 1184, // ML-KEM-768 public key size
-      secretKeyLength: 2400, // ML-KEM-768 secret key size
-      ciphertextLength: 1088, // ML-KEM-768 ciphertext size
-      sharedSecretLength: 32, // ML-KEM-768 shared secret size
+      keySize: {
+        publicKey: 1184, // ML-KEM-768 public key size
+        secretKey: 2400, // ML-KEM-768 secret key size
+        ciphertext: 1088, // ML-KEM-768 ciphertext size
+        sharedSecret: 32, // ML-KEM-768 shared secret size
+      },
     },
   } as unknown as MLKEM768;
 
@@ -197,9 +199,11 @@ export async function createMLDSA65Adapter(): Promise<MLDSA65> {
     },
 
     info: {
-      publicKeyLength: 1952, // ML-DSA-65 public key size
-      secretKeyLength: 4032, // ML-DSA-65 secret key size (includes seed)
-      signatureLength: 3309, // ML-DSA-65 signature size
+      keySize: {
+        publicKey: 1952, // ML-DSA-65 public key size
+        secretKey: 4032, // ML-DSA-65 secret key size (includes seed)
+        signature: 3309, // ML-DSA-65 signature size
+      },
     },
   } as unknown as MLDSA65;
 
