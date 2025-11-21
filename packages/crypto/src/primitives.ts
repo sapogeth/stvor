@@ -176,12 +176,15 @@ async function initCryptoInternal(): Promise<void> {
       // Crypto initialization successful - silent in production
     } catch (sizeError) {
       // Wire format mismatch - fallback to classical only (silent)
+      // CRITICAL: Mark PQ as really unavailable so validatePQRequired() can detect the issue
+      console.warn('[Crypto] PQ wire format size mismatch detected, falling back to classical-only:', sizeError);
       mlkem768 = null;
       mldsa65 = null;
       ML_KEM_768_INFO = null;
       ML_DSA_65_INFO = null;
       pqAvailable = false;
       PQ_ENABLED = false;
+      PQ_REALLY_UNAVAILABLE = true; // Mark as unavailable so applications know PQ is not working
     }
   } catch (error) {
     // PQ initialization failed - log error, continue with classical
@@ -191,6 +194,7 @@ async function initCryptoInternal(): Promise<void> {
     ML_KEM_768_INFO = null;
     ML_DSA_65_INFO = null;
     pqAvailable = false;
+    PQ_REALLY_UNAVAILABLE = true; // Mark as unavailable when load fails
   }
 
   cryptoReady = true;
