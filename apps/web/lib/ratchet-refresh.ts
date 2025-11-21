@@ -285,12 +285,17 @@ export async function refreshSessionFromPeer({
     if (!skipSignatureVerification) {
       logDebug('ratchet', 'Verifying prekey bundle Ed25519 signature...');
 
-      // Construct message for signature verification
-      const signatureMessage = new Uint8Array([
-        ...peerBundle.x25519Ephemeral,
-        ...peerBundle.mlkemPublicKey,
-        ...new TextEncoder().encode(peerBundle.bundleId),
-      ]);
+      // CRITICAL FIX: Use the SAME serialization format that was used to CREATE the signature
+      // The signature was created with serializePrekeyBundle() which uses length-prefixed format
+      // NOT raw concatenation! See prekeys.ts:115-120
+      // Import locally to avoid circular dependency
+      const { serializePrekeyBundle } = await import('@ilyazh/crypto');
+
+      const signatureMessage = serializePrekeyBundle({
+        x25519Pub: peerBundle.x25519Ephemeral,
+        pqKemPub: peerBundle.mlkemPublicKey.length > 0 ? peerBundle.mlkemPublicKey : undefined,
+        pqSigPub: undefined,
+      });
 
       const signatureValid = ed25519Verify(
         peerBundle.ed25519Signature,
