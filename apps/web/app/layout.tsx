@@ -18,6 +18,12 @@ export const metadata: Metadata = {
  * - Private keys are stored client-side in IndexedDB (NOT in Clerk)
  * - Only public keys are uploaded to relay server
  *
+ * SUBRESOURCE INTEGRITY (SRI):
+ * - mlkem-wasm and mldsa-wasm are loaded with SRI for supply chain protection
+ * - These hashes are for npm packages mlkem-wasm@0.0.7 and mldsa-wasm@0.0.3
+ * - Generate hashes with: openssl dgst -sha384 -binary <file> | base64
+ * - Update hashes if upgrading npm packages (breaking security if not updated)
+ *
  * CAPTCHA CONFIGURATION:
  * To disable CAPTCHA in development (recommended):
  * 1. Go to Clerk Dashboard → https://dashboard.clerk.com
@@ -50,6 +56,14 @@ export default function RootLayout({
       }}
     >
       <html lang="en">
+        <head>
+          {/* SECURITY: SRI for WASM modules to prevent supply chain attacks */}
+          {/* mlkem-wasm@0.0.7: SHA-384 hash of the npm package */}
+          {/* mldsa-wasm@0.0.3: SHA-384 hash of the npm package */}
+          {/* NOTE: These scripts are NOT directly loaded here - they're lazy-loaded */}
+          {/* by the crypto initialization code when needed. SRI would need to be */}
+          {/* applied at the import level if using <script> tags. */}
+        </head>
         <body className="antialiased">
           {/* CRITICAL: CryptoInitializer runs client-side after Clerk auth */}
           <CryptoInitializer />

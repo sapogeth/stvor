@@ -266,38 +266,52 @@ export class RelayPinner {
   /**
    * Verify Ed25519 signature from relay
    *
-   * @see This is pseudo-code. Real implementation requires:
-   *      - Import sodium or tweetnacl for Ed25519 verification
-   *      - Reconstruct public key from identityKeyHex
-   *      - Verify signature matches nonce
+   * SECURITY: Real implementation using libsodium crypto_sign_verify_detached
+   * Detects if relay signature is invalid or tampered
    *
-   * PRODUCTION IMPLEMENTATION:
-   * ```typescript
-   * import sodium from 'libsodium-wrappers';
-   * await sodium.ready;
-   * return sodium.crypto_sign_open(
-   *   Buffer.from(signature, 'hex'),
-   *   Buffer.from(identityPublicKey, 'hex')
-   * ) === nonce;
-   * ```
+   * @param nonce - Original nonce sent to relay (hex string)
+   * @param signature - Relay's signature of the nonce (hex string)
+   * @param identityPublicKeyHex - Relay's identity public key (hex string)
+   * @returns true if signature is valid, false otherwise
    */
   private verifySignature(
     nonce: string,
     signature: string,
     identityPublicKeyHex: string
   ): boolean {
-    // This is a placeholder. In production, use libsodium or tweetnacl.
+    // Validate inputs
     if (!nonce || !signature || !identityPublicKeyHex) {
+      console.error('[RelayPinner] Invalid signature verification inputs (empty values)');
       return false;
     }
 
-    // TODO: Implement Ed25519 verification
-    // For now, return true for development. In production:
-    // import sodium from 'libsodium-wrappers';
-    // return sodium.crypto_sign_verify_detached(...)
+    try {
+      // Import libsodium synchronously (must be initialized by caller)
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, global-require
+      const _sodium = require('libsodium-wrappers');
 
-    console.warn('[RelayPinner] Signature verification not fully implemented (placeholder)');
-    return true;
+      // Convert hex strings to Uint8Array
+      const nonceBytes = _sodium.from_hex(nonce);
+      const signatureBytes = _sodium.from_hex(signature);
+      const publicKeyBytes = _sodium.from_hex(identityPublicKeyHex);
+
+      // Verify detached Ed25519 signature
+      const isValid = _sodium.crypto_sign_verify_detached(
+        signatureBytes,
+        nonceBytes,
+        publicKeyBytes
+      );
+
+      if (!isValid) {
+        console.error('[RelayPinner] Ed25519 signature verification failed - signature invalid or tampered');
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('[RelayPinner] Signature verification error:', error);
+      return false;
+    }
   }
 
   /**

@@ -86,6 +86,76 @@ class SecureKeystoreManager {
   private decryptedKeystore: DecryptedKeystore | null = null;
   private derivedKey: CryptoKey | null = null;
   private isLocked: boolean = true;
+  private autoLockTimeoutMs: number = 15 * 60 * 1000; // 15 minutes
+  private lastActivityTime: number = 0;
+  private autoLockTimer: NodeJS.Timeout | null = null;
+  private activityListeners: Set<() => void> = new Set();
+
+  /**
+   * Set custom auto-lock timeout duration (in milliseconds)
+   * SECURITY: Lower timeout = faster key clearing on inactivity
+   * Default: 15 minutes
+   */
+  setAutoLockTimeout(milliseconds: number): void {
+    if (milliseconds < 30000) { // Minimum 30 seconds
+      throw new Error('[SecureKeystore] Auto-lock timeout must be at least 30 seconds');
+    }
+    this.autoLockTimeoutMs = milliseconds;
+    this.resetAutoLockTimer();
+  }
+
+  /**
+   * Record user activity to extend auto-lock timer
+   * SECURITY: Called on any interaction (keypress, click, touch)
+   */
+  recordActivity(): void {
+    if (!this.isUnlocked()) return; // Ignore if locked
+
+    this.lastActivityTime = Date.now();
+    this.resetAutoLockTimer();
+
+    // Notify listeners
+    this.activityListeners.forEach(listener => {
+      try {
+        listener();
+      } catch (e) {
+        // Silently ignore listener errors
+      }
+    });
+  }
+
+  /**
+   * Reset auto-lock timer
+   * SECURITY: Called on every activity
+   */
+  private resetAutoLockTimer(): void {
+    // Clear existing timer
+    if (this.autoLockTimer !== null) {
+      clearTimeout(this.autoLockTimer);
+    }
+
+    // Set new timer
+    this.autoLockTimer = setTimeout(() => {
+      if (!this.isLocked) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[SecureKeystore] Auto-lock timeout reached, locking keystore');
+        }
+        this.lock();
+      }
+    }, this.autoLockTimeoutMs);
+  }
+
+  /**
+   * Subscribe to activity events
+   * SECURITY: Used to update UI (e.g., show countdown timer)
+   */
+  onActivity(callback: () => void): () => void {
+    this.activityListeners.add(callback);
+    // Return unsubscribe function
+    return () => {
+      this.activityListeners.delete(callback);
+    };
+  }
 
   /**
    * Check if keystore is currently unlocked
@@ -107,10 +177,18 @@ class SecureKeystoreManager {
 
   /**
    * Lock keystore and clear sensitive data from memory
-   * SECURITY: Zeroes out in-memory keys (best-effort)
+   * SECURITY: Zeroes out in-memory keys (best-effort), clears auto-lock timer
    */
   lock(): void {
-    console.log('[SecureKeystore] Locking keystore and clearing memory');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[SecureKeystore] Locking keystore and clearing memory');
+    }
+
+    // Clear auto-lock timer
+    if (this.autoLockTimer !== null) {
+      clearTimeout(this.autoLockTimer);
+      this.autoLockTimer = null;
+    }
 
     // Best-effort memory clearing (JavaScript limitations)
     if (this.decryptedKeystore) {
@@ -340,15 +418,19 @@ class SecureKeystoreManager {
 
   /**
    * Unlock keystore with password
-   * SECURITY: Only succeeds if password is correct
+   * SECURITY: Only succeeds if password is correct, starts auto-lock timer
    */
   async unlock(userId: string, password: string): Promise<boolean> {
-    console.log('[SecureKeystore] Attempting to unlock keystore for user:', userId);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[SecureKeystore] Attempting to unlock keystore for user:', userId);
+    }
 
     const record = await this.loadEncryptedRecord(userId);
 
     if (!record) {
-      console.log('[SecureKeystore] No keystore found for user');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[SecureKeystore] No keystore found for user');
+      }
       return false;
     }
 
@@ -363,7 +445,12 @@ class SecureKeystoreManager {
 
       this.decryptedKeystore = decrypted;
       this.isLocked = false;
-      console.log('[SecureKeystore] ✓ Keystore unlocked successfully');
+      this.lastActivityTime = Date.now();
+      this.resetAutoLockTimer(); // Start auto-lock timer
+
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[SecureKeystore] ✓ Keystore unlocked successfully, auto-lock timer started');
+      }
       return true;
     }
 

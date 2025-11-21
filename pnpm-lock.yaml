@@ -88,6 +88,12 @@ importers:
       lucide-react:
         specifier: ^0.553.0
         version: 0.553.0(react@19.2.0)
+      mldsa-wasm:
+        specifier: ^0.0.3
+        version: 0.0.3
+      mlkem-wasm:
+        specifier: ^0.0.7
+        version: 0.0.7
       next:
         specifier: ^15.1.4
         version: 15.5.6(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
@@ -143,6 +149,12 @@ importers:
       libsodium-wrappers:
         specifier: ^0.7.15
         version: 0.7.15
+      mldsa-wasm:
+        specifier: ^0.0.3
+        version: 0.0.3
+      mlkem-wasm:
+        specifier: ^0.0.7
+        version: 0.0.7
     devDependencies:
       '@types/jest':
         specifier: ^30.0.0
@@ -2351,6 +2363,12 @@ packages:
   minipass@7.1.2:
     resolution: {integrity: sha512-qOOzS1cBTWYF4BH8fVePDBOO9iptMnGUEZwNc/cMWnTV2nVLZ7VoNWEPHkYczZA0pdoA7dl6e7FL659nX9S2aw==}
     engines: {node: '>=16 || 14 >=14.17'}
+
+  mldsa-wasm@0.0.3:
+    resolution: {integrity: sha512-mNfhSaiNB/qLX7CVlDzujqgYnhDA03ViVsYyUnK8Y2J2h5d1GoGiSnKv/OPd6By6A+TRPxBkYHOewRUqPkYnow==}
+
+  mlkem-wasm@0.0.7:
+    resolution: {integrity: sha512-q0kxtIlfUUrYGZpW8ebtLmEvZMenqMvHwsPfJGFSHDmprbiF6zI9VyAQc/MecHQXAqsMRYOdrzGVS0YQe4LW1w==}
 
   mnemonist@0.40.0:
     resolution: {integrity: sha512-kdd8AFNig2AD5Rkih7EPCXhu/iMvwevQFX/uEiGhZyPZi7fHqOoF4V4kHLpCfysxXMgQ4B52kdPMCwARshKvEg==}
@@ -6012,6 +6030,10 @@ snapshots:
   minimist@1.2.8: {}
 
   minipass@7.1.2: {}
+
+  mldsa-wasm@0.0.3: {}
+
+  mlkem-wasm@0.0.7: {}
 
   mnemonist@0.40.0:
     dependencies:

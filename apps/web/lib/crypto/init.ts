@@ -62,47 +62,67 @@ export async function initCryptoOnce(): Promise<void> {
   initPromise = (async () => {
     try {
       // Step 0: Validate production environment (Clerk keys, relay keys)
-      console.log('[crypto-init] Validating production environment...');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[crypto-init] Validating production environment...');
+      }
       validateProductionEnvironment();
 
       // Step 1: Validate WebCrypto environment
       const { ce } = getCryptoOrThrow();
-      console.log('[crypto-init] WebCrypto available:', {
-        context: ce.context,
-        isSecure: ce.isSecure,
-        hasSubtle: ce.hasSubtle,
-        hasRandomUUID: ce.hasRandomUUID,
-        hasGetRandomValues: ce.hasGetRandomValues,
-      });
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[crypto-init] WebCrypto available:', {
+          context: ce.context,
+          isSecure: ce.isSecure,
+          hasSubtle: ce.hasSubtle,
+          hasRandomUUID: ce.hasRandomUUID,
+          hasGetRandomValues: ce.hasGetRandomValues,
+        });
+      }
 
       // Step 2: Initialize libsodium WASM
-      console.log('[crypto-init] Loading libsodium WASM...');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[crypto-init] Loading libsodium WASM...');
+      }
       await initPrimitives();
-      console.log('[crypto-init] libsodium ready');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[crypto-init] libsodium ready');
+      }
 
       // Step 2.5: Debug libsodium availability (KDF validation)
-      console.log('[crypto-init] Checking KDF availability...');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[crypto-init] Checking KDF availability...');
+      }
       await debugLibsodiumAvailability();
 
       // Step 3: Initialize liboqs WASM (PQ cryptography)
-      console.log('[crypto-init] Loading liboqs WASM...');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[crypto-init] Loading liboqs WASM...');
+      }
       const { initPQBrowser } = await import('@ilyazh/crypto');
       const { pqAvailable, pqReallyUnavailable } = await initPQBrowser();
-      console.log('[crypto-init] liboqs initialization result:', {
-        pqAvailable,
-        pqReallyUnavailable,
-      });
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[crypto-init] liboqs initialization result:', {
+          pqAvailable,
+          pqReallyUnavailable,
+        });
+      }
 
       // Step 4: Warm up IndexedDB keystore
       // Open the database to ensure it's ready for first access
       // This prevents "Failed to initialize encryption keys" flicker
-      console.log('[crypto-init] Warming IndexedDB keystore...');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[crypto-init] Warming IndexedDB keystore...');
+      }
       await warmIndexedDB();
-      console.log('[crypto-init] IndexedDB ready');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[crypto-init] IndexedDB ready');
+      }
 
       // Step 5: Mark as ready
       initState = 'ready';
-      console.log('[crypto-init] ✓ All crypto dependencies initialized');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[crypto-init] ✓ All crypto dependencies initialized');
+      }
     } catch (error) {
       initState = 'failed';
       initError = error instanceof Error ? error : new Error(String(error));
@@ -144,7 +164,9 @@ async function warmIndexedDB(): Promise<void> {
 
       request.onerror = () => {
         const err = request.error || new Error('IndexedDB open failed');
-        console.warn('[crypto-init] IndexedDB warm-up failed:', err);
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('[crypto-init] IndexedDB warm-up failed:', err);
+        }
 
         // Don't reject - IndexedDB might be disabled in private mode
         // The actual keystore operations will handle this gracefully
@@ -153,14 +175,16 @@ async function warmIndexedDB(): Promise<void> {
 
       request.onsuccess = () => {
         const db = request.result;
-        console.log('[crypto-init] IndexedDB opened:', db.name, 'v' + db.version);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[crypto-init] IndexedDB opened:', db.name, 'v' + db.version);
+        }
 
         // Verify expected object stores exist
         const expectedStores = ['identity', 'sessions', 'prekeys'];
         const actualStores = Array.from(db.objectStoreNames);
 
         const missing = expectedStores.filter(s => !actualStores.includes(s));
-        if (missing.length > 0) {
+        if (missing.length > 0 && process.env.NODE_ENV !== 'production') {
           console.warn('[crypto-init] Missing object stores:', missing);
         }
 
@@ -170,35 +194,47 @@ async function warmIndexedDB(): Promise<void> {
 
       request.onupgradeneeded = (event) => {
         const db = request.result;
-        console.log('[crypto-init] IndexedDB upgrade needed:', {
-          oldVersion: event.oldVersion,
-          newVersion: event.newVersion,
-        });
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[crypto-init] IndexedDB upgrade needed:', {
+            oldVersion: event.oldVersion,
+            newVersion: event.newVersion,
+          });
+        }
 
         // Create object stores if they don't exist
         // IMPORTANT: This must match the schema in keystore.ts exactly!
         if (!db.objectStoreNames.contains('identity')) {
           db.createObjectStore('identity', { keyPath: 'username' });  // Fixed: was 'id', should be 'username'
-          console.log('[crypto-init] Created "identity" store');
+          if (process.env.NODE_ENV !== 'production') {
+            console.log('[crypto-init] Created "identity" store');
+          }
         }
         if (!db.objectStoreNames.contains('sessions')) {
           const sessionStore = db.createObjectStore('sessions', { keyPath: 'sessionId' });
           sessionStore.createIndex('peerUsername', 'peerUsername', { unique: false });
           sessionStore.createIndex('lastUsed', 'lastUsed', { unique: false });
-          console.log('[crypto-init] Created "sessions" store with indexes');
+          if (process.env.NODE_ENV !== 'production') {
+            console.log('[crypto-init] Created "sessions" store with indexes');
+          }
         }
         if (!db.objectStoreNames.contains('prekeys')) {
           db.createObjectStore('prekeys');  // Uses out-of-line keys (username as key)
-          console.log('[crypto-init] Created "prekeys" store');
+          if (process.env.NODE_ENV !== 'production') {
+            console.log('[crypto-init] Created "prekeys" store');
+          }
         }
       };
 
       request.onblocked = () => {
-        console.warn('[crypto-init] IndexedDB open blocked (close other tabs?)');
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('[crypto-init] IndexedDB open blocked (close other tabs?)');
+        }
         // Don't reject - will resolve when unblocked
       };
     } catch (error) {
-      console.warn('[crypto-init] IndexedDB warm-up error:', error);
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[crypto-init] IndexedDB warm-up error:', error);
+      }
       // Don't reject - might be in a restricted environment
       resolve();
     }
