@@ -14,6 +14,50 @@ import { getRelayUrl } from './relay-url';
 import { verifyRelaySignature, isRelayIdentityVerified } from './relay-identity';
 import { logDebug, logInfo, logWarn, logError, redactToken, redactPublicKey } from './logger';
 
+/**
+ * Wait for PQ crypto (liboqs WASM) to be fully initialized
+ * This prevents race conditions where identity generation is attempted
+ * before ML-KEM-768 and ML-DSA-65 are ready.
+ *
+ * Returns a Promise that resolves when crypto is ready.
+ */
+export async function waitForPQReady(timeoutMs: number = 30000): Promise<void> {
+  if (typeof window === 'undefined') {
+    // Not in browser - PQ crypto not applicable
+    return;
+  }
+
+  // Check if already ready
+  if ((window as any).__PQ_READY === true) {
+    logDebug('identity', 'PQ crypto already initialized');
+    return;
+  }
+
+  logInfo('identity', 'Waiting for PQ crypto to initialize...');
+
+  return new Promise((resolve, reject) => {
+    const startTime = Date.now();
+    const checkInterval = 50; // Check every 50ms
+
+    const interval = setInterval(() => {
+      if ((window as any).__PQ_READY === true) {
+        clearInterval(interval);
+        const elapsed = Date.now() - startTime;
+        logInfo('identity', `PQ crypto ready after ${elapsed}ms`);
+        resolve();
+        return;
+      }
+
+      const elapsed = Date.now() - startTime;
+      if (elapsed > timeoutMs) {
+        clearInterval(interval);
+        logError('identity', `PQ crypto initialization timeout after ${elapsed}ms`);
+        reject(new Error(`PQ crypto initialization timeout (${elapsed}ms > ${timeoutMs}ms)`));
+      }
+    }, checkInterval);
+  });
+}
+
 // ==================== Relay Identity Verification State ====================
 
 /**
@@ -169,6 +213,16 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
   logInfo('identity', 'Getting or creating CANONICAL identity', { username: canonical });
   if (canonical !== username) {
     logInfo('identity', 'Normalized username', { from: username, to: canonical });
+  }
+
+  // CRITICAL: Wait for PQ crypto (liboqs WASM) to be initialized before proceeding
+  // This prevents race conditions where generateIdentity() tries to use ML-KEM-768/ML-DSA-65
+  // before they're loaded. Without this, we get "crypto not ready" errors masquerading as PQ_NOT_READY.
+  try {
+    await waitForPQReady();
+  } catch (err) {
+    logError('identity', 'PQ crypto initialization timed out - cannot proceed with identity generation', { error: err });
+    throw new Error('PQ crypto initialization failed. Please refresh the page and try again.');
   }
 
   // STEP 0: Ensure keystore is migrated (clears old non-canonical identities)
@@ -358,6 +412,28 @@ async function registerCanonicalIdentity(username: string, identity: IdentityKey
   const endpoint = `${relayUrl}/directory/${username}`;
   logInfo('identity', 'Registering canonical identity on directory', { endpoint });
 
+  // STEP 0: Check if directory entry already exists
+  // This solves the cascade failure where 404 caused registration to fail
+  try {
+    const checkResponse = await fetch(endpoint, {
+      signal: AbortSignal.timeout(5000) // 5s timeout for existence check
+    });
+
+    if (checkResponse.ok) {
+      logInfo('identity', 'Directory entry already exists, skipping registration');
+      return; // Entry exists, nothing to do
+    }
+
+    if (checkResponse.status !== 404) {
+      logWarn('identity', 'Unexpected status checking directory', { status: checkResponse.status });
+    }
+    // 404 is expected - directory entry doesn't exist yet, continue to register
+  } catch (err) {
+    // Network error checking existence - continue to try registering anyway
+    logWarn('identity', 'Could not check directory existence, will attempt registration', { error: err });
+  }
+
+  // STEP 1: Register the identity
   try {
     const response = await fetch(endpoint, {
       method: 'POST',

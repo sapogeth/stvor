@@ -118,10 +118,18 @@ export async function initCryptoOnce(): Promise<void> {
         console.log('[crypto-init] IndexedDB ready');
       }
 
-      // Step 5: Mark as ready
+      // Step 5: Mark as ready and signal to waiting code
       initState = 'ready';
+
+      // Set global flag so code waiting for PQ crypto can detect readiness
+      // This is checked by waitForPQReady() in identity.ts
+      if (typeof window !== 'undefined') {
+        (window as any).__PQ_READY = true;
+      }
+
       if (process.env.NODE_ENV !== 'production') {
         console.log('[crypto-init] ✓ All crypto dependencies initialized');
+        console.log('[crypto-init] ✓ window.__PQ_READY = true');
       }
     } catch (error) {
       initState = 'failed';

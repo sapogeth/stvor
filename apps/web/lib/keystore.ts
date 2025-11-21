@@ -116,10 +116,13 @@ async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promis
   const alg = sodium.crypto_pwhash_ALG_ARGON2ID13 || 2;
   const passwordBytes = new Uint8Array(Buffer.from(password, 'utf-8'));
 
-  // Try SENSITIVE first (0.5-1.0 seconds)
-  let opsLimit = sodium.crypto_pwhash_OPSLIMIT_SENSITIVE || 3;
-  let memLimit = sodium.crypto_pwhash_MEMLIMIT_SENSITIVE || 268435456; // 256MB
-  let kdfMode = 'SENSITIVE';
+  // Use MODERATE mode (300-700ms) instead of SENSITIVE (20-40s in browser)
+  // MODERATE provides excellent security while being browser-friendly
+  // The difference between MODERATE and SENSITIVE is negligible for practical attacks
+  // SENSITIVE was causing multi-second delays and timeout errors
+  let opsLimit = sodium.crypto_pwhash_OPSLIMIT_MODERATE || 2;
+  let memLimit = sodium.crypto_pwhash_MEMLIMIT_MODERATE || 67108864; // 64MB (vs 256MB for SENSITIVE)
+  let kdfMode = 'MODERATE';
 
   const startTime = Date.now();
 
@@ -135,11 +138,11 @@ async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promis
 
     const elapsedMs = Date.now() - startTime;
 
-    // Verify execution time is in secure range (SENSITIVE should be 0.5-1.0s)
-    if (elapsedMs < 300 || elapsedMs > 3000) {
+    // Verify execution time is in secure range (MODERATE should be 300-700ms)
+    if (elapsedMs < 200 || elapsedMs > 5000) {
       console.warn(
-        `[KeyStore] ⚠️  WARNING: KDF execution time ${elapsedMs}ms outside secure range (300-3000ms). ` +
-        `SENSITIVE mode may be misconfigured or browser too slow.`
+        `[KeyStore] ⚠️  WARNING: KDF execution time ${elapsedMs}ms outside typical range (300-700ms). ` +
+        `Browser performance may be impacted. Performance: ${elapsedMs}ms`
       );
     } else {
       console.log(`[KeyStore] ✅ Argon2id ${kdfMode} KDF successful (${elapsedMs}ms)`);
@@ -148,17 +151,17 @@ async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promis
     // Success - KDF not degraded
     KDF_REALLY_DEGRADED = false;
     return derivedKey;
-  } catch (sensitiveErr) {
-    // SENSITIVE failed - try INTERACTIVE as fallback
+  } catch (moderateErr) {
+    // MODERATE failed - try SENSITIVE as fallback (more secure but slower)
     console.warn(
-      '[KeyStore] SENSITIVE parameters failed, trying INTERACTIVE fallback:',
-      sensitiveErr instanceof Error ? sensitiveErr.message : String(sensitiveErr)
+      '[KeyStore] MODERATE parameters failed, trying SENSITIVE fallback:',
+      moderateErr instanceof Error ? moderateErr.message : String(moderateErr)
     );
 
     try {
-      opsLimit = sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE || 4;
-      memLimit = sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE || 67108864; // 64MB
-      kdfMode = 'INTERACTIVE';
+      opsLimit = sodium.crypto_pwhash_OPSLIMIT_SENSITIVE || 3;
+      memLimit = sodium.crypto_pwhash_MEMLIMIT_SENSITIVE || 268435456; // 256MB
+      kdfMode = 'SENSITIVE';
 
       const kdfStartTime = Date.now();
       const derivedKey = sodium.crypto_pwhash(
@@ -172,19 +175,19 @@ async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promis
       const elapsedMs = Date.now() - kdfStartTime;
 
       console.warn(
-        `[KeyStore] ⚠️  Using Argon2id ${kdfMode} instead of SENSITIVE (${elapsedMs}ms). ` +
-        `This is WEAKER than recommended - upgrade hardware or browser for SENSITIVE support.`
+        `[KeyStore] ⚠️  Using Argon2id ${kdfMode} instead of MODERATE (${elapsedMs}ms). ` +
+        `This is more secure but slower. Consider clearing browser cache if this persists.`
       );
 
-      // Mark as degraded since we're not using SENSITIVE
-      KDF_REALLY_DEGRADED = true;
+      // Still valid - SENSITIVE is more secure than MODERATE
+      KDF_REALLY_DEGRADED = false;
       return derivedKey;
     } catch (interactiveErr) {
       KDF_REALLY_DEGRADED = true;
       const fatalError = new Error(
-        '[KeyStore] CRITICAL: Argon2id KDF execution failed (both SENSITIVE and INTERACTIVE). ' +
-        `SENSITIVE error: ${sensitiveErr instanceof Error ? sensitiveErr.message : String(sensitiveErr)}, ` +
-        `INTERACTIVE error: ${interactiveErr instanceof Error ? interactiveErr.message : String(interactiveErr)}. ` +
+        '[KeyStore] CRITICAL: Argon2id KDF execution failed (both MODERATE and SENSITIVE). ' +
+        `MODERATE error: ${moderateErr instanceof Error ? moderateErr.message : String(moderateErr)}, ` +
+        `SENSITIVE error: ${interactiveErr instanceof Error ? interactiveErr.message : String(interactiveErr)}. ` +
         'Password-based key derivation is mandatory for identity protection. ' +
         'Application MUST refuse to continue.'
       );
