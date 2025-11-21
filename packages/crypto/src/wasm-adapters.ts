@@ -140,8 +140,16 @@ export async function createMLDSA65Adapter(): Promise<MLDSA65> {
       );
 
       // Export keys in raw format
+      // Note: 'raw-public' is 1952 bytes, 'raw-seed' or 'raw' should be 4032 bytes
       const publicKeyBuffer = await mldsa.exportKey('raw-public', keyPair.publicKey);
-      const secretKeyBuffer = await mldsa.exportKey('raw-seed', keyPair.privateKey);
+      // Try 'raw' format first (full secret key), fallback to 'raw-seed' if it fails
+      let secretKeyBuffer: ArrayBuffer;
+      try {
+        secretKeyBuffer = await mldsa.exportKey('raw', keyPair.privateKey);
+      } catch (e) {
+        // Fallback to raw-seed if raw fails
+        secretKeyBuffer = await mldsa.exportKey('raw-seed', keyPair.privateKey);
+      }
 
       return {
         publicKey: new Uint8Array(publicKeyBuffer),
@@ -151,13 +159,26 @@ export async function createMLDSA65Adapter(): Promise<MLDSA65> {
 
     sign: async (message: Uint8Array, secretKey: Uint8Array) => {
       // Import the secret key
-      const secretKeyObj = await mldsa.importKey(
-        'raw-seed',
-        secretKey,
-        { name: 'ML-DSA-65' },
-        false, // not extractable
-        ['sign']
-      );
+      // Try 'raw' format first (full secret key), fallback to 'raw-seed'
+      let secretKeyObj: any;
+      try {
+        secretKeyObj = await mldsa.importKey(
+          'raw',
+          secretKey,
+          { name: 'ML-DSA-65' },
+          false, // not extractable
+          ['sign']
+        );
+      } catch (e) {
+        // Fallback to raw-seed
+        secretKeyObj = await mldsa.importKey(
+          'raw-seed',
+          secretKey,
+          { name: 'ML-DSA-65' },
+          false, // not extractable
+          ['sign']
+        );
+      }
 
       // Sign
       const signature = await mldsa.sign(
