@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
   // Normalize username to lowercase
   const normalizedUsername = username.toLowerCase();
 
-  const profile = getProfileByUsername(normalizedUsername);
+  const profile = await getProfileByUsername(normalizedUsername);
 
   if (!profile) {
     return NextResponse.json(
@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
   const normalizedUsername = username.toLowerCase();
 
   // Check if username is already taken by another user
-  if (isUsernameTakenByOther(normalizedUsername, userId)) {
+  if (await isUsernameTakenByOther(normalizedUsername, userId)) {
     return NextResponse.json(
       { error: 'Username already taken' },
       { status: 409 }
@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Create/update profile
-  const profile = setProfile(normalizedUsername, userId, displayName);
+  const profile = await setProfile(normalizedUsername, userId, displayName);
 
   return NextResponse.json({
     username: normalizedUsername,
@@ -136,7 +136,7 @@ export async function DELETE() {
     );
   }
 
-  if (!deleteProfile(userId)) {
+  if (!(await deleteProfile(userId))) {
     return NextResponse.json(
       { error: 'Profile not found' },
       { status: 404 }

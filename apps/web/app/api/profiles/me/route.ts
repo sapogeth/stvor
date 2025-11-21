@@ -25,7 +25,7 @@ export async function GET() {
   }
 
   // Get profile for current user
-  const result = getProfileByUserId(userId);
+  const result = await getProfileByUserId(userId);
 
   if (!result) {
     return NextResponse.json(
