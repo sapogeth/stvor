@@ -138,20 +138,23 @@ Error: ML-KEM-768 keypair size mismatch
 
 **Problem**:
 ```
-Error: ML-DSA-65 keypair size mismatch
+Error: Invalid ML-DSA-65 secret key length: expected 4032, got 32
 ```
 
 **Root Cause**: mldsa-wasm uses different secret key encoding than liboqs:
 - mldsa-wasm 'raw-seed': ~32 bytes (seed only)
 - mldsa-wasm 'raw': ~4032 bytes (full key)
-- Code expected: 4032 bytes exactly
+- Code had strict validation at multiple points expecting exactly 4032 bytes
 
-**Fix Applied**: [packages/crypto/src/primitives.ts:427-442](https://github.com/path/to/repo/blob/main/packages/crypto/src/primitives.ts#L427-L442)
-- Relax secret key size validation to accept variable-length keys
-- Keep strict public key validation (always 1952 bytes)
-- Add fallback to 'raw' format in [wasm-adapters.ts:145-151](https://github.com/path/to/repo/blob/main/packages/crypto/src/wasm-adapters.ts#L145-L151)
+**Fix Applied**:
+Multiple locations patched to accept variable-length secret keys:
+1. [packages/crypto/src/primitives.ts:427-442](https://github.com/path/to/repo/blob/main/packages/crypto/src/primitives.ts#L427-L442) - generateMLDSA65KeyPair()
+2. [packages/crypto/src/primitives.ts:466-470](https://github.com/path/to/repo/blob/main/packages/crypto/src/primitives.ts#L466-L470) - mldsaSign() (the critical fix)
+3. [packages/crypto/src/primitives.ts:162-179](https://github.com/path/to/repo/blob/main/packages/crypto/src/primitives.ts#L162-L179) - Wire format validation in initPQBrowser()
+4. [packages/crypto/src/wasm-adapters.ts:145-151](https://github.com/path/to/repo/blob/main/packages/crypto/src/wasm-adapters.ts#L145-L151) - Adapter fallback to 'raw' format
+5. Applied parallel fixes to [packages/crypto/src/primitives.node.ts](https://github.com/path/to/repo/blob/main/packages/crypto/src/primitives.node.ts)
 
-**Commit**: `66e9dcc` (just committed)
+**Commits**: `66e9dcc` (keygen), `7ab7426` (signing and wire format)
 
 ---
 
@@ -186,6 +189,6 @@ packages/crypto/src/wasm-adapters.ts         (committed: 4969580, updated: 66e9d
 ---
 
 **Updated**: 2025-11-21
-**Latest Commit**: ead4996
-**Build Status**: ✅ All packages compiled successfully
-**Total Commits**: 5 (fbbc339, d312369, 4969580, 66e9dcc, ead4996)
+**Latest Commit**: 7ab7426
+**Build Status**: ✅ All packages compiled successfully (34.918s)
+**Total Commits**: 6 (fbbc339, d312369, 4969580, 66e9dcc, ead4996, 7ab7426)
