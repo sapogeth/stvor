@@ -59,14 +59,23 @@ const fastify = Fastify({
 
 // ==================== CORS Configuration ====================
 
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || [
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  'http://localhost:3002', // Next.js dev server alternate port
-  'http://127.0.0.1:3002',
-];
+// Parse ALLOWED_ORIGINS from environment with fallback to localhost for development
+// Format: comma-separated list (spaces are trimmed)
+// Example: https://stvor.xyz,https://www.stvor.xyz,http://localhost:3000
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
+  : [
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      'http://localhost:3002', // Next.js dev server alternate port
+      'http://127.0.0.1:3002',
+      'http://localhost:3001', // Relay dev server
+      'http://127.0.0.1:3001',
+    ];
 
 console.log('[Startup] 📋 Registering Fastify plugins...');
+console.log(`[Startup] 🔐 CORS: Allowed origins: ${ALLOWED_ORIGINS.join(', ')}`);
+
 await fastify.register(cors, {
   origin: (origin, callback) => {
     // Allow requests with no origin (e.g., mobile apps, Postman, curl)
