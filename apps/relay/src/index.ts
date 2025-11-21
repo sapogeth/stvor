@@ -134,6 +134,57 @@ await fastify.register(jwt, {
 
 console.log('[Security] ✅ JWT (HS256, 30d expiry)');
 
+// ==================== Relay Identity (Ed25519) ====================
+
+// Load relay's Ed25519 private key for signing responses
+// This enables clients to verify relay authenticity (EREBUS mitigation)
+const RELAY_IDENTITY_KEY_PEM = process.env.RELAY_IDENTITY_KEY;
+let relayIdentityPrivateKey: crypto.KeyObject | null = null;
+let relayIdentityPublicKey: string | null = null; // Hex string for client verification
+
+if (RELAY_IDENTITY_KEY_PEM && typeof RELAY_IDENTITY_KEY_PEM === 'string') {
+  try {
+    // Load private key from PEM format
+    // Replace literal \n with actual newlines
+    const pemKey = RELAY_IDENTITY_KEY_PEM.includes('\\n')
+      ? RELAY_IDENTITY_KEY_PEM.replace(/\\n/g, '\n')
+      : RELAY_IDENTITY_KEY_PEM;
+
+    relayIdentityPrivateKey = crypto.createPrivateKey({
+      key: pemKey,
+      format: 'pem',
+      type: 'pkcs8',
+    });
+
+    // Export public key for broadcasting to clients
+    const publicKeyObj = crypto.createPublicKey(relayIdentityPrivateKey);
+    const publicKeyExported = publicKeyObj.export({ format: 'pem', type: 'spki' });
+
+    // Convert to string (it's a string in Node.js for PEM format)
+    const publicKeyPEM = typeof publicKeyExported === 'string'
+      ? publicKeyExported
+      : publicKeyExported.toString('utf-8');
+
+    // Convert to hex format (last 32 bytes of DER-encoded key)
+    const publicKeyBase64 = publicKeyPEM.replace(/-----[A-Z ]+-----/g, '').replace(/\s/g, '');
+    const publicKeyBuffer = Buffer.from(publicKeyBase64, 'base64');
+    relayIdentityPublicKey = publicKeyBuffer.slice(-32).toString('hex');
+
+    console.log('[Security] ✅ Relay identity (Ed25519) loaded');
+    console.log(`[Security]    Public key (hex): ${relayIdentityPublicKey}`);
+  } catch (err) {
+    console.error('[Security] ❌ Failed to load RELAY_IDENTITY_KEY:', err);
+    console.error('[Security]    Relay signature verification will FAIL');
+    console.error('[Security]    Clients cannot verify relay authenticity');
+    process.exit(1); // Fail fast - relay is unusable without identity key
+  }
+} else {
+  console.warn('[Security] ⚠️  WARNING: RELAY_IDENTITY_KEY not set');
+  console.warn('[Security]    Relay signature verification will FAIL');
+  console.warn('[Security]    Clients cannot verify relay authenticity');
+  console.warn('[Security]    Set RELAY_IDENTITY_KEY in environment variables');
+}
+
 // ==================== Storage Initialization ====================
 
 let storage: IStorageAdapter | null = null;
@@ -270,14 +321,33 @@ fastify.get('/healthz', async () => {
   // The Fastify listener wouldn't be active if the server wasn't ready
   try {
     if (!storage || !storageReady) {
-      return { status: 'starting', ready: false, version: '0.8.0' };
+      return {
+        status: 'starting',
+        ready: false,
+        version: '0.8.0',
+        // Still include relay identity for client verification (even during startup)
+        relayPublicKey: relayIdentityPublicKey || null,
+      };
     }
 
     const healthy = await storage.isHealthy();
-    return { status: healthy ? 'ok' : 'degraded', ready: true, version: '0.8.0' };
+    return {
+      status: healthy ? 'ok' : 'degraded',
+      ready: true,
+      version: '0.8.0',
+      // CRITICAL: Include relay's public key for EREBUS mitigation
+      // Clients verify this key matches NEXT_PUBLIC_RELAY_PUBLIC_KEY before handshake
+      relayPublicKey: relayIdentityPublicKey,
+    };
   } catch (err) {
     // Still return 200 - the endpoint itself is working, storage might be temporarily unavailable
-    return { status: 'error', ready: false, error: (err as Error).message, version: '0.8.0' };
+    return {
+      status: 'error',
+      ready: false,
+      error: (err as Error).message,
+      version: '0.8.0',
+      relayPublicKey: relayIdentityPublicKey || null,
+    };
   }
 });
 
