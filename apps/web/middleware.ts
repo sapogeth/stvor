@@ -32,13 +32,15 @@ import type { NextRequest } from 'next/server';
  */
 const CSP = [
   "default-src 'self'",
-  // Scripts: Clerk (default + custom domain) + Cloudflare CAPTCHA + WASM support
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://clerk.stvor.xyz https://challenges.cloudflare.com",
+  // Scripts: Clerk (default + custom domain) + Cloudflare CAPTCHA + WASM + eval support
+  // 'unsafe-eval' required for WASM instantiation and dynamic code generation
+  // 'wasm-unsafe-eval' explicitly allows WebAssembly module instantiation
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://*.clerk.accounts.dev https://clerk.stvor.xyz https://challenges.cloudflare.com",
   // Script elements: CRITICAL for CAPTCHA - must include challenges.cloudflare.com + Clerk custom domain
   "script-src-elem 'self' 'unsafe-inline' https://*.clerk.accounts.dev https://clerk.stvor.xyz https://challenges.cloudflare.com",
   // Connections: Clerk API (default + custom domain) + Supabase relay + localhost dev + WebSocket relay server
   "connect-src 'self' https://*.clerk.accounts.dev https://clerk.stvor.xyz https://*.clerk.services https://api.clerk.com https://api.clerk.dev https://*.supabase.co https://challenges.cloudflare.com http://localhost:* ws://localhost:* wss://localhost:* wss://*.railway.app",
-  // Web Workers: CRITICAL for CAPTCHA - allows blob: URLs and Cloudflare workers
+  // Web Workers: CRITICAL for CAPTCHA + WASM support - allows blob: URLs and Cloudflare workers
   "worker-src 'self' blob: https://*.clerk.accounts.dev https://clerk.stvor.xyz https://challenges.cloudflare.com",
   // Child contexts: Fallback for older browsers (same as worker-src)
   "child-src 'self' blob: https://*.clerk.accounts.dev https://clerk.stvor.xyz https://challenges.cloudflare.com",
@@ -50,8 +52,8 @@ const CSP = [
   "frame-src 'self' https://*.clerk.accounts.dev https://clerk.stvor.xyz https://challenges.cloudflare.com",
   // Fonts: Local + data URIs
   "font-src 'self' data:",
-  // Media: Blobs for WASM modules
-  "media-src 'self' blob:",
+  // Media: Blobs for WASM modules and data URIs
+  "media-src 'self' blob: data:",
   // Security: Block all objects (Flash, Java applets)
   "object-src 'none'",
   // Security: Prevent base tag hijacking
