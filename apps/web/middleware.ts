@@ -32,22 +32,22 @@ import type { NextRequest } from 'next/server';
  */
 const CSP = [
   "default-src 'self'",
-  // Scripts: Clerk + Cloudflare CAPTCHA + WASM support
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://challenges.cloudflare.com",
-  // Script elements: CRITICAL for CAPTCHA - must include challenges.cloudflare.com
-  "script-src-elem 'self' 'unsafe-inline' https://*.clerk.accounts.dev https://challenges.cloudflare.com",
-  // Connections: Clerk API + Supabase relay + localhost dev + WebSocket relay server
-  "connect-src 'self' https://*.clerk.accounts.dev https://api.clerk.com https://api.clerk.dev https://*.supabase.co https://challenges.cloudflare.com http://localhost:* ws://localhost:* wss://localhost:* wss://*.railway.app",
+  // Scripts: Clerk (default + custom domain) + Cloudflare CAPTCHA + WASM support
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://clerk.stvor.xyz https://challenges.cloudflare.com",
+  // Script elements: CRITICAL for CAPTCHA - must include challenges.cloudflare.com + Clerk custom domain
+  "script-src-elem 'self' 'unsafe-inline' https://*.clerk.accounts.dev https://clerk.stvor.xyz https://challenges.cloudflare.com",
+  // Connections: Clerk API (default + custom domain) + Supabase relay + localhost dev + WebSocket relay server
+  "connect-src 'self' https://*.clerk.accounts.dev https://clerk.stvor.xyz https://*.clerk.services https://api.clerk.com https://api.clerk.dev https://*.supabase.co https://challenges.cloudflare.com http://localhost:* ws://localhost:* wss://localhost:* wss://*.railway.app",
   // Web Workers: CRITICAL for CAPTCHA - allows blob: URLs and Cloudflare workers
-  "worker-src 'self' blob: https://*.clerk.accounts.dev https://challenges.cloudflare.com",
+  "worker-src 'self' blob: https://*.clerk.accounts.dev https://clerk.stvor.xyz https://challenges.cloudflare.com",
   // Child contexts: Fallback for older browsers (same as worker-src)
-  "child-src 'self' blob: https://*.clerk.accounts.dev https://challenges.cloudflare.com",
-  // Images: Clerk avatars + data URIs + blobs
-  "img-src 'self' data: blob: https://img.clerk.com https://*.clerk.com",
+  "child-src 'self' blob: https://*.clerk.accounts.dev https://clerk.stvor.xyz https://challenges.cloudflare.com",
+  // Images: Clerk avatars (default + custom domain) + data URIs + blobs
+  "img-src 'self' data: blob: https://img.clerk.com https://*.clerk.com https://clerk.stvor.xyz",
   // Styles: Tailwind requires inline styles
   "style-src 'self' 'unsafe-inline'",
-  // Frames: Clerk OAuth + Cloudflare CAPTCHA
-  "frame-src 'self' https://*.clerk.accounts.dev https://challenges.cloudflare.com",
+  // Frames: Clerk OAuth (default + custom domain) + Cloudflare CAPTCHA
+  "frame-src 'self' https://*.clerk.accounts.dev https://clerk.stvor.xyz https://challenges.cloudflare.com",
   // Fonts: Local + data URIs
   "font-src 'self' data:",
   // Media: Blobs for WASM modules
@@ -56,8 +56,8 @@ const CSP = [
   "object-src 'none'",
   // Security: Prevent base tag hijacking
   "base-uri 'self'",
-  // Forms: Self + Clerk OAuth callbacks
-  "form-action 'self' https://*.clerk.accounts.dev",
+  // Forms: Self + Clerk OAuth callbacks (default + custom domain)
+  "form-action 'self' https://*.clerk.accounts.dev https://clerk.stvor.xyz",
   // Security: Prevent iframe embedding (clickjacking protection)
   "frame-ancestors 'none'",
 ].join('; ');
