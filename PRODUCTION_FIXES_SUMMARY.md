@@ -112,12 +112,33 @@ After deploying these changes, verify:
 
 ---
 
+## Issue #4: ML-DSA-65 Secret Key Size Mismatch (RESOLVED)
+
+**Problem**:
+```
+Error: ML-DSA-65 keypair size mismatch
+```
+
+**Root Cause**: mldsa-wasm uses different secret key encoding than liboqs:
+- mldsa-wasm 'raw-seed': ~32 bytes (seed only)
+- mldsa-wasm 'raw': ~4032 bytes (full key)
+- Code expected: 4032 bytes exactly
+
+**Fix Applied**: [packages/crypto/src/primitives.ts:427-442](https://github.com/path/to/repo/blob/main/packages/crypto/src/primitives.ts#L427-L442)
+- Relax secret key size validation to accept variable-length keys
+- Keep strict public key validation (always 1952 bytes)
+- Add fallback to 'raw' format in [wasm-adapters.ts:145-151](https://github.com/path/to/repo/blob/main/packages/crypto/src/wasm-adapters.ts#L145-L151)
+
+**Commit**: `66e9dcc` (just committed)
+
+---
+
 ## Files Changed in This Session
 
 ```
 packages/crypto/src/keystore.ts         (already committed: fbbc339)
 packages/crypto/src/primitives.ts       (already committed: d312369)
-packages/crypto/src/wasm-adapters.ts    (just committed: 4969580)
+packages/crypto/src/wasm-adapters.ts    (committed: 4969580, updated: 66e9dcc)
 ```
 
 ---
@@ -142,5 +163,6 @@ packages/crypto/src/wasm-adapters.ts    (just committed: 4969580)
 ---
 
 **Updated**: 2025-11-21
-**Latest Commit**: 4969580
-**Build Status**: ✅ All packages compiled successfully in 47.978s
+**Latest Commit**: 66e9dcc
+**Build Status**: ✅ All packages compiled successfully in 44.421s
+**Total Commits**: 4 (fbbc339, d312369, 4969580, 66e9dcc)
