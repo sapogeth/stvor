@@ -88,6 +88,11 @@ async function ensureFreshKeystore(): Promise<void> {
       // This ensures no stale data remains after migration
       const allKeys = Object.keys(localStorage);
       for (const key of allKeys) {
+        // CRITICAL: Do NOT delete the migration version key itself, or we'll loop forever
+        if (key === 'ilyazh-keystore-migration-version') {
+          logDebug('identity', `Skipping migration version key: ${key}`);
+          continue;
+        }
         if (key.startsWith('jwt_token_') || key.includes('ilyazh') || key.includes('keystore')) {
           localStorage.removeItem(key);
           logDebug('identity', `Removed localStorage key: ${key}`);
