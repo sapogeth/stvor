@@ -112,7 +112,29 @@ After deploying these changes, verify:
 
 ---
 
-## Issue #4: ML-DSA-65 Secret Key Size Mismatch (RESOLVED)
+## Issue #4: ML-KEM-768 Secret Key Size Mismatch (RESOLVED)
+
+**Problem**:
+```
+Error: ML-KEM-768 keypair size mismatch
+```
+
+**Root Cause**: mlkem-wasm uses different secret key encoding than liboqs:
+- mlkem-wasm 'raw' format: variable size (typically ~2400 bytes but exact size may vary)
+- Code expected: exactly 2400 bytes
+- Public key: strictly 1184 bytes (validated)
+
+**Fix Applied**: [packages/crypto/src/primitives.ts:321-330](https://github.com/path/to/repo/blob/main/packages/crypto/src/primitives.ts#L321-L330)
+- Keep strict public key validation (1184 bytes)
+- Accept variable-length secret keys from mlkem-wasm
+- Also applied to decapsulate function (lines 396-400)
+- Applied parallel fix to [packages/crypto/src/primitives.node.ts:126-140](https://github.com/path/to/repo/blob/main/packages/crypto/src/primitives.node.ts#L126-L140)
+
+**Commit**: `ead4996` (just committed)
+
+---
+
+## Issue #5: ML-DSA-65 Secret Key Size Mismatch (RESOLVED)
 
 **Problem**:
 ```
@@ -136,9 +158,10 @@ Error: ML-DSA-65 keypair size mismatch
 ## Files Changed in This Session
 
 ```
-packages/crypto/src/keystore.ts         (already committed: fbbc339)
-packages/crypto/src/primitives.ts       (already committed: d312369)
-packages/crypto/src/wasm-adapters.ts    (committed: 4969580, updated: 66e9dcc)
+packages/crypto/src/keystore.ts              (already committed: fbbc339)
+packages/crypto/src/primitives.ts            (committed: d312369, updated: 66e9dcc, ead4996)
+packages/crypto/src/primitives.node.ts       (updated: ead4996)
+packages/crypto/src/wasm-adapters.ts         (committed: 4969580, updated: 66e9dcc)
 ```
 
 ---
@@ -163,6 +186,6 @@ packages/crypto/src/wasm-adapters.ts    (committed: 4969580, updated: 66e9dcc)
 ---
 
 **Updated**: 2025-11-21
-**Latest Commit**: 66e9dcc
-**Build Status**: ✅ All packages compiled successfully in 44.421s
-**Total Commits**: 4 (fbbc339, d312369, 4969580, 66e9dcc)
+**Latest Commit**: ead4996
+**Build Status**: ✅ All packages compiled successfully
+**Total Commits**: 5 (fbbc339, d312369, 4969580, 66e9dcc, ead4996)
