@@ -15,7 +15,7 @@ export * from './group-chat.js';
 // PQ Initialization (Browser WASM Loading)
 // ============================================================================
 
-export { initPQBrowser, isPQAvailable, isPQReallyUnavailable } from './pq-browser.js';
+export { initPQBrowser, isPQAvailable, isPQReallyUnavailable, isPQInitialized, waitForPQReady } from './pq-browser.js';
 
 // ============================================================================
 // Defense-in-Depth Security Module (KAIST NetS&P Lab)

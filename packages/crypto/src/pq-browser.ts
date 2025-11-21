@@ -23,6 +23,7 @@ let ML_KEM_768_INFO_INSTANCE: any = null;
 let ML_DSA_65_INFO_INSTANCE: any = null;
 let pqAvailable = false;
 let pqReallyUnavailable = false; // CRITICAL: true if all strategies fail
+let pqInitialized = false; // CRITICAL: tracks completion (success or failure)
 
 /**
  * Load PQ using real mlkem-wasm and mldsa-wasm npm packages
@@ -97,6 +98,7 @@ async function loadPQFromWASMAdapters(): Promise<boolean> {
 
 export async function initPQBrowser(): Promise<{ pqAvailable: boolean; pqReallyUnavailable: boolean }> {
   if (pqAvailable && mlkem768Instance && mldsa65Instance && !pqReallyUnavailable) {
+    pqInitialized = true;
     return { pqAvailable: true, pqReallyUnavailable: false };
   }
 
@@ -121,6 +123,7 @@ export async function initPQBrowser(): Promise<{ pqAvailable: boolean; pqReallyU
 
     pqAvailable = true;
     pqReallyUnavailable = false;
+    pqInitialized = true;
 
     console.log('[PQ Browser] ✅ Loaded REAL PQ from npm (@openforge-sh/liboqs)');
     return { pqAvailable: true, pqReallyUnavailable: false };
@@ -131,12 +134,14 @@ export async function initPQBrowser(): Promise<{ pqAvailable: boolean; pqReallyU
     console.log('[PQ Browser] Falling back to Strategy 2...');
     const wasmSuccess = await loadPQFromWASMAdapters();
     if (wasmSuccess) {
+      pqInitialized = true;
       return { pqAvailable: true, pqReallyUnavailable: false };
     }
 
     // Both strategies failed - hard-fail
     pqAvailable = false;
     pqReallyUnavailable = true; // CRITICAL: Mark as unusable
+    pqInitialized = true; // Still mark as initialized (just failed)
 
     console.error('[PQ Browser] 🚨 CRITICAL: PQ cryptography is UNAVAILABLE');
     console.error('[PQ Browser] 🚨 Neither npm module (Strategy 1) nor WASM adapters (Strategy 2) loaded');
@@ -161,4 +166,47 @@ export function isPQAvailable(): boolean {
 
 export function isPQReallyUnavailable(): boolean {
   return pqReallyUnavailable;
+}
+
+export function isPQInitialized(): boolean {
+  return pqInitialized;
+}
+
+/**
+ * Wait for PQ crypto initialization to complete (success or failure)
+ * This prevents race conditions where E2E tries to use PQ before it's ready
+ *
+ * @param timeoutMs Maximum time to wait in milliseconds (default: 30000 = 30s)
+ * @returns Promise that resolves when PQ initialization completes
+ * @throws Error if initialization doesn't complete within timeout
+ */
+export async function waitForPQReady(timeoutMs: number = 30000): Promise<void> {
+  if (pqInitialized) {
+    // Already initialized (success or failure)
+    return;
+  }
+
+  const startTime = Date.now();
+  return new Promise((resolve, reject) => {
+    const checkInterval = setInterval(() => {
+      if (pqInitialized) {
+        clearInterval(checkInterval);
+        const elapsed = Date.now() - startTime;
+        console.log(`[PQ Browser] ✓ PQ initialization completed after ${elapsed}ms`);
+        resolve();
+        return;
+      }
+
+      const elapsed = Date.now() - startTime;
+      if (elapsed > timeoutMs) {
+        clearInterval(checkInterval);
+        const error = new Error(
+          `PQ crypto initialization timeout after ${elapsed}ms. ` +
+          'This may indicate slow network, missing WASM modules, or browser compatibility issue.'
+        );
+        console.error('[PQ Browser] ✗ ' + error.message);
+        reject(error);
+      }
+    }, 50); // Check every 50ms
+  });
 }

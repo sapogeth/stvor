@@ -8,55 +8,11 @@
  * - Device re-enrollment when keys are missing
  */
 
-import { generateIdentity, type IdentityKeyPair } from '@ilyazh/crypto';
+import { generateIdentity, type IdentityKeyPair, waitForPQReady } from '@ilyazh/crypto';
 import { keystore } from './keystore';
 import { getRelayUrl } from './relay-url';
 import { verifyRelaySignature, isRelayIdentityVerified } from './relay-identity';
 import { logDebug, logInfo, logWarn, logError, redactToken, redactPublicKey } from './logger';
-
-/**
- * Wait for PQ crypto (liboqs WASM) to be fully initialized
- * This prevents race conditions where identity generation is attempted
- * before ML-KEM-768 and ML-DSA-65 are ready.
- *
- * Returns a Promise that resolves when crypto is ready.
- */
-export async function waitForPQReady(timeoutMs: number = 30000): Promise<void> {
-  if (typeof window === 'undefined') {
-    // Not in browser - PQ crypto not applicable
-    return;
-  }
-
-  // Check if already ready
-  if ((window as any).__PQ_READY === true) {
-    logDebug('identity', 'PQ crypto already initialized');
-    return;
-  }
-
-  logInfo('identity', 'Waiting for PQ crypto to initialize...');
-
-  return new Promise((resolve, reject) => {
-    const startTime = Date.now();
-    const checkInterval = 50; // Check every 50ms
-
-    const interval = setInterval(() => {
-      if ((window as any).__PQ_READY === true) {
-        clearInterval(interval);
-        const elapsed = Date.now() - startTime;
-        logInfo('identity', `PQ crypto ready after ${elapsed}ms`);
-        resolve();
-        return;
-      }
-
-      const elapsed = Date.now() - startTime;
-      if (elapsed > timeoutMs) {
-        clearInterval(interval);
-        logError('identity', `PQ crypto initialization timeout after ${elapsed}ms`);
-        reject(new Error(`PQ crypto initialization timeout (${elapsed}ms > ${timeoutMs}ms)`));
-      }
-    }, checkInterval);
-  });
-}
 
 // ==================== Relay Identity Verification State ====================
 
