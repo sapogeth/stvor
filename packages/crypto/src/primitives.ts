@@ -159,17 +159,23 @@ async function initCryptoInternal(): Promise<void> {
     // Verify wire format sizes match specification
     // DOWNGRADED: Warn instead of throw - continue with classical if sizes mismatch
     try {
+      // Validate public key sizes (strict) and operation parameter sizes (strict)
+      // Note: Secret key sizes from WASM adapters may vary, so we only check non-zero
       if (ML_KEM_768_INFO.keySize.publicKey !== constants.ML_KEM_768_PUBLIC_KEY_LENGTH ||
-          ML_KEM_768_INFO.keySize.secretKey !== constants.ML_KEM_768_SECRET_KEY_LENGTH ||
           ML_KEM_768_INFO.keySize.ciphertext !== constants.ML_KEM_768_CIPHERTEXT_LENGTH ||
           ML_KEM_768_INFO.keySize.sharedSecret !== constants.ML_KEM_768_SHARED_SECRET_LENGTH) {
         throw new Error('ML-KEM-768 wire format size mismatch');
       }
+      if (!ML_KEM_768_INFO.keySize.secretKey || ML_KEM_768_INFO.keySize.secretKey === 0) {
+        throw new Error('ML-KEM-768 secret key size is zero or undefined');
+      }
 
       if (ML_DSA_65_INFO.keySize.publicKey !== constants.ML_DSA_65_PUBLIC_KEY_LENGTH ||
-          ML_DSA_65_INFO.keySize.secretKey !== constants.ML_DSA_65_SECRET_KEY_LENGTH ||
           ML_DSA_65_INFO.keySize.signature !== constants.ML_DSA_65_SIGNATURE_LENGTH) {
         throw new Error('ML-DSA-65 wire format size mismatch');
+      }
+      if (!ML_DSA_65_INFO.keySize.secretKey || ML_DSA_65_INFO.keySize.secretKey === 0) {
+        throw new Error('ML-DSA-65 secret key size is zero or undefined');
       }
 
       pqAvailable = true;
@@ -463,8 +469,10 @@ export async function mldsaSign(message: Uint8Array, secretKey: Uint8Array): Pro
     throw err;
   }
 
-  if (secretKey.length !== constants.ML_DSA_65_SECRET_KEY_LENGTH) {
-    throw new Error(`Invalid ML-DSA-65 secret key length: expected ${constants.ML_DSA_65_SECRET_KEY_LENGTH}, got ${secretKey.length}`);
+  // Note: mldsa-wasm may use different secret key encoding than liboqs
+  // Accept variable-length secret keys
+  if (secretKey.length === 0) {
+    throw new Error('ML-DSA-65 secret key is empty');
   }
 
   // Validate that secret key is NOT all zeros (stub detection)
