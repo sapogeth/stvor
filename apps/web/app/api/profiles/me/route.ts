@@ -7,13 +7,7 @@
 
 import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
-
-// Import the profile storage from parent route
-// Note: In production, this should be replaced with a database
-// For now, we'll need to replicate the maps or move them to a shared module
-
-// Temporary: We'll create a shared module for profile storage
-// For now, return based on localStorage on client side
+import { getProfileByUserId } from '../storage';
 
 /**
  * GET /api/profiles/me
@@ -30,16 +24,22 @@ export async function GET() {
     );
   }
 
-  // Import from parent - we need to refactor this properly
-  // For now, let's check if we can access the maps
-  // This is a temporary solution - in production use a database
+  // Get profile for current user
+  const result = getProfileByUserId(userId);
 
-  // Since we can't easily access the maps from the parent route,
-  // we'll return a 404 for now and handle it on the client
-  // The client should use localStorage to get the username
+  if (!result) {
+    return NextResponse.json(
+      { error: 'Profile not found' },
+      { status: 404 }
+    );
+  }
 
-  return NextResponse.json(
-    { error: 'Profile not found - use client-side storage' },
-    { status: 404 }
-  );
+  const { username, profile } = result;
+
+  return NextResponse.json({
+    username,
+    userId: profile.userId,
+    displayName: profile.displayName,
+    createdAt: profile.createdAt,
+  });
 }

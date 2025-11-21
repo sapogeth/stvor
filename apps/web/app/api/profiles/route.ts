@@ -18,20 +18,12 @@
 
 import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
-
-// In-memory profile storage (replace with database in production)
-// Structure: username -> { userId, displayName, createdAt }
-const profiles = new Map<
-  string,
-  {
-    userId: string;
-    displayName: string;
-    createdAt: string;
-  }
->();
-
-// Reverse index: userId -> username
-const userIdToUsername = new Map<string, string>();
+import {
+  getProfileByUsername,
+  isUsernameTakenByOther,
+  setProfile,
+  deleteProfile,
+} from './storage';
 
 /**
  * GET /api/profiles?username=foo
@@ -51,7 +43,7 @@ export async function GET(req: NextRequest) {
   // Normalize username to lowercase
   const normalizedUsername = username.toLowerCase();
 
-  const profile = profiles.get(normalizedUsername);
+  const profile = getProfileByUsername(normalizedUsername);
 
   if (!profile) {
     return NextResponse.json(
@@ -111,29 +103,15 @@ export async function POST(req: NextRequest) {
   const normalizedUsername = username.toLowerCase();
 
   // Check if username is already taken by another user
-  const existingProfile = profiles.get(normalizedUsername);
-  if (existingProfile && existingProfile.userId !== userId) {
+  if (isUsernameTakenByOther(normalizedUsername, userId)) {
     return NextResponse.json(
       { error: 'Username already taken' },
       { status: 409 }
     );
   }
 
-  // Check if user already has a username and remove old mapping
-  const oldUsername = userIdToUsername.get(userId);
-  if (oldUsername && oldUsername !== normalizedUsername) {
-    profiles.delete(oldUsername);
-  }
-
   // Create/update profile
-  const profile = {
-    userId,
-    displayName: displayName || username,
-    createdAt: existingProfile?.createdAt || new Date().toISOString(),
-  };
-
-  profiles.set(normalizedUsername, profile);
-  userIdToUsername.set(userId, normalizedUsername);
+  const profile = setProfile(normalizedUsername, userId, displayName);
 
   return NextResponse.json({
     username: normalizedUsername,
@@ -158,17 +136,12 @@ export async function DELETE() {
     );
   }
 
-  const username = userIdToUsername.get(userId);
-
-  if (!username) {
+  if (!deleteProfile(userId)) {
     return NextResponse.json(
       { error: 'Profile not found' },
       { status: 404 }
     );
   }
-
-  profiles.delete(username);
-  userIdToUsername.delete(userId);
 
   return NextResponse.json({ success: true });
 }
