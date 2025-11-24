@@ -463,6 +463,90 @@ export async function initiateHandshake(
 }
 
 /**
+ * CRITICAL: Validate handshake message structure and field lengths
+ * Prevents crashes and DoS attacks from malformed messages
+ */
+function validateHandshakeMessage(msg: HandshakeMessage, role: 'initiator' | 'responder'): void {
+  // SECURITY: Check for null/undefined fields
+  if (!msg) {
+    throw new Error('[Handshake] CRITICAL: HandshakeMessage is null or undefined');
+  }
+
+  if (!msg.identityPublicEd25519 || msg.identityPublicEd25519.length === 0) {
+    throw new Error('[Handshake] CRITICAL: identityPublicEd25519 is missing or empty');
+  }
+
+  if (msg.identityPublicEd25519.length !== 32) {
+    throw new Error(
+      `[Handshake] CRITICAL: identityPublicEd25519 has invalid length ${msg.identityPublicEd25519.length}, expected 32 bytes`
+    );
+  }
+
+  if (!msg.identityPublicMLDSA) {
+    throw new Error('[Handshake] CRITICAL: identityPublicMLDSA is missing');
+  }
+
+  // Allow empty ML-DSA for classical-only mode, but reject wrong length
+  if (msg.identityPublicMLDSA.length > 0 && msg.identityPublicMLDSA.length !== constants.ML_DSA_65_PUBLIC_KEY_LENGTH) {
+    throw new Error(
+      `[Handshake] CRITICAL: identityPublicMLDSA has invalid length ${msg.identityPublicMLDSA.length}, expected ${constants.ML_DSA_65_PUBLIC_KEY_LENGTH} or 0`
+    );
+  }
+
+  if (!msg.ephemeralX25519 || msg.ephemeralX25519.length === 0) {
+    throw new Error('[Handshake] CRITICAL: ephemeralX25519 is missing or empty');
+  }
+
+  if (msg.ephemeralX25519.length !== 32) {
+    throw new Error(
+      `[Handshake] CRITICAL: ephemeralX25519 has invalid length ${msg.ephemeralX25519.length}, expected 32 bytes`
+    );
+  }
+
+  // Role-specific validation
+  if (role === 'initiator') {
+    // Initiator sends ephemeralMLKEM
+    if (!msg.ephemeralMLKEM || msg.ephemeralMLKEM.length === 0) {
+      throw new Error('[Handshake] CRITICAL: Initiator must include ephemeralMLKEM');
+    }
+    if (msg.ephemeralMLKEM.length !== constants.ML_KEM_768_PUBLIC_KEY_LENGTH) {
+      throw new Error(
+        `[Handshake] CRITICAL: ephemeralMLKEM has invalid length ${msg.ephemeralMLKEM.length}, expected ${constants.ML_KEM_768_PUBLIC_KEY_LENGTH}`
+      );
+    }
+  } else if (role === 'responder') {
+    // Responder sends kemCiphertext
+    if (!msg.kemCiphertext || msg.kemCiphertext.length === 0) {
+      throw new Error('[Handshake] CRITICAL: Responder must include kemCiphertext');
+    }
+    // ML-KEM ciphertext is 1088 bytes for ML-KEM-768
+    if (msg.kemCiphertext.length !== 1088) {
+      throw new Error(
+        `[Handshake] CRITICAL: kemCiphertext has invalid length ${msg.kemCiphertext.length}, expected 1088 bytes`
+      );
+    }
+  }
+
+  // Signature validation
+  if (!msg.ed25519Signature || msg.ed25519Signature.length === 0) {
+    throw new Error('[Handshake] CRITICAL: ed25519Signature is missing or empty');
+  }
+
+  if (msg.ed25519Signature.length !== 64) {
+    throw new Error(
+      `[Handshake] CRITICAL: ed25519Signature has invalid length ${msg.ed25519Signature.length}, expected 64 bytes`
+    );
+  }
+
+  // ML-DSA signature can be empty (classical-only), but reject wrong length
+  if (msg.mldsaSignature && msg.mldsaSignature.length > 0 && msg.mldsaSignature.length !== constants.ML_DSA_65_SIGNATURE_LENGTH) {
+    throw new Error(
+      `[Handshake] CRITICAL: mldsaSignature has invalid length ${msg.mldsaSignature.length}, expected ${constants.ML_DSA_65_SIGNATURE_LENGTH} or 0`
+    );
+  }
+}
+
+/**
  * Responder: complete handshake and derive session keys
  */
 export async function completeHandshake(
@@ -472,6 +556,9 @@ export async function completeHandshake(
   initiatorMsg: HandshakeMessage
 ): Promise<{ message: HandshakeMessage; state: HandshakeState }> {
   await prim.ensureCryptoReady();
+
+  // CRITICAL: Validate input message structure (prevent DoS and crashes)
+  validateHandshakeMessage(initiatorMsg, 'initiator');
 
   // CRITICAL: Validate PQ is not using stubs
   await validatePQRequired();
@@ -562,11 +649,12 @@ export async function completeHandshake(
   // Perform X25519 DH
   const dhSecret = prim.x25519(responderPrekeyX25519Secret, initiatorMsg.ephemeralX25519);
 
-  // SECURITY: Downgrade attack detection
-  // If initiator claims PQ support but we can't use ML-KEM, this might be a downgrade attack
+  // CRITICAL SECURITY: MANDATORY POST-QUANTUM CRYPTOGRAPHY
+  // Downgrade attack detection with FAIL-CLOSED enforcement
+  // If both sides claim PQ support, ML-KEM is MANDATORY - no fallback to classical-only
   const initiatorPQSupported = initiatorMsg.pqSupported ?? false;
 
-  // Try PQ encapsulation, fall back to classical-only if unavailable
+  // Initiate PQ (ML-KEM) encapsulation
   let combinedSecret: Uint8Array;
   let kemCiphertext: Uint8Array | undefined;
   let kemSecret: Uint8Array | undefined; // For zeroization later
@@ -574,32 +662,52 @@ export async function completeHandshake(
   let pqMandatory = false; // Set if both sides support PQ
 
   try {
-    // Try PQ branch: ML-KEM encapsulation
+    // Perform ML-KEM encapsulation - this is MANDATORY if both sides support PQ
     const kemResult = await prim.mlkemEncapsulate(initiatorMsg.ephemeralMLKEM!);
     kemSecret = kemResult.sharedSecret;
     kemCiphertext = kemResult.ciphertext;
     combinedSecret = hybridCombine(dhSecret, kemSecret);
     pqUsed = true;
+
     // Both sides support PQ - make it mandatory for this session
     if (initiatorPQSupported) {
       pqMandatory = true;
-      console.log('[Handshake] Both sides support PQ - making PQ mandatory for this session');
+      console.log('[Handshake] ✅ Both sides support PQ - PQ is MANDATORY for this session');
     }
   } catch (e: any) {
-    // If ML-KEM failed with PQ_NOT_READY, check for downgrade attack
+    // If ML-KEM failed, check if this is a downgrade attack
     if (e.code === 'PQ_NOT_READY') {
-      // SECURITY: If initiator claimed PQ support but we can't do PQ, log as potential downgrade
+      // CRITICAL SECURITY: If initiator claimed PQ support but we cannot use ML-KEM,
+      // this is a POTENTIAL DOWNGRADE ATTACK or system failure
+      // ACTION: REJECT the handshake (fail-closed)
+      console.error('[Handshake] ❌ CRITICAL: ML-KEM unavailable during handshake');
+
       if (initiatorPQSupported) {
-        console.warn('[Handshake] ⚠️  POTENTIAL DOWNGRADE ATTACK: Initiator supports PQ but responder cannot use ML-KEM');
+        console.error('[Handshake] ❌ DOWNGRADE ATTACK DETECTED: Initiator claims PQ support but ML-KEM cannot be used');
+        console.error('[Handshake]    This indicates either:');
+        console.error('[Handshake]    1. An active downgrade attack (attacker disabling PQ)');
+        console.error('[Handshake]    2. System misconfiguration (PQ crypto not available)');
+        console.error('[Handshake]    3. Browser incompatibility');
+        console.error('[Handshake]    ACTION: Session REJECTED - cannot proceed without PQ');
+        throw new Error(
+          'CRITICAL: Post-quantum cryptography is unavailable for session establishment. ' +
+          'Both sides claimed PQ support, but ML-KEM encapsulation failed. ' +
+          'This is a potential downgrade attack or system misconfiguration. ' +
+          'Session is REJECTED for security. ' +
+          'User must update their browser or environment to support ML-KEM-768.'
+        );
+      } else {
+        // Initiator did not claim PQ support, so classical-only is acceptable
+        console.warn('[Handshake] ⚠️  ML-KEM unavailable, but initiator did not claim PQ support - using classical-only');
+        prim.disablePQ?.('completeHandshake: PQ not ready');
+        combinedSecret = dhSecret; // Classical-only: just use DH secret
+        kemCiphertext = undefined;
+        kemSecret = undefined;
+        pqMandatory = false;
       }
-      // Fall back to classical-only
-      prim.disablePQ?.('completeHandshake: PQ not ready');
-      combinedSecret = dhSecret; // Classical-only: just use DH secret
-      kemCiphertext = undefined;
-      kemSecret = undefined;
-      pqMandatory = false; // PQ not available, so not mandatory
     } else {
-      throw e; // Real error, re-throw
+      // Real error (not PQ availability) - re-throw
+      throw e;
     }
   }
 
@@ -703,6 +811,10 @@ export async function finalizeHandshake(
 ): Promise<HandshakeState> {
   await prim.ensureCryptoReady();
 
+  // CRITICAL: Validate input messages structure (prevent DoS and crashes)
+  validateHandshakeMessage(initiatorMsg, 'initiator');
+  validateHandshakeMessage(responderMsg, 'responder');
+
   // CRITICAL: Validate PQ is not using stubs
   await validatePQRequired();
 
@@ -750,38 +862,59 @@ export async function finalizeHandshake(
   // Perform X25519 DH
   const dhSecret = prim.x25519(ephemeralX25519Secret, responderMsg.ephemeralX25519);
 
-  // SECURITY: Downgrade attack detection from initiator side
-  // If responder claims PQ support but we can't do KEM, this might be a downgrade attack
+  // CRITICAL SECURITY: MANDATORY POST-QUANTUM CRYPTOGRAPHY (Initiator Side)
+  // Downgrade attack detection with FAIL-CLOSED enforcement
+  // If both sides claim PQ support, ML-KEM is MANDATORY - no fallback to classical-only
   const responderPQSupported = responderMsg.pqSupported ?? false;
 
-  // Try PQ decapsulation, fall back to classical-only if unavailable
+  // Perform ML-KEM decapsulation
   let combinedSecret: Uint8Array;
   let kemSecret: Uint8Array | undefined; // For zeroization later
   let pqMandatory = false; // Set if both sides support PQ
 
   try {
-    // Try PQ branch: ML-KEM decapsulation
+    // Perform ML-KEM decapsulation - this is MANDATORY if both sides support PQ
     kemSecret = await prim.mlkemDecapsulate(responderMsg.kemCiphertext!, ephemeralMLKEMSecret);
     combinedSecret = hybridCombine(dhSecret, kemSecret);
-    // Successfully did PQ - make it mandatory if responder also supports it
+
+    // Successfully used PQ - make it mandatory if responder also supports it
     if (responderPQSupported) {
       pqMandatory = true;
-      console.log('[Handshake] Both sides support PQ - making PQ mandatory for this session');
+      console.log('[Handshake] ✅ Both sides support PQ - PQ is MANDATORY for this session');
     }
   } catch (e: any) {
-    // If ML-KEM failed with PQ_NOT_READY, check for downgrade attack
+    // If ML-KEM failed, check if this is a downgrade attack
     if (e.code === 'PQ_NOT_READY') {
-      // SECURITY: If responder claimed PQ support but we can't do PQ, log as potential downgrade
+      // CRITICAL SECURITY: If responder claimed PQ support but we cannot use ML-KEM,
+      // this is a POTENTIAL DOWNGRADE ATTACK or system failure
+      // ACTION: REJECT the handshake (fail-closed)
+      console.error('[Handshake] ❌ CRITICAL: ML-KEM unavailable during handshake finalization');
+
       if (responderPQSupported) {
-        console.warn('[Handshake] ⚠️  POTENTIAL DOWNGRADE ATTACK: Responder supports PQ but initiator cannot use ML-KEM');
+        console.error('[Handshake] ❌ DOWNGRADE ATTACK DETECTED: Responder claims PQ support but ML-KEM cannot be used');
+        console.error('[Handshake]    This indicates either:');
+        console.error('[Handshake]    1. An active downgrade attack (attacker disabling PQ)');
+        console.error('[Handshake]    2. System misconfiguration (PQ crypto not available)');
+        console.error('[Handshake]    3. Browser incompatibility');
+        console.error('[Handshake]    ACTION: Session REJECTED - cannot proceed without PQ');
+        throw new Error(
+          'CRITICAL: Post-quantum cryptography is unavailable for session establishment. ' +
+          'Both sides claimed PQ support, but ML-KEM decapsulation failed. ' +
+          'This is a potential downgrade attack or system misconfiguration. ' +
+          'Session is REJECTED for security. ' +
+          'User must update their browser or environment to support ML-KEM-768.'
+        );
+      } else {
+        // Responder did not claim PQ support, so classical-only is acceptable
+        console.warn('[Handshake] ⚠️  ML-KEM unavailable, but responder did not claim PQ support - using classical-only');
+        prim.disablePQ?.('finalizeHandshake: PQ not ready');
+        combinedSecret = dhSecret; // Classical-only: just use DH secret
+        kemSecret = undefined;
+        pqMandatory = false;
       }
-      // Fall back to classical-only
-      prim.disablePQ?.('finalizeHandshake: PQ not ready');
-      combinedSecret = dhSecret; // Classical-only: just use DH secret
-      kemSecret = undefined;
-      pqMandatory = false; // PQ not available
     } else {
-      throw e; // Real error, re-throw
+      // Real error (not PQ availability) - re-throw
+      throw e;
     }
   }
 

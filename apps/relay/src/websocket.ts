@@ -472,27 +472,90 @@ export async function setupWebSocket(fastify: FastifyInstance) {
 
   /**
    * WebSocket endpoint: /ws
+   * CRITICAL SECURITY: Requires JWT authentication
    * Query parameters:
-   *   - username: Required, user's normalized username
+   *   - username: Required, user's normalized username (must match JWT claim)
+   *   - token: Required, JWT token for authentication
    *   - chatIds: Optional, comma-separated list of chat IDs to subscribe to
+   *
+   * Authentication flow:
+   * 1. Client provides JWT token (from /register or /directory endpoint)
+   * 2. Token is verified using JWT_SECRET
+   * 3. Username from token must match query parameter username
+   * 4. Only then is WebSocket connection allowed
    */
   fastify.get('/ws', { websocket: true }, (ws: WebSocket, req: any) => {
     const username = req.query.username as string;
+    const token = req.query.token as string;
     const chatIdsParam = req.query.chatIds as string;
 
+    // CRITICAL SECURITY: Username is required
     if (!username) {
+      console.error('[WebSocket] ❌ CRITICAL: Connection attempt without username');
       ws.send(JSON.stringify({
         type: 'error',
         content: { error: 'username query parameter required' },
       }));
-      ws.close();
+      ws.close(4001, 'Username required');
+      return;
+    }
+
+    // CRITICAL SECURITY: JWT token is MANDATORY
+    // WebSocket must authenticate like HTTP endpoints
+    if (!token) {
+      console.error(`[WebSocket] ❌ CRITICAL: WebSocket connection attempt without JWT token from ${username}`);
+      console.error('[WebSocket]    WebSocket connections MUST authenticate with JWT token');
+      console.error('[WebSocket]    This prevents unauthorized access and message interception');
+      ws.send(JSON.stringify({
+        type: 'error',
+        content: { error: 'JWT token required for WebSocket authentication' },
+      }));
+      ws.close(4001, 'Authentication required');
+      return;
+    }
+
+    // CRITICAL SECURITY: Verify JWT token
+    try {
+      // Use fastify's JWT verifier
+      const decoded = fastify.jwt.verify(token) as any;
+
+      // Validate token contains userId
+      if (!decoded.userId) {
+        console.error(`[WebSocket] ❌ CRITICAL: JWT token missing userId claim from ${username}`);
+        ws.send(JSON.stringify({
+          type: 'error',
+          content: { error: 'Invalid JWT token: missing userId' },
+        }));
+        ws.close(4001, 'Invalid token');
+        return;
+      }
+
+      // Validate username matches token claim (if token has username)
+      if (decoded.username && decoded.username !== username) {
+        console.error(`[WebSocket] ❌ CRITICAL: JWT token mismatch - token claims ${decoded.username} but request is for ${username}`);
+        ws.send(JSON.stringify({
+          type: 'error',
+          content: { error: 'Username does not match JWT token' },
+        }));
+        ws.close(4001, 'Invalid token');
+        return;
+      }
+
+      console.log(`[WebSocket] ✅ JWT authenticated: ${username} (userId: ${decoded.userId})`);
+    } catch (err) {
+      console.error(`[WebSocket] ❌ CRITICAL: JWT verification failed for ${username}:`, err instanceof Error ? err.message : String(err));
+      ws.send(JSON.stringify({
+        type: 'error',
+        content: { error: 'JWT verification failed' },
+      }));
+      ws.close(4001, 'Authentication failed');
       return;
     }
 
     // Parse chat IDs
     const chatIds = chatIdsParam ? chatIdsParam.split(',') : [];
 
-    // Register client
+    // Register client (only after successful JWT authentication)
     wsManager.registerClient(username, ws, chatIds);
 
     // Handle incoming messages

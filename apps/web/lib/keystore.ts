@@ -156,49 +156,33 @@ async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promis
     KDF_REALLY_DEGRADED = false;
     return derivedKey;
   } catch (sensitiveErr) {
-    // SENSITIVE failed - try INTERACTIVE as fallback (weaker but faster, only for browser compatibility)
-    console.warn(
-      '[KeyStore] SENSITIVE parameters failed, trying INTERACTIVE fallback:',
-      sensitiveErr instanceof Error ? sensitiveErr.message : String(sensitiveErr)
+    // CRITICAL SECURITY: FAIL-CLOSED - NO fallback to weaker KDF
+    // SENSITIVE failed = identity keys cannot be encrypted with proper security
+    // We MUST refuse to continue (fail-closed philosophy)
+    console.error('[KeyStore] ❌ CRITICAL: Argon2id SENSITIVE KDF failed');
+    console.error('[KeyStore]    Error:', sensitiveErr instanceof Error ? sensitiveErr.message : String(sensitiveErr));
+
+    KDF_REALLY_DEGRADED = true;
+    const fatalError = new Error(
+      '[KeyStore] CRITICAL: Argon2id SENSITIVE KDF is not available. ' +
+      'Identity keys CANNOT be encrypted securely. ' +
+      'This is a FATAL error - application must refuse to continue. ' +
+      'Possible causes: ' +
+      '1. libsodium-wrappers-sumo is not properly installed (use `npm install libsodium-wrappers-sumo` NOT regular libsodium-wrappers) ' +
+      '2. Browser does not support heavy cryptographic operations ' +
+      '3. System has insufficient RAM (SENSITIVE mode requires 256MB) ' +
+      '4. Browser process is out of memory or near memory limit ' +
+      'Solutions: ' +
+      '1. Verify using libsodium-wrappers-sumo (sumo variant) ' +
+      '2. Upgrade your browser to the latest version ' +
+      '3. Close other tabs/applications to free RAM ' +
+      '4. Ensure at least 512MB free system RAM ' +
+      'SECURITY: We will NOT fall back to weaker KDF (INTERACTIVE mode) because it provides 4x weaker password protection. ' +
+      'Your identity keys are too important to protect with degraded encryption. ' +
+      `Original error: ${sensitiveErr instanceof Error ? sensitiveErr.message : String(sensitiveErr)}`
     );
-
-    try {
-      opsLimit = sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE || 4;
-      memLimit = sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE || 67108864; // 64MB
-      kdfMode = 'INTERACTIVE';
-
-      const kdfStartTime = Date.now();
-      const derivedKey = sodium.crypto_pwhash(
-        keyLength,
-        passwordBytes,
-        salt,
-        opsLimit,
-        memLimit,
-        alg
-      );
-      const elapsedMs = Date.now() - kdfStartTime;
-
-      console.warn(
-        `[KeyStore] ⚠️  Using Argon2id ${kdfMode} instead of SENSITIVE (${elapsedMs}ms). ` +
-        `This provides weaker password protection. Browser may not support heavy KDF. ` +
-        `Consider: 1) upgrading browser, 2) increasing system RAM, 3) closing other tabs`
-      );
-
-      // INTERACTIVE is weaker than SENSITIVE - set KDF_REALLY_DEGRADED flag
-      KDF_REALLY_DEGRADED = true;
-      return derivedKey;
-    } catch (interactiveErr) {
-      KDF_REALLY_DEGRADED = true;
-      const fatalError = new Error(
-        '[KeyStore] CRITICAL: Argon2id KDF execution failed (both SENSITIVE and INTERACTIVE). ' +
-        `SENSITIVE error: ${sensitiveErr instanceof Error ? sensitiveErr.message : String(sensitiveErr)}, ` +
-        `INTERACTIVE error: ${interactiveErr instanceof Error ? interactiveErr.message : String(interactiveErr)}. ` +
-        'Password-based key derivation is mandatory for identity protection. ' +
-        'Application MUST refuse to continue.'
-      );
-      console.error(fatalError.message);
-      throw fatalError;
-    }
+    console.error(fatalError.message);
+    throw fatalError; // SECURITY: Fail-closed - refuse to save keys with weak encryption
   }
 }
 

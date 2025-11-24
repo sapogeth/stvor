@@ -76,10 +76,28 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
 console.log('[Startup] 📋 Registering Fastify plugins...');
 console.log(`[Startup] 🔐 CORS: Allowed origins: ${ALLOWED_ORIGINS.join(', ')}`);
 
+// CRITICAL SECURITY: API key validation for no-origin requests
+const VALID_API_KEYS = new Set(
+  (process.env.VALID_API_KEYS || '')
+    .split(',')
+    .map(key => key.trim())
+    .filter(Boolean)
+);
+
+function isValidAPIKey(apiKey: string | undefined): boolean {
+  if (!apiKey) return false;
+  return VALID_API_KEYS.has(apiKey);
+}
+
 await fastify.register(cors, {
   origin: (origin, callback) => {
-    // Allow requests with no origin (e.g., mobile apps, Postman, curl)
+    // CRITICAL SECURITY: Handle no-origin requests (mobile apps, Postman, curl, etc.)
+    // These requests could be from malicious mobile malware, so require explicit API key
     if (!origin) {
+      // For no-origin requests, we require an API key header
+      // This will be checked in the onRequest hook below
+      // For now, allow to pass, but they will be rejected in the endpoint handlers
+      // unless they provide X-API-Key header
       callback(null, true);
       return;
     }
@@ -90,14 +108,43 @@ await fastify.register(cors, {
     } else {
       // Only log blocked origins (security event)
       console.error(`[CORS] ❌ BLOCKED origin: ${origin}`);
+      logSecurityEvent('CORS_BLOCKED', { origin });
       callback(new Error('Not allowed by CORS'), false);
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Relay-User'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Relay-User', 'X-API-Key'],
   preflightContinue: false,
   optionsSuccessStatus: 204,
+});
+
+// CRITICAL SECURITY: Enforce API key for no-origin requests
+fastify.addHook('onRequest', async (request, reply) => {
+  // Skip OPTIONS requests (CORS preflight)
+  if (request.method === 'OPTIONS') {
+    return;
+  }
+
+  // If request has no origin header, require X-API-Key header
+  const origin = request.headers.origin;
+  if (!origin) {
+    const apiKey = request.headers['x-api-key'] as string | undefined;
+
+    // If no origin and no API key, block the request
+    if (!isValidAPIKey(apiKey)) {
+      console.error(`[CORS] ❌ CRITICAL: No-origin request without valid API key`);
+      console.error(`[CORS]    IP: ${request.ip}`);
+      console.error(`[CORS]    Path: ${request.url}`);
+      console.error(`[CORS]    Method: ${request.method}`);
+      logSecurityEvent('CORS_NO_ORIGIN_REJECTED', { ip: request.ip, path: request.url });
+
+      reply.code(403).send({
+        error: 'Forbidden: No-origin requests require X-API-Key header',
+        message: 'Mobile and server-to-server requests must provide a valid API key'
+      });
+    }
+  }
 });
 
 console.log('[Startup] ✅ CORS plugin registered');
@@ -110,30 +157,42 @@ console.log('[Startup] ✅ Multipart plugin registered');
 // ==================== JWT Authentication ====================
 
 console.log('[Startup] 🔐 Checking JWT_SECRET configuration...');
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+// SECURITY: FAIL-CLOSED - JWT_SECRET is MANDATORY, no default fallback
+const JWT_SECRET = process.env.JWT_SECRET;
 
-// Security check for production (but allow localhost/dev for testing)
-const isProduction = process.env.NODE_ENV === 'production' && !process.env.ALLOW_DEV_AUTOCREATE;
-
-if (isProduction && (!JWT_SECRET || JWT_SECRET.length < 48)) {
-  console.error('❌ CRITICAL (Production): JWT_SECRET not set or too short (< 48 chars)');
-  console.error('   Generate with: openssl rand -base64 48');
+// CRITICAL: JWT_SECRET is MANDATORY in ALL environments
+// No dev defaults, no fallback values - production-grade security from the start
+if (!JWT_SECRET) {
+  console.error('❌ CRITICAL: JWT_SECRET is not set');
+  console.error('   This is MANDATORY for all environments (dev, staging, production)');
+  console.error('   Generate with: openssl rand -base64 64');
   console.error('   Set environment variable: JWT_SECRET=<generated-value>');
-  process.exit(1); // Refuse to start in production with weak secret
-} else if (!JWT_SECRET || JWT_SECRET.length < 48) {
-  console.warn('⚠️  WARNING: JWT_SECRET not set or too short (<  48 chars)');
-  console.warn('   This is OK for development, but use proper secret in production');
+  console.error('   Minimum length: 64 characters (for HS256 security)');
+  process.exit(1); // SECURITY: Fail-closed - refuse to start
 }
 
-// Check for common insecure patterns (only fail in production)
-const INSECURE = ['secret', 'change-this', 'development-secret', 'test-secret', 'jwt-secret', 'please-change-me', 'temp-secret', 'dev-secret-change-in-production'];
-if (isProduction && INSECURE.some(s => JWT_SECRET.toLowerCase().includes(s))) {
-  console.error('❌ CRITICAL (Production): JWT_SECRET contains insecure pattern');
-  console.error('   Generate secure secret with: openssl rand -base64 48');
-  process.exit(1); // Refuse to start in production with insecure secret
-} else if (INSECURE.some(s => JWT_SECRET.toLowerCase().includes(s))) {
-  console.warn('⚠️  WARNING: JWT_SECRET contains dev/insecure pattern');
+// CRITICAL: Enforce minimum length for HS256 security
+// HS256 requires at least 256 bits (32 bytes) = 43 chars in base64
+// We enforce 64 chars for additional security margin
+if (JWT_SECRET.length < 64) {
+  console.error('❌ CRITICAL: JWT_SECRET is too short (< 64 chars)');
+  console.error('   HS256 requires minimum 256 bits (32 bytes) of entropy');
+  console.error('   We enforce 64 chars for additional security');
+  console.error('   Generate with: openssl rand -base64 64');
+  console.error('   Current length: ' + JWT_SECRET.length + ' chars');
+  process.exit(1); // SECURITY: Fail-closed - refuse to start
 }
+
+// CRITICAL: Reject common insecure patterns (developer mistakes)
+const INSECURE = ['secret', 'change-this', 'development-secret', 'test-secret', 'jwt-secret', 'please-change-me', 'temp-secret', 'dev-secret', 'default-'];
+if (INSECURE.some(s => JWT_SECRET.toLowerCase().includes(s))) {
+  console.error('❌ CRITICAL: JWT_SECRET contains insecure pattern indicating it\'s a default/placeholder');
+  console.error('   Detected insecure pattern in: ' + JWT_SECRET.substring(0, 30) + '...');
+  console.error('   Generate a secure random secret with: openssl rand -base64 64');
+  process.exit(1); // SECURITY: Fail-closed - refuse to start
+}
+
+console.log('[Security] ✅ JWT_SECRET is valid and secure');
 
 await fastify.register(jwt, {
   secret: JWT_SECRET,
@@ -145,53 +204,67 @@ console.log('[Security] ✅ JWT (HS256, 30d expiry)');
 
 // ==================== Relay Identity (Ed25519) ====================
 
-// Load relay's Ed25519 private key for signing responses
-// This enables clients to verify relay authenticity (EREBUS mitigation)
+// CRITICAL: FAIL-CLOSED - Relay identity key is MANDATORY
+// Without this key, clients cannot verify relay authenticity, enabling EREBUS/MITM attacks
+// This must be configured in ALL environments (dev, staging, production)
+console.log('[Startup] 🔐 Checking RELAY_IDENTITY_KEY configuration...');
 const RELAY_IDENTITY_KEY_PEM = process.env.RELAY_IDENTITY_KEY;
+
+if (!RELAY_IDENTITY_KEY_PEM) {
+  console.error('❌ CRITICAL: RELAY_IDENTITY_KEY is not set');
+  console.error('   This is MANDATORY for all environments (dev, staging, production)');
+  console.error('   Without it, clients cannot verify relay authenticity');
+  console.error('   This enables EREBUS/MITM attacks where attackers impersonate the relay');
+  console.error('   Generate Ed25519 key pair with:');
+  console.error('     openssl genpkey -algorithm Ed25519 -out relay_key.pem');
+  console.error('     cat relay_key.pem | base64 -w 0');
+  console.error('   Set RELAY_IDENTITY_KEY=<base64-encoded-pem>');
+  process.exit(1); // SECURITY: Fail-closed - refuse to start
+}
+
+if (typeof RELAY_IDENTITY_KEY_PEM !== 'string' || RELAY_IDENTITY_KEY_PEM.length === 0) {
+  console.error('❌ CRITICAL: RELAY_IDENTITY_KEY is not a valid string');
+  process.exit(1); // SECURITY: Fail-closed
+}
+
 let relayIdentityPrivateKey: crypto.KeyObject | null = null;
 let relayIdentityPublicKey: string | null = null; // Hex string for client verification
 
-if (RELAY_IDENTITY_KEY_PEM && typeof RELAY_IDENTITY_KEY_PEM === 'string') {
-  try {
-    // Load private key from PEM format
-    // Replace literal \n with actual newlines
-    const pemKey = RELAY_IDENTITY_KEY_PEM.includes('\\n')
-      ? RELAY_IDENTITY_KEY_PEM.replace(/\\n/g, '\n')
-      : RELAY_IDENTITY_KEY_PEM;
+try {
+  // Load private key from PEM format
+  // Replace literal \n with actual newlines
+  const pemKey = RELAY_IDENTITY_KEY_PEM.includes('\\n')
+    ? RELAY_IDENTITY_KEY_PEM.replace(/\\n/g, '\n')
+    : RELAY_IDENTITY_KEY_PEM;
 
-    relayIdentityPrivateKey = crypto.createPrivateKey({
-      key: pemKey,
-      format: 'pem',
-      type: 'pkcs8',
-    });
+  relayIdentityPrivateKey = crypto.createPrivateKey({
+    key: pemKey,
+    format: 'pem',
+    type: 'pkcs8',
+  });
 
-    // Export public key for broadcasting to clients
-    const publicKeyObj = crypto.createPublicKey(relayIdentityPrivateKey);
-    const publicKeyExported = publicKeyObj.export({ format: 'pem', type: 'spki' });
+  // Export public key for broadcasting to clients
+  const publicKeyObj = crypto.createPublicKey(relayIdentityPrivateKey);
+  const publicKeyExported = publicKeyObj.export({ format: 'pem', type: 'spki' });
 
-    // Convert to string (it's a string in Node.js for PEM format)
-    const publicKeyPEM = typeof publicKeyExported === 'string'
-      ? publicKeyExported
-      : publicKeyExported.toString('utf-8');
+  // Convert to string (it's a string in Node.js for PEM format)
+  const publicKeyPEM = typeof publicKeyExported === 'string'
+    ? publicKeyExported
+    : publicKeyExported.toString('utf-8');
 
-    // Convert to hex format (last 32 bytes of DER-encoded key)
-    const publicKeyBase64 = publicKeyPEM.replace(/-----[A-Z ]+-----/g, '').replace(/\s/g, '');
-    const publicKeyBuffer = Buffer.from(publicKeyBase64, 'base64');
-    relayIdentityPublicKey = publicKeyBuffer.slice(-32).toString('hex');
+  // Convert to hex format (last 32 bytes of DER-encoded key)
+  const publicKeyBase64 = publicKeyPEM.replace(/-----[A-Z ]+-----/g, '').replace(/\s/g, '');
+  const publicKeyBuffer = Buffer.from(publicKeyBase64, 'base64');
+  relayIdentityPublicKey = publicKeyBuffer.subarray(-32).toString('hex');
 
-    console.log('[Security] ✅ Relay identity (Ed25519) loaded');
-    console.log(`[Security]    Public key (hex): ${relayIdentityPublicKey}`);
-  } catch (err) {
-    console.error('[Security] ❌ Failed to load RELAY_IDENTITY_KEY:', err);
-    console.error('[Security]    Relay signature verification will FAIL');
-    console.error('[Security]    Clients cannot verify relay authenticity');
-    process.exit(1); // Fail fast - relay is unusable without identity key
-  }
-} else {
-  console.warn('[Security] ⚠️  WARNING: RELAY_IDENTITY_KEY not set');
-  console.warn('[Security]    Relay signature verification will FAIL');
-  console.warn('[Security]    Clients cannot verify relay authenticity');
-  console.warn('[Security]    Set RELAY_IDENTITY_KEY in environment variables');
+  console.log('[Security] ✅ Relay identity (Ed25519) loaded and validated');
+  console.log(`[Security]    Public key (hex): ${relayIdentityPublicKey}`);
+} catch (err) {
+  console.error('❌ CRITICAL: Failed to load RELAY_IDENTITY_KEY');
+  console.error('   This is a fatal startup error');
+  console.error('   Error details:', err instanceof Error ? err.message : String(err));
+  console.error('   Ensure RELAY_IDENTITY_KEY is a valid Ed25519 PEM key');
+  process.exit(1); // SECURITY: Fail-closed - relay is unusable without identity key
 }
 
 // ==================== Storage Initialization ====================
@@ -295,9 +368,16 @@ const RATE_LIMITS = {
 };
 
 async function rateLimit(request: any, reply: any, key: string, limit: number, windowMs: number): Promise<boolean> {
+  // CRITICAL SECURITY: FAIL-CLOSED - Rate limiting is not optional
+  // If storage is unavailable, block the request (do not allow bypass)
   if (!storage || !storageReady) {
-    // If storage not ready - skip rate limit
-    return true;
+    console.error('[RateLimit] ❌ CRITICAL: Storage not ready, blocking request to prevent bypass');
+    logSecurityEvent('RATE_LIMIT_STORAGE_UNAVAILABLE', { key, ip: request.ip });
+    reply.code(503).send({
+      error: 'Service temporarily unavailable',
+      message: 'Rate limiting system is not ready. Please try again later.'
+    });
+    return false; // SECURITY: Fail-closed - do not allow request
   }
 
   try {
@@ -310,9 +390,14 @@ async function rateLimit(request: any, reply: any, key: string, limit: number, w
     }
     return true;
   } catch (err) {
-    console.error('[RateLimit] Error:', err);
-    // On error - allow request
-    return true;
+    console.error('[RateLimit] ❌ CRITICAL: Rate limiter error:', err);
+    logSecurityEvent('RATE_LIMIT_ERROR', { key, ip: request.ip, error: err instanceof Error ? err.message : String(err) });
+    // SECURITY: On error, block the request (fail-closed, not fail-open)
+    reply.code(503).send({
+      error: 'Service temporarily unavailable',
+      message: 'Rate limiting system encountered an error. Please try again later.'
+    });
+    return false; // SECURITY: Fail-closed - do not allow request through
   }
 }
 
@@ -584,11 +669,24 @@ const SIGNED_PREKEYS = new Map<string, SignedPrekeyBundle>();
 // ==================== SESSION STORAGE (CRITICAL FIX) ====================
 
 /**
- * Session metadata - source of truth for chat sessions
- * Prevents infinite ratchet refresh loops by providing single canonical session per chatId
+ * CRITICAL SECURITY: Session metadata - source of truth for chat sessions
+ * MUST ONLY STORE:
+ * - sessionId (public session identifier)
+ * - version (for conflict resolution)
+ * - participants (identity information only)
+ * - timestamps
+ *
+ * MUST NEVER STORE:
+ * - rootKey (master secret for session)
+ * - sendChainKey / recvChainKey (message encryption keys)
+ * - messageKeys (per-message encryption keys)
+ * - Any cryptographic secrets
+ *
+ * RATIONALE: If relay is compromised, attacker gains access to plaintext message keys.
+ * Relay should ONLY facilitate key agreement, not hold decryption material.
  */
 interface SessionMetadata {
-  sessionId: string; // hex string
+  sessionId: string; // hex string (public, non-secret)
   version: number; // timestamp or incrementing counter (higher wins)
   participants: Array<{
     username: string;
@@ -596,6 +694,8 @@ interface SessionMetadata {
   }>;
   createdAt: number;
   lastUpdated: number;
+  // SECURITY: Never include rootKey, chainKeys, or messageKeys here
+  // Clients derive these from shared secrets, not relay storage
 }
 
 /**
@@ -1693,20 +1793,40 @@ fastify.put<{ Params: { chatId: string }, Body: Record<string, any> }>(
       }
     }
 
-    // Accept full session state (not just metadata)
-    // Store exactly what client sends - this includes rootKey, chainKeys, counters, etc.
-    const finalSession: any = {
-      ...proposedSession,
+    // CRITICAL SECURITY: Strip sensitive cryptographic material before storing
+    // Extract ONLY public metadata, REJECT secret keys
+    // This prevents relay compromise from exposing message keys
+    const sensitiveFields = ['rootKey', 'sendChainKey', 'recvChainKey', 'sendRatchetId', 'recvRatchetId', 'sendCounter', 'recvCounter', 'ephemeralX25519Secret', 'ephemeralMLKEMSecret'];
+    const foundSensitive = sensitiveFields.filter(field => field in proposedSession);
+
+    if (foundSensitive.length > 0) {
+      console.warn(`[Session] ⚠️  SECURITY: Stripping sensitive fields from session: ${foundSensitive.join(', ')}`);
+    }
+
+    // CRITICAL: Build clean session with ONLY safe metadata
+    const finalSession: SessionMetadata = {
+      sessionId: proposedSession.sessionId,
+      version: proposedSession.version,
+      participants: proposedSession.participants || [],
+      createdAt: proposedSession.createdAt || Date.now(),
       lastUpdated: Date.now(),
     };
 
+    // Validate required fields
+    if (!finalSession.sessionId || !finalSession.version) {
+      return reply.code(400).send({
+        error: 'invalid_session',
+        message: 'sessionId and version are required in clean format',
+      });
+    }
+
     CHAT_SESSIONS.set(chatId, finalSession);
 
-    console.log(`[Session] ✅ Stored FULL session state for chat ${chatId}`);
+    console.log(`[Session] ✅ Stored CLEAN session metadata for chat ${chatId}`);
     console.log(`[Session] Version: ${finalSession.version}`);
-    console.log(`[Session] Has rootKey: ${!!finalSession.rootKey}`);
-    console.log(`[Session] Has sendChainKey: ${!!finalSession.sendChainKey}`);
-    console.log(`[Session] Has recvChainKey: ${!!finalSession.recvChainKey}`);
+    console.log(`[Session] SessionId: ${typeof finalSession.sessionId === 'string' ? finalSession.sessionId.slice(0, 16) + '...' : '[binary]'}`);
+    console.log(`[Session] Participants: ${finalSession.participants?.length || 0}`);
+    console.log(`[Session] ✅ SECURITY: All cryptographic material stripped from relay storage`);
 
     return { success: true, session: finalSession };
   }
