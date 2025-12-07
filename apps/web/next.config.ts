@@ -17,6 +17,9 @@ const nextConfig: NextConfig = {
   // Transpile monorepo packages
   transpilePackages: ['@ilyazh/crypto'],
 
+  // Next.js 16: Use Turbopack for build performance
+  turbopack: {},
+
   webpack: (config, { isServer }) => {
     // Browser-side: stub out the heavy PQ library to prevent webpack errors
     // This allows the root page to compile while keeping E2E crypto intact
