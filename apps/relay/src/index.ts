@@ -74,9 +74,6 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
       'http://127.0.0.1:3001',
     ];
 
-console.log('[Startup] 📋 Registering Fastify plugins...');
-console.log(`[Startup] 🔐 CORS: Allowed origins: ${ALLOWED_ORIGINS.join(', ')}`);
-
 // CRITICAL SECURITY: API key validation for no-origin requests
 const VALID_API_KEYS = new Set(
   (process.env.VALID_API_KEYS || '')
@@ -90,7 +87,26 @@ function isValidAPIKey(apiKey: string | undefined): boolean {
   return VALID_API_KEYS.has(apiKey);
 }
 
-await fastify.register(cors, {
+// ==================== Auth Module Declaration ====================
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    authenticatedUserId?: string;
+  }
+}
+
+// ==================== Storage Initialization ====================
+
+let storage: IStorageAdapter | null = null;
+let storageReady = false;
+let wsManager: any = null; // WebSocket manager reference
+
+// Register plugins and routes (will be called by start())
+const initializeServer = async () => {
+  console.log('[Startup] 📋 Registering Fastify plugins...');
+  console.log(`[Startup] 🔐 CORS: Allowed origins: ${ALLOWED_ORIGINS.join(', ')}`);
+
+  await fastify.register(cors, {
   origin: (origin, callback) => {
     // CRITICAL SECURITY: Handle no-origin requests (mobile apps, Postman, curl, etc.)
     // These requests could be from malicious mobile malware, so require explicit API key
@@ -282,12 +298,6 @@ try {
   process.exit(1); // SECURITY: Fail-closed - relay is unusable without identity key
 }
 
-// ==================== Storage Initialization ====================
-
-let storage: IStorageAdapter | null = null;
-let storageReady = false;
-let wsManager: any = null; // WebSocket manager reference
-
 // ==================== Metrics ====================
 
 const metrics = {
@@ -349,12 +359,6 @@ function logSecurityEvent(event: string, details: Record<string, any>) {
 }
 
 // ==================== Auth Middleware ====================
-
-declare module 'fastify' {
-  interface FastifyRequest {
-    authenticatedUserId?: string;
-  }
-}
 
 async function authenticate(request: any, reply: any) {
   try {
@@ -2034,13 +2038,17 @@ fastify.delete<{ Params: { postId: string } }>(
   }
 );
 
-console.log('[Posts] ✅ Post endpoints registered: POST /posts, GET /posts/feed, GET /posts/user/:username, POST /posts/:postId/like, DELETE /posts/:postId');
+  console.log('[Posts] ✅ Post endpoints registered: POST /posts, GET /posts/feed, GET /posts/user/:username, POST /posts/:postId/like, DELETE /posts/:postId');
+};
 
 // ==================== Server Lifecycle ====================
 
 async function start() {
   try {
     console.log(`[Server] Starting Ilyazh Relay on ${HOST}:${PORT}`);
+
+    // Initialize server plugins and routes
+    await initializeServer();
 
     // FIRST: Initialize storage BEFORE starting server
     const effectiveStorageType = (global as any).STORAGE_TYPE_OVERRIDE || STORAGE_TYPE;
