@@ -495,7 +495,14 @@ export class PostgresStorageAdapter implements IStorageAdapter {
   posts: IPostRepository;
 
   constructor(connectionString: string) {
-    this.pool = new Pool({ connectionString });
+    // CRITICAL: Add connection timeout to fail fast if Supabase is slow
+    // This prevents Railway healthcheck timeout from blocking on database connection
+    this.pool = new Pool({
+      connectionString,
+      connectionTimeoutMillis: 5000,  // 5s timeout for initial connection
+      idleTimeoutMillis: 30000,       // Close idle connections after 30s
+      max: 20,                        // Max 20 connections in pool
+    });
     this.users = new PostgresUserRepository(this.pool);
     this.prekeys = new PostgresPrekeyRepository(this.pool);
     this.messages = new PostgresMessageRepository(this.pool);
@@ -599,9 +606,16 @@ export class PostgresStorageAdapter implements IStorageAdapter {
 
   async isHealthy(): Promise<boolean> {
     try {
-      await this.pool.query('SELECT 1');
+      // Add 2s timeout to health check query - don't block /healthz endpoint
+      await Promise.race([
+        this.pool.query('SELECT 1'),
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error('Health check timeout')), 2000)
+        ),
+      ]);
       return true;
     } catch (err) {
+      console.warn('[PostgreSQL] Health check failed:', (err as Error).message);
       return false;
     }
   }
