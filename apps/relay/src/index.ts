@@ -2071,20 +2071,15 @@ async function start() {
     wsManager = await setupWebSocket(fastify);
 
     // THIRD: Start server (so /healthz and /ws respond)
-    console.log(`[Server] Fastify is listening on ${HOST}:${PORT}...`);
+    console.log(`[Server] Starting Fastify on ${HOST}:${PORT}...`);
 
-    // For Serverless (Railway free plan), we need to export a handler instead of listen()
-    const isServerless = process.env.RAILWAY_ENVIRONMENT_NAME === 'production' || !process.env.PORT;
-
-    if (isServerless) {
-      console.log('[Server] ℹ️  Running in Serverless mode (handler export)');
-      // Don't call listen() in serverless - just export the handler
-      console.log(`[Server] ✅ READY for serverless invocations on ${HOST}:${PORT}`);
-      console.log(`🔐 Ilyazh Relay STARTED successfully (serverless)`);
-    } else {
+    try {
       await fastify.listen({ port: PORT, host: HOST });
       console.log(`[Server] ✅ LISTENING on ${HOST}:${PORT}`);
       console.log(`🔐 Ilyazh Relay STARTED successfully`);
+    } catch (listenErr) {
+      console.error('[Server] ❌ Failed to listen:', listenErr);
+      throw listenErr;
     }
 
     console.log(`[Dev] ALLOW_DEV_AUTOCREATE: ${ALLOW_DEV_AUTOCREATE}`);
@@ -2184,6 +2179,3 @@ start().catch(err => {
   console.error('[Server] Failed to start:', err);
   process.exit(1);
 });
-
-// Export handler for serverless platforms (AWS Lambda, Railway, etc)
-export const handler = fastify.server;
