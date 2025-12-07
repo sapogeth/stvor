@@ -232,10 +232,24 @@ let relayIdentityPublicKey: string | null = null; // Hex string for client verif
 
 try {
   // Load private key from PEM format
-  // Replace literal \n with actual newlines
-  const pemKey = RELAY_IDENTITY_KEY_PEM.includes('\\n')
-    ? RELAY_IDENTITY_KEY_PEM.replace(/\\n/g, '\n')
-    : RELAY_IDENTITY_KEY_PEM;
+  // RELAY_IDENTITY_KEY_PEM can be either:
+  // 1. Base64-encoded PEM (preferred for environment variables)
+  // 2. Raw PEM with literal \n (legacy support)
+  let pemKey: string;
+
+  if (RELAY_IDENTITY_KEY_PEM.startsWith('-----BEGIN')) {
+    // Raw PEM format - replace literal \n with actual newlines
+    pemKey = RELAY_IDENTITY_KEY_PEM.includes('\\n')
+      ? RELAY_IDENTITY_KEY_PEM.replace(/\\n/g, '\n')
+      : RELAY_IDENTITY_KEY_PEM;
+  } else {
+    // Base64-encoded PEM format (recommended)
+    try {
+      pemKey = Buffer.from(RELAY_IDENTITY_KEY_PEM, 'base64').toString('utf-8');
+    } catch (decodeErr) {
+      throw new Error(`Failed to decode base64 RELAY_IDENTITY_KEY: ${decodeErr instanceof Error ? decodeErr.message : String(decodeErr)}`);
+    }
+  }
 
   relayIdentityPrivateKey = crypto.createPrivateKey({
     key: pemKey,
