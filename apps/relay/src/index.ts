@@ -2,6 +2,7 @@
  * Ilyazh Relay Server (Production-Ready)
  * Horizontally scalable, stateless relay with PostgreSQL backend
  * JWT authentication, rate limiting, structured observability
+ * Railway Serverless compatible
  */
 
 import Fastify from 'fastify';
