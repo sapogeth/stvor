@@ -9,6 +9,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import jwt from '@fastify/jwt';
+import fastifyWebsocket from '@fastify/websocket';
 import { createStorageAdapter, type IStorageAdapter } from './storage/index';
 import { type PrekeyBundle } from './storage/interfaces';
 import { normalizeUsername } from './utils/normalize';
@@ -170,6 +171,12 @@ await fastify.register(multipart, {
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 console.log('[Startup] ✅ Multipart plugin registered');
+
+// ==================== WebSocket Setup ====================
+
+console.log('[Startup] 📋 Initializing WebSocket...');
+wsManager = await setupWebSocket(fastify);
+console.log('[Startup] ✅ WebSocket initialized and routes registered');
 
 // ==================== JWT Authentication ====================
 
@@ -2067,10 +2074,7 @@ async function start() {
       console.log('[Storage] ✅ memory (fallback) initialized');
     }
 
-    // SECOND: Setup WebSocket before starting server
-    wsManager = await setupWebSocket(fastify);
-
-    // THIRD: Start server (so /healthz and /ws respond)
+    // SECOND: Start server (so /healthz and /ws respond)
     console.log(`[Server] Starting Fastify on ${HOST}:${PORT}...`);
 
     try {
