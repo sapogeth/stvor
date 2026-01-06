@@ -112,6 +112,9 @@ We consider a **Dolev-Yao adversary** with quantum computing capabilities:
 - **Bandwidth sensitivity:** PQ ciphertexts are large (~1088 bytes for ML-KEM-768)
 - **Latency requirements:** Must maintain interactive messaging UX (<500ms RTT target)
 
+### Academic Lineage
+- Parts of the threat model and defense-in-depth mechanisms are inspired by and adapted from Prof. Min Suk Kang’s research at KAIST on relay compromise, partitioning attacks (EREBUS), and secure system deployment. This project represents an independent implementation and extension in a browser-based PQ-secure messaging context.
+
 ---
 
 ## Security Goals
