@@ -48,8 +48,6 @@ export function DefenseInDepthExample({
   const [relayError, setRelayError] = useState<string | null>(null);
 
   useEffect(() => {
-    let managerRef: PrivacyConfigManager | null = null;
-    const setupPrivacy = async () => {
     /**
      * Initialize RelayPinner with configuration from environment variables
      *
@@ -64,6 +62,7 @@ export function DefenseInDepthExample({
       expectedIdentityKeyHash: process.env.REACT_APP_RELAY_KEY_HASH || '',
       configCreatedAt: Date.now(),
     };
+
     // Dynamically load RelayPinner to avoid bundling crypto at build time
     const initRelay = async () => {
       const { RelayPinner } = await import('@ilyazh/crypto');
@@ -74,6 +73,7 @@ export function DefenseInDepthExample({
         expectedKeyHash: relayConfig.expectedIdentityKeyHash?.slice(0, 16) + '...',
       });
     };
+
     void (async () => {
       try {
         await initRelay();
@@ -202,6 +202,8 @@ export function DefenseInDepthExample({
   const [privacySender, setPrivacySender] = useState<PrivacyAwareMessageSender | null>(null);
 
   useEffect(() => {
+    let manager: PrivacyConfigManager | null = null;
+
     /**
      * Initialize PrivacyConfigManager with environment configuration
      *
@@ -211,45 +213,52 @@ export function DefenseInDepthExample({
      *
      * Reference: Woo et al. "I Know You Pin Me" (2024 IEEE EuroS&PW)
      */
-    const initialSettings: Partial<PrivacySettings> = {
-      typingIndicatorEnabled: process.env.REACT_APP_PRIVACY_TYPING_ENABLED === 'true',
-      readReceiptEnabled: process.env.REACT_APP_PRIVACY_READ_RECEIPT_ENABLED === 'true',
-      presenceIndicatorEnabled: process.env.REACT_APP_PRIVACY_PRESENCE_ENABLED === 'true',
-      typingIndicatorDebounceMs: parseInt(
-        process.env.REACT_APP_TYPING_DEBOUNCE_MS || '2000'
-      ),
-      typingIndicatorJitterMs: parseInt(
-        process.env.REACT_APP_TYPING_JITTER_MS || '1000'
-      ),
-      typingIndicatorBatchSize: parseInt(
-        process.env.REACT_APP_TYPING_BATCH_SIZE || '5'
-      ),
+    const setupPrivacy = async () => {
+      const initialSettings: Partial<PrivacySettings> = {
+        typingIndicatorEnabled: process.env.REACT_APP_PRIVACY_TYPING_ENABLED === 'true',
+        readReceiptEnabled: process.env.REACT_APP_PRIVACY_READ_RECEIPT_ENABLED === 'true',
+        presenceIndicatorEnabled: process.env.REACT_APP_PRIVACY_PRESENCE_ENABLED === 'true',
+        typingIndicatorDebounceMs: parseInt(
+          process.env.REACT_APP_TYPING_DEBOUNCE_MS || '2000'
+        ),
+        typingIndicatorJitterMs: parseInt(
+          process.env.REACT_APP_TYPING_JITTER_MS || '1000'
+        ),
+        typingIndicatorBatchSize: parseInt(
+          process.env.REACT_APP_TYPING_BATCH_SIZE || '5'
+        ),
+      };
+
+      // Dynamically load PrivacyConfigManager
+      const crypto = await import('@ilyazh/crypto');
+      const ManagerCtor = crypto.PrivacyConfigManager as unknown as typeof PrivacyConfigManager;
+      manager = new ManagerCtor(initialSettings);
+      setPrivacyManager(manager);
+      setPrivacySettings(manager.getSettings());
+
+      // Create event sender function
+      const sendEventFn = async (event: any) => {
+        console.log('[Defense] 📤 Privacy-aware event queued:', event);
+        // In a real implementation, this would send through WebSocket or REST API
+      };
+
+      // Create privacy-aware message sender
+      const sender = new PrivacyAwareMessageSender(manager, sendEventFn);
+      setPrivacySender(sender);
+
+      console.log('[Defense] 🛡️ PrivacyConfigManager initialized', initialSettings);
     };
 
-    // Dynamically load PrivacyConfigManager
-    const { PrivacyConfigManager } = await import('@ilyazh/crypto');
-    const manager = new PrivacyConfigManager(initialSettings);
-    managerRef = manager;
-    setPrivacyManager(manager);
-    setPrivacySettings(manager.getSettings());
-
-    // Create event sender function
-    const sendEventFn = async (event: any) => {
-      console.log('[Defense] 📤 Privacy-aware event queued:', event);
-      // In a real implementation, this would send through WebSocket or REST API
-    };
-
-    // Create privacy-aware message sender
-    const sender = new PrivacyAwareMessageSender(manager, sendEventFn);
-    setPrivacySender(sender);
-
-    console.log('[Defense] 🛡️ PrivacyConfigManager initialized', initialSettings);
-
-    };
-    void setupPrivacy();
+    void (async () => {
+      try {
+        await setupPrivacy();
+      } catch (err) {
+        console.error('[Defense] Failed to initialize PrivacyConfigManager', err);
+      }
+    })();
 
     return () => {
-      if (managerRef) managerRef.destroy();
+      if (manager) manager.destroy();
     };
   }, []);
 
