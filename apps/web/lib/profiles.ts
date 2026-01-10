@@ -103,8 +103,21 @@ export async function deleteProfile(): Promise<void> {
 export async function checkUsernameAvailable(
   username: string
 ): Promise<boolean> {
-  const profile = await getProfileByUsername(username);
-  return profile === null;
+  try {
+    const response = await fetch(`/api/profiles/check?username=${encodeURIComponent(username)}`);
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to check username');
+    }
+
+    const data = await response.json();
+    return Boolean(data.available);
+  } catch (err) {
+    console.error('[profiles] Failed to check username:', err);
+    // Fail closed: treat as taken to avoid collisions
+    return false;
+  }
 }
 
 /**
