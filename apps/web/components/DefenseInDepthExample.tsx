@@ -126,7 +126,7 @@ export function DefenseInDepthExample({
    * Reference: Csikor et al. "Privacy of DNS-over-HTTPS" (2021 IEEE EuroS&P)
    */
   const applyMessagePadding = useCallback(
-    (message: string) => {
+    async (message: string) => {
       const plaintext = new TextEncoder().encode(message);
 
       // Get padding configuration from environment
@@ -363,7 +363,7 @@ export function DefenseInDepthExample({
               placeholder="Type a message..."
             />
           </label>
-          <button onClick={() => applyMessagePadding(messageText)} disabled={!messageText}>
+          <button onClick={() => void applyMessagePadding(messageText)} disabled={!messageText}>
             Apply Padding
           </button>
         </div>

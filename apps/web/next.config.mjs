@@ -15,6 +15,13 @@ const nextConfig = {
   // Transpile monorepo packages
   transpilePackages: ['@ilyazh/crypto'],
 
+  // Experimental features for WASM support
+  experimental: {
+    // Enable top-level await for WASM modules
+    // This is stable in Next 14.2.x but still under experimental flag
+    esmExternals: 'loose',
+  },
+
   // Using default webpack bundler (Next 14.x)
   webpack: (config, { isServer }) => {
     if (!isServer) {
@@ -40,5 +47,12 @@ const nextConfig = {
     return config;
   },
 };
+
+    // WASM support: Add rule for .wasm files
+    config.experiments = {
+      ...config.experiments,
+      asyncWebAssembly: true,
+      layers: true,
+    };
 
 export default nextConfig;
