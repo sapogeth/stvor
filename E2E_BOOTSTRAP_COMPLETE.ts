@@ -562,7 +562,7 @@ interface PrekeyBundle {
  * 2. "Directory registration failed: 404"
  *    → Relay server not running or unreachable
  *    → Check CORS configuration
- *    → Verify RELAY_BASE_URL is correct
+ *    → Verify NEXT_PUBLIC_RELAY_URL is correct
  *
  * 3. "Profile not found"
  *    → Supabase schema not created

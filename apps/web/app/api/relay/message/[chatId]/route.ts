@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const RELAY_BASE = process.env.RELAY_BASE_URL || 'http://localhost:3001';
+const RELAY_BASE = process.env.NEXT_PUBLIC_RELAY_URL || 'http://localhost:3001';
 
 /**
  * POST /api/relay/message/:chatId

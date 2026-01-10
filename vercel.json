@@ -10,10 +10,6 @@
       "maxDuration": 10
     }
   },
-  "env": {
-    "RELAY_BASE_URL": "@relay_base_url",
-    "RELAY_INTERNAL_URL": "@relay_internal_url"
-  },
   "headers": [
     {
       "source": "/(.*)",

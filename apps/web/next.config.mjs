@@ -9,7 +9,7 @@ const nextConfig = {
   // CRITICAL: Rewrites для проксирования запросов к Relay серверу
   // В браузере все запросы идут через /api/relay/*, которые проксируются на Railway
   async rewrites() {
-    const relayUrl = process.env.RELAY_BASE_URL || process.env.RELAY_INTERNAL_URL || 'http://localhost:3001';
+    const relayUrl = process.env.NEXT_PUBLIC_RELAY_URL || 'http://localhost:3001';
     
     console.log('[Next.js] Relay rewrites configured:', relayUrl);
     
