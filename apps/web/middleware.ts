@@ -89,6 +89,12 @@ export default clerkMiddleware(async (auth, request) => {
     return NextResponse.next();
   }
 
+  // API ROUTES: Never redirect to HTML pages
+  // If API route needs auth, it will return JSON 401 from route handler
+  if (url.pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
+
   // Protect non-public routes by redirecting to sign-in
   const { userId } = await auth();
 
