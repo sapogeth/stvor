@@ -14,32 +14,40 @@ import { getProfileByUserId } from '../storage';
  * Get current user's profile
  */
 export async function GET() {
-  // Authenticate request
-  const { userId } = await auth();
+  try {
+    // Authenticate request
+    const { userId } = await auth();
 
-  if (!userId) {
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    // Get profile for current user
+    const result = await getProfileByUserId(userId);
+
+    if (!result) {
+      return NextResponse.json(
+        { error: 'Profile not found' },
+        { status: 404 }
+      );
+    }
+
+    const { username, profile } = result;
+
+    return NextResponse.json({
+      username,
+      userId: profile.userId,
+      displayName: profile.displayName,
+      createdAt: profile.createdAt,
+    });
+  } catch (error) {
+    console.error('[API] profiles/me GET error:', error);
     return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
+      { error: 'Internal server error' },
+      { status: 500 }
     );
   }
-
-  // Get profile for current user
-  const result = await getProfileByUserId(userId);
-
-  if (!result) {
-    return NextResponse.json(
-      { error: 'Profile not found' },
-      { status: 404 }
-    );
-  }
-
-  const { username, profile } = result;
-
-  return NextResponse.json({
-    username,
-    userId: profile.userId,
-    displayName: profile.displayName,
-    createdAt: profile.createdAt,
-  });
 }

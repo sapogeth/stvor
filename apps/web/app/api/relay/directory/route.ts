@@ -14,18 +14,34 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const body = await req.json();
-  const username = (body.username || body.user || '').toLowerCase();
+  try {
+    const body = await req.json();
+    const username = (body.username || body.user || '').toLowerCase();
 
-  const res = await fetch(`${RELAY_BASE}/directory/${username}`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
+    const res = await fetch(`${RELAY_BASE}/directory/${username}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
 
-  const data = await res.json().catch(() => ({}));
-  console.log(`[Proxy] Directory POST /${username} -> ${res.status}`);
-  return NextResponse.json(data, { status: res.status });
+    const text = await res.text();
+    const data = (() => {
+      try {
+        return JSON.parse(text);
+      } catch {
+        return { error: 'INVALID_RESPONSE', detail: 'Relay returned non-JSON response' };
+      }
+    })();
+    
+    console.log(`[Proxy] Directory POST /${username} -> ${res.status}`);
+    return NextResponse.json(data, { status: res.status });
+  } catch (error) {
+    console.error('[API] directory POST error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
 }

@@ -31,8 +31,14 @@ export async function getProfileByUsername(
     }
 
     if (!response.ok) {
-      const error = await response.json();
+      const error = await response.json().catch(() => ({}));
       throw new Error(error.error || 'Failed to fetch profile');
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType?.includes('application/json')) {
+      console.error('[profiles] Invalid content-type:', contentType);
+      throw new Error('Server returned non-JSON response');
     }
 
     return await response.json();
@@ -49,31 +55,45 @@ export async function setProfile(
   username: string,
   displayName?: string
 ): Promise<Profile> {
-  const response = await fetch('/api/profiles', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, displayName }),
-  });
+  try {
+    const response = await fetch('/api/profiles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, displayName }),
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to set profile');
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to set profile');
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType?.includes('application/json')) {
+      console.error('[profiles] Invalid content-type:', contentType);
+      throw new Error('Server returned non-JSON response');
+    }
+
+    return await response.json();
+  } catch (err) {
+    throw err;
   }
-
-  return await response.json();
 }
 
 /**
  * Delete current user's profile
  */
 export async function deleteProfile(): Promise<void> {
-  const response = await fetch('/api/profiles', {
-    method: 'DELETE',
-  });
+  try {
+    const response = await fetch('/api/profiles', {
+      method: 'DELETE',
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to delete profile');
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to delete profile');
+    }
+  } catch (err) {
+    throw err;
   }
 }
 
@@ -99,8 +119,14 @@ export async function getCurrentUserProfile(): Promise<Profile | null> {
     }
 
     if (!response.ok) {
-      const error = await response.json();
+      const error = await response.json().catch(() => ({}));
       throw new Error(error.error || 'Failed to fetch current profile');
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType?.includes('application/json')) {
+      console.error('[profiles] Invalid content-type:', contentType);
+      throw new Error('Server returned non-JSON response');
     }
 
     return await response.json();

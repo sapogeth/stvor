@@ -16,53 +16,62 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ chatId: string }> }
 ) {
-  const resolvedParams = await params;
-  const chatId = resolvedParams.chatId;
-
-  // Read body as text to forward raw JSON
-  const body = await req.text();
-
-  // Extract headers
-  const auth = req.headers.get('authorization') || '';
-  const contentType = req.headers.get('content-type') || 'application/json';
-  const origin = req.headers.get('origin') || '';
-
-  console.log(`[Proxy] POST /message/${chatId}`);
-
-  // Forward to relay with authentication
-  const url = `${RELAY_BASE}/message/${chatId}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': auth,
-      'Content-Type': contentType,
-      'Origin': origin,
-    },
-    body,
-  });
-
-  const responseText = await res.text();
-
-  // Try to parse as JSON, otherwise return raw text
-  let responseData;
   try {
-    responseData = JSON.parse(responseText);
-  } catch {
-    responseData = { raw: responseText };
+    const resolvedParams = await params;
+    const chatId = resolvedParams.chatId;
+
+    // Read body as text to forward raw JSON
+    const body = await req.text();
+
+    // Extract headers
+    const auth = req.headers.get('authorization') || '';
+    const contentType = req.headers.get('content-type') || 'application/json';
+    const origin = req.headers.get('origin') || '';
+
+    console.log(`[Proxy] POST /message/${chatId}`);
+
+    // Forward to relay with authentication
+    const url = `${RELAY_BASE}/message/${chatId}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': auth,
+        'Content-Type': contentType,
+        'Origin': origin,
+      },
+      body,
+    });
+
+    const responseText = await res.text();
+
+    // Try to parse as JSON, otherwise return error
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch {
+      console.warn(`[Proxy] POST /message/${chatId} response is not JSON`);
+      responseData = { error: 'INVALID_RESPONSE', detail: 'Relay returned non-JSON response' };
+    }
+
+    console.log(`[Proxy] POST /message/${chatId} -> ${res.status}`);
+
+    if (!res.ok) {
+      console.error(`[Proxy] Message POST failed: ${res.status}`, responseData);
+    }
+
+    return NextResponse.json(responseData, {
+      status: res.status,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  } catch (error) {
+    console.error('[API] message POST error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
   }
-
-  console.log(`[Proxy] POST /message/${chatId} -> ${res.status}`);
-
-  if (!res.ok) {
-    console.error(`[Proxy] Message POST failed: ${res.status}`, responseData);
-  }
-
-  return NextResponse.json(responseData, {
-    status: res.status,
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
 }
 
 /**
@@ -73,30 +82,47 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ chatId: string }> }
 ) {
-  const resolvedParams = await params;
-  const chatId = resolvedParams.chatId;
+  try {
+    const resolvedParams = await params;
+    const chatId = resolvedParams.chatId;
 
-  const auth = req.headers.get('authorization') || '';
+    const auth = req.headers.get('authorization') || '';
 
-  console.log(`[Proxy] GET /message/${chatId}`);
+    console.log(`[Proxy] GET /message/${chatId}`);
 
-  const url = `${RELAY_BASE}/message/${chatId}`;
-  const res = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Authorization': auth,
-      'Content-Type': 'application/json',
-    },
-  });
+    const url = `${RELAY_BASE}/message/${chatId}`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': auth,
+        'Content-Type': 'application/json',
+      },
+    });
 
-  const data = await res.json().catch(() => ({}));
+    const text = await res.text();
+    const data = (() => {
+      try {
+        return JSON.parse(text);
+      } catch {
+        console.warn(`[Proxy] GET /message/${chatId} response is not JSON`);
+        return { error: 'INVALID_RESPONSE', detail: 'Relay returned non-JSON response' };
+      }
+    })();
 
-  console.log(`[Proxy] GET /message/${chatId} -> ${res.status}`);
+    console.log(`[Proxy] GET /message/${chatId} -> ${res.status}`);
 
-  return NextResponse.json(data, {
-    status: res.status,
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
+    return NextResponse.json(data, {
+      status: res.status,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  } catch (error) {
+    console.error('[API] message GET error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
 }

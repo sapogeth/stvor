@@ -45,10 +45,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pat
     const responseText = await res.text();
     console.log(`[Proxy] POST /${path} -> ${res.status}`);
 
-    return new Response(responseText, {
+    // Try to parse as JSON, always return JSON even on error
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch {
+      console.warn(`[Proxy] POST /${path} response is not JSON, wrapping:`, responseText.substring(0, 100));
+      responseData = { error: 'INVALID_RESPONSE', detail: 'Relay returned non-JSON response' };
+    }
+
+    return NextResponse.json(responseData, {
       status: res.status,
       headers: {
-        'content-type': res.headers.get('content-type') || 'application/json',
+        'content-type': 'application/json',
       },
     });
   } catch (e) {
@@ -87,10 +96,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ path
     const responseText = await res.text();
     console.log(`[Proxy] GET /${path} -> ${res.status}`);
 
-    return new Response(responseText, {
+    // Try to parse as JSON, always return JSON even on error
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch {
+      console.warn(`[Proxy] GET /${path} response is not JSON, wrapping:`, responseText.substring(0, 100));
+      responseData = { error: 'INVALID_RESPONSE', detail: 'Relay returned non-JSON response' };
+    }
+
+    return NextResponse.json(responseData, {
       status: res.status,
       headers: {
-        'content-type': res.headers.get('content-type') || 'application/json',
+        'content-type': 'application/json',
       },
     });
   } catch (e) {
@@ -130,10 +148,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ path
     const responseText = await res.text();
     console.log(`[Proxy] PUT /${path} -> ${res.status}`);
 
-    return new Response(responseText, {
+    // Try to parse as JSON, always return JSON even on error
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch {
+      console.warn(`[Proxy] PUT /${path} response is not JSON, wrapping:`, responseText.substring(0, 100));
+      responseData = { error: 'INVALID_RESPONSE', detail: 'Relay returned non-JSON response' };
+    }
+
+    return NextResponse.json(responseData, {
       status: res.status,
       headers: {
-        'content-type': res.headers.get('content-type') || 'application/json',
+        'content-type': 'application/json',
       },
     });
   } catch (e) {
@@ -171,10 +198,19 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ p
     const responseText = await res.text();
     console.log(`[Proxy] DELETE /${path} -> ${res.status}`);
 
-    return new Response(responseText, {
+    // Try to parse as JSON, always return JSON even on error
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch {
+      console.warn(`[Proxy] DELETE /${path} response is not JSON, wrapping:`, responseText.substring(0, 100));
+      responseData = { error: 'INVALID_RESPONSE', detail: 'Relay returned non-JSON response' };
+    }
+
+    return NextResponse.json(responseData, {
       status: res.status,
       headers: {
-        'content-type': res.headers.get('content-type') || 'application/json',
+        'content-type': 'application/json',
       },
     });
   } catch (e) {
