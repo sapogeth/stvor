@@ -67,12 +67,16 @@ const fastify = Fastify({
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
   : [
+      // Development
       'http://localhost:3000',
       'http://127.0.0.1:3000',
       'http://localhost:3002', // Next.js dev server alternate port
       'http://127.0.0.1:3002',
       'http://localhost:3001', // Relay dev server
       'http://127.0.0.1:3001',
+      // Production
+      'https://stvor.xyz',
+      'https://www.stvor.xyz',
     ];
 
 // CRITICAL SECURITY: API key validation for no-origin requests
