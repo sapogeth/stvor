@@ -1,6 +1,7 @@
 {
   "name": "@ilyazh/relay",
   "version": "0.8.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "tsx watch --env-file=.env src/index.ts",
@@ -20,7 +21,6 @@
     "cbor-x": "^1.6.0",
     "fastify": "^5.2.0",
     "glob": "^11.0.0",
-    "next": "^16.0.10",
     "pg": "^8.16.3"
   },
   "devDependencies": {

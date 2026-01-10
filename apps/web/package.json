@@ -2,6 +2,7 @@
   "name": "@ilyazh/web",
   "version": "0.8.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev -p 3002",
     "build": "pnpm --filter @ilyazh/crypto build && next build",
@@ -10,7 +11,7 @@
     "clean": "rm -rf .next"
   },
   "dependencies": {
-    "@clerk/nextjs": "^6.34.1",
+    "@clerk/nextjs": "^6.36.7",
     "@ilyazh/crypto": "workspace:*",
     "@openforge-sh/liboqs": "^0.14.3",
     "@supabase/supabase-js": "^2.84.0",
@@ -19,7 +20,7 @@
     "lucide-react": "^0.553.0",
     "mldsa-wasm": "^0.0.3",
     "mlkem-wasm": "^0.0.7",
-    "next": "16.0.7",
+    "next": "^16.1.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^2.15.0",
