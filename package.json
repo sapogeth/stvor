@@ -26,6 +26,7 @@
   },
   "packageManager": "pnpm@9.0.0",
   "dependencies": {
-    "libsodium-wrappers-sumo": "0.7.15"
+    "libsodium-wrappers-sumo": "0.7.15",
+    "next": "^16.0.10"
   }
 }
