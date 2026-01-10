@@ -12,7 +12,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import type { RelayIdentityConfig, PrivacySettings, RelayPinner } from '@ilyazh/crypto';
+import type { RelayIdentityConfig, PrivacySettings, RelayPinner, PrivacyConfigManager } from '@ilyazh/crypto';
 
 import {
   SecureWebSocketManager,
@@ -48,6 +48,8 @@ export function DefenseInDepthExample({
   const [relayError, setRelayError] = useState<string | null>(null);
 
   useEffect(() => {
+    let managerRef: PrivacyConfigManager | null = null;
+    const setupPrivacy = async () => {
     /**
      * Initialize RelayPinner with configuration from environment variables
      *
@@ -62,19 +64,24 @@ export function DefenseInDepthExample({
       expectedIdentityKeyHash: process.env.REACT_APP_RELAY_KEY_HASH || '',
       configCreatedAt: Date.now(),
     };
-
     // Dynamically load RelayPinner to avoid bundling crypto at build time
-    import('@ilyazh/crypto').then(({ RelayPinner }) => {
+    const initRelay = async () => {
+      const { RelayPinner } = await import('@ilyazh/crypto');
       const pinner = new RelayPinner(relayConfig);
       setRelayPinner(pinner);
       console.log('[Defense] 🔐 RelayPinner initialized', {
         relayUrl: relayConfig.relayUrl,
         expectedKeyHash: relayConfig.expectedIdentityKeyHash?.slice(0, 16) + '...',
       });
-    }).catch((err) => {
-      console.error('[Defense] Failed to load RelayPinner', err);
-      setRelayError('Failed to load crypto module');
-    });
+    };
+    void (async () => {
+      try {
+        await initRelay();
+      } catch (err) {
+        console.error('[Defense] Failed to load RelayPinner', err);
+        setRelayError('Failed to load crypto module');
+      }
+    })();
   }, []);
 
   const verifyRelayIdentity = useCallback(async () => {
@@ -222,6 +229,7 @@ export function DefenseInDepthExample({
     // Dynamically load PrivacyConfigManager
     const { PrivacyConfigManager } = await import('@ilyazh/crypto');
     const manager = new PrivacyConfigManager(initialSettings);
+    managerRef = manager;
     setPrivacyManager(manager);
     setPrivacySettings(manager.getSettings());
 
@@ -237,8 +245,11 @@ export function DefenseInDepthExample({
 
     console.log('[Defense] 🛡️ PrivacyConfigManager initialized', initialSettings);
 
+    };
+    void setupPrivacy();
+
     return () => {
-      manager.destroy();
+      if (managerRef) managerRef.destroy();
     };
   }, []);
 
