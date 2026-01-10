@@ -18,8 +18,6 @@
 
 /// <reference lib="webworker" />
 
-declare const self: DedicatedWorkerGlobalScope;
-
 type WorkerRequest =
   | { type: 'init' }
   | { type: 'generateIdentity'; username: string }

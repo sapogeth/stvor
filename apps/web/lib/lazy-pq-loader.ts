@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Ленивая загрузка WASM-модулей для PQ-криптографии
  *
@@ -11,6 +13,8 @@
  */
 
 type PQInitState = 'not-loaded' | 'loading' | 'ready' | 'error';
+
+import { useState } from 'react';
 
 class LazyPQLoader {
   private state: PQInitState = 'not-loaded';

@@ -22,7 +22,7 @@ type WorkerMessage =
 
 type WorkerResponse =
   | { success: true; type: string; data: any }
-  | { success: false; error: string };
+  | { success: false; error: string; type?: string; data?: any };
 
 interface PendingRequest {
   resolve: (value: any) => void;
@@ -60,12 +60,13 @@ export class CryptoWorkerBridge {
         this.worker = new Worker(WORKER_SCRIPT, { type: 'module' });
 
         // Setup message handler
-        this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+        const worker = this.worker!;
+        worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
           const response = event.data;
 
-          // Handle logs from worker
-          if (response.type === 'log') {
-            console.log(response.data.message);
+          // Handle logs from worker (only on success when data is present)
+          if (response.type === 'log' && response.success && response.data) {
+            console.log((response as any).data.message);
             return;
           }
 
@@ -81,7 +82,7 @@ export class CryptoWorkerBridge {
           clearTimeout(pending.timeout);
 
           if (response.success) {
-            pending.resolve(response.data);
+            pending.resolve((response as any).data);
           } else {
             pending.reject(new Error(response.error));
           }
@@ -90,7 +91,7 @@ export class CryptoWorkerBridge {
           this.pendingRequests.clear();
         };
 
-        this.worker.onerror = (error: ErrorEvent) => {
+        worker.onerror = (error: ErrorEvent) => {
           console.error('[CryptoWorkerBridge] Worker error:', error);
           this.worker = null;
           this.initPromise = null;

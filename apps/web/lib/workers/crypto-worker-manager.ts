@@ -40,7 +40,8 @@ export class CryptoWorkerManager {
         this.worker = new WorkerConstructor();
 
         // Обработчик сообщений от Worker'а
-        this.worker.onmessage = (event) => {
+        const worker = this.worker!;
+        worker.onmessage = (event) => {
           const response = event.data;
           const requestId = Object.keys(this.pendingRequests).find((id) => {
             const pending = this.pendingRequests.get(id);
@@ -65,7 +66,7 @@ export class CryptoWorkerManager {
           }
         };
 
-        this.worker.onerror = (error) => {
+        worker.onerror = (error) => {
           console.error('[CryptoWorker] Worker error:', error);
           // Реинициализируем Worker при ошибке
           this.worker = null;
