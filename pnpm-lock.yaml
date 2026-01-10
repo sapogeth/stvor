@@ -57,6 +57,9 @@ importers:
       glob:
         specifier: ^11.0.0
         version: 11.0.3
+      next:
+        specifier: ^16.0.10
+        version: 16.1.1(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       pg:
         specifier: ^8.16.3
         version: 8.16.3
