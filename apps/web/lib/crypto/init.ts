@@ -12,7 +12,6 @@
  */
 
 import { getCryptoOrThrow, getCryptoStatus } from '@/lib/runtime/crypto-safe';
-import { initCrypto as initPrimitives } from '@ilyazh/crypto';
 import { debugLibsodiumAvailability } from '@/lib/keystore';
 import { validateProductionEnvironment } from '@/lib/production-guard';
 
@@ -82,6 +81,12 @@ export async function initCryptoOnce(): Promise<void> {
       // Step 2: Initialize libsodium WASM
       if (process.env.NODE_ENV !== 'production') {
         console.log('[crypto-init] Loading libsodium WASM...');
+      }
+      // Dynamically import browser-safe crypto only at runtime to avoid SSR bundling
+      const cryptoPkg = await import('@ilyazh/crypto');
+      const initPrimitives = cryptoPkg.initCrypto;
+      if (typeof initPrimitives !== 'function') {
+        throw new Error('initCrypto not available from @ilyazh/crypto');
       }
       await initPrimitives();
       if (process.env.NODE_ENV !== 'production') {

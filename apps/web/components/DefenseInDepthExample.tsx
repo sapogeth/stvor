@@ -12,14 +12,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import {
-  RelayPinner,
-  padMessage,
-  unpadMessage,
-  PrivacyConfigManager,
-  type RelayIdentityConfig,
-  type PrivacySettings,
-} from '@ilyazh/crypto';
+import type { RelayIdentityConfig, PrivacySettings, RelayPinner } from '@ilyazh/crypto';
 
 import {
   SecureWebSocketManager,
@@ -70,12 +63,17 @@ export function DefenseInDepthExample({
       configCreatedAt: Date.now(),
     };
 
-    const pinner = new RelayPinner(relayConfig);
-    setRelayPinner(pinner);
-
-    console.log('[Defense] 🔐 RelayPinner initialized', {
-      relayUrl: relayConfig.relayUrl,
-      expectedKeyHash: relayConfig.expectedIdentityKeyHash?.slice(0, 16) + '...',
+    // Dynamically load RelayPinner to avoid bundling crypto at build time
+    import('@ilyazh/crypto').then(({ RelayPinner }) => {
+      const pinner = new RelayPinner(relayConfig);
+      setRelayPinner(pinner);
+      console.log('[Defense] 🔐 RelayPinner initialized', {
+        relayUrl: relayConfig.relayUrl,
+        expectedKeyHash: relayConfig.expectedIdentityKeyHash?.slice(0, 16) + '...',
+      });
+    }).catch((err) => {
+      console.error('[Defense] Failed to load RelayPinner', err);
+      setRelayError('Failed to load crypto module');
     });
   }, []);
 
@@ -142,6 +140,8 @@ export function DefenseInDepthExample({
         alwaysPad: false,
       };
 
+      // Load padMessage dynamically at call time
+      const { padMessage } = await import('@ilyazh/crypto');
       const padded = padMessage(plaintext, paddingConfig);
 
       const overhead = padded.length - plaintext.length;
@@ -167,12 +167,13 @@ export function DefenseInDepthExample({
     []
   );
 
-  const removeMessagePadding = useCallback((paddedMessage: Uint8Array) => {
+  const removeMessagePadding = useCallback(async (paddedMessage: Uint8Array) => {
     const blockSize = (parseInt(process.env.REACT_APP_PADDING_BLOCK_SIZE || '256') as
       | 256
       | 512
       | 1024) || 256;
 
+    const { unpadMessage } = await import('@ilyazh/crypto');
     const unpadded = unpadMessage(paddedMessage, blockSize);
     const original = new TextDecoder().decode(unpadded);
 
@@ -218,6 +219,8 @@ export function DefenseInDepthExample({
       ),
     };
 
+    // Dynamically load PrivacyConfigManager
+    const { PrivacyConfigManager } = await import('@ilyazh/crypto');
     const manager = new PrivacyConfigManager(initialSettings);
     setPrivacyManager(manager);
     setPrivacySettings(manager.getSettings());

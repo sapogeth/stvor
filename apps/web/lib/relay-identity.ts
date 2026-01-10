@@ -3,8 +3,15 @@
  * Ensures relay cannot impersonate peers by signing prekey bundles
  */
 
-import _sodium from 'libsodium-wrappers';
 import { logError, logInfo, logWarn } from './logger';
+
+async function sodiumMod() {
+  // Use eval-based dynamic import to prevent bundlers from statically analyzing
+  // and pulling libsodium into client bundles.
+  const mod = (await (0, eval)(`import('libsodium-wrappers')`)).default as any;
+  await mod.ready;
+  return mod as any;
+}
 
 // CRITICAL SECURITY: Pinned relay Ed25519 public key (MANDATORY from environment)
 // This prevents EREBUS/MITM attacks where attacker impersonates the relay
@@ -22,8 +29,7 @@ if (!RELAY_PUBLIC_KEY) {
 }
 
 export async function getRelayPublicKey(): Promise<Uint8Array> {
-  await _sodium.ready;
-  const sodium = _sodium;
+  const sodium = await sodiumMod();
 
   // CRITICAL SECURITY: Relay public key is MANDATORY
   // If not configured, verification will always fail (fail-closed)
@@ -66,8 +72,7 @@ export async function verifyRelaySignature(
   bundleData: Uint8Array,
   signature: Uint8Array | undefined
 ): Promise<boolean> {
-  await _sodium.ready;
-  const sodium = _sodium;
+  const sodium = await sodiumMod();
 
   // CRITICAL SECURITY: Check for missing or invalid signature
   if (!signature || signature.length === 0) {

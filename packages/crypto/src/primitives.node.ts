@@ -4,7 +4,7 @@
  * ML-KEM-768 and ML-DSA-65 via liboqs (OpenForge)
  */
 
-import sodium from 'libsodium-wrappers';
+import sodium from 'libsodium-wrappers-sumo';
 import { hkdf } from '@noble/hashes/hkdf';
 import { sha384, sha512 } from '@noble/hashes/sha2';
 import { sha256 } from '@noble/hashes/sha256';

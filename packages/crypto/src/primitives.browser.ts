@@ -3,7 +3,7 @@
  * Uses public static paths for WASM bundles
  */
 
-import sodium from 'libsodium-wrappers';
+import sodium from 'libsodium-wrappers-sumo';
 import { hkdf } from '@noble/hashes/hkdf';
 import { sha384, sha512 } from '@noble/hashes/sha2';
 import { sha256 } from '@noble/hashes/sha256';

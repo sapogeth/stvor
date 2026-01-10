@@ -8,7 +8,11 @@
  * - Device re-enrollment when keys are missing
  */
 
-import { generateIdentity, type IdentityKeyPair, waitForPQReady } from '@ilyazh/crypto';
+import type { IdentityKeyPair } from '@ilyazh/crypto';
+// Avoid static imports from '@ilyazh/crypto' to prevent bundling server-only crypto in SSR/client build
+async function cryptoMod() {
+  return await import('@ilyazh/crypto');
+}
 import { keystore } from './keystore';
 import { getRelayUrl } from './relay-url';
 import { verifyRelaySignature, isRelayIdentityVerified } from './relay-identity';
@@ -180,6 +184,7 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
   // This prevents race conditions where generateIdentity() tries to use ML-KEM-768/ML-DSA-65
   // before they're loaded. Without this, we get "crypto not ready" errors masquerading as PQ_NOT_READY.
   try {
+    const { waitForPQReady } = await cryptoMod();
     await waitForPQReady();
   } catch (err) {
     logError('identity', 'PQ crypto initialization timed out - cannot proceed with identity generation', { error: err });
@@ -324,6 +329,7 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
   logInfo('identity', 'No canonical identity on relay, generating new one');
 
   // Generate new identity keypair
+  const { generateIdentity } = await cryptoMod();
   const identity = await generateIdentity();
 
   logInfo('identity', 'Generated new identity keypair', {
@@ -610,7 +616,8 @@ export async function reEnrollDevice(username: string): Promise<IdentityKeyPair>
   logInfo('identity', 'Old devices will no longer work after this operation');
 
   // Generate new identity keypair
-  const newIdentity = await generateIdentity();
+  const { generateIdentity: generateIdentity2 } = await cryptoMod();
+  const newIdentity = await generateIdentity2();
 
   logInfo('identity', 'Generated new identity keypair for re-enrollment', {
     ed25519Public: redactPublicKey(newIdentity.ed25519.publicKey),

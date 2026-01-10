@@ -8,15 +8,15 @@
  * - Managing prekey secrets in IndexedDB
  */
 
-import {
-  generatePrekeyBundle,
-  type IdentityKeyPair,
-  type PrekeyBundle,
-  serializePrekeyBundle,
-  toBase64,
-  fromBase64,
-} from '@ilyazh/crypto';
-import * as prim from '@ilyazh/crypto/primitives';
+import type { IdentityKeyPair, PrekeyBundle } from '@ilyazh/crypto';
+// NOTE: Avoid static value imports from '@ilyazh/crypto' to prevent bundling server-only crypto
+async function cryptoMod() {
+  // Use eval-based dynamic import to avoid bundler static analysis pulling libsodium
+  const mod = await (0, eval)(`import('@ilyazh/crypto')`);
+  return mod as any;
+}
+// Use local Ed25519 implementation to avoid pulling libsodium in the browser
+import { ed25519Sign as localEd25519Sign } from './crypto/local-ed25519';
 import { keystore } from './keystore';
 import { getCryptoOrThrow } from './runtime/crypto-safe';
 import { createAuthHeaders } from './identity';
@@ -94,6 +94,7 @@ export async function generateAndUploadPrekeyBundle(
   const bundleId = randomUUID();
 
   // Generate bundle with internal signatures (for old relay endpoints)
+  const { generatePrekeyBundle } = await cryptoMod();
   const bundle = await generatePrekeyBundle(identity, bundleId);
 
   console.log('[Prekey] Generated bundle:', bundleId);
@@ -113,6 +114,7 @@ export async function generateAndUploadPrekeyBundle(
   console.log('[Prekey] Saved prekey secrets to IndexedDB');
 
   // NEW: Serialize bundle deterministically and sign with identity key
+  const { serializePrekeyBundle } = await cryptoMod();
   const canonicalBundle = serializePrekeyBundle({
     x25519Pub: bundle.x25519Ephemeral,
     pqKemPub: bundle.mlkemPublicKey.length > 0 ? bundle.mlkemPublicKey : undefined,
@@ -122,7 +124,7 @@ export async function generateAndUploadPrekeyBundle(
   console.log('[Prekey] Serialized bundle for signing, length:', canonicalBundle.length);
 
   // Sign with identity Ed25519 private key
-  const signature = prim.ed25519Sign(canonicalBundle, identity.ed25519.secretKey);
+  const signature = await localEd25519Sign(canonicalBundle, identity.ed25519.secretKey);
   console.log('[Prekey] Signed bundle with Ed25519, signature length:', signature.length);
 
   // Upload to NEW endpoint /directory/:username with signature
@@ -143,14 +145,14 @@ export async function generateAndUploadPrekeyBundle(
     method: 'POST',
     headers,
     body: JSON.stringify({
-      identityEd25519: toBase64(identity.ed25519.publicKey),
-      identityMLDSA: toBase64(identity.mldsa.publicKey),
+      identityEd25519: (await cryptoMod()).toBase64(identity.ed25519.publicKey),
+      identityMLDSA: (await cryptoMod()).toBase64(identity.mldsa.publicKey),
       prekeyBundle: {
-        x25519Pub: toBase64(bundle.x25519Ephemeral),
-        pqKemPub: bundle.mlkemPublicKey.length > 0 ? toBase64(bundle.mlkemPublicKey) : '',
+        x25519Pub: (await cryptoMod()).toBase64(bundle.x25519Ephemeral),
+        pqKemPub: bundle.mlkemPublicKey.length > 0 ? (await cryptoMod()).toBase64(bundle.mlkemPublicKey) : '',
         pqSigPub: '', // No PQ sig key
       },
-      prekeySignature: toBase64(signature),
+      prekeySignature: (await cryptoMod()).toBase64(signature),
     }),
   });
 

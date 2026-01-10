@@ -13,16 +13,12 @@
  * NO automatic decryption across sessions. NO bypassing AAD checks.
  */
 
-import {
-  type IdentityKeyPair,
-  type PrekeyBundle,
-  type HandshakeState,
-  initiateHandshake,
-  finalizeHandshake,
-  encodeHandshakeMessage,
-  ed25519Verify,
-  AADMismatchError,
-} from '@ilyazh/crypto';
+import type { IdentityKeyPair, PrekeyBundle, HandshakeState } from '@ilyazh/crypto';
+// Avoid bundler pulling libsodium by using eval-based dynamic imports
+async function cryptoMod() {
+  const mod = await (0, eval)(`import('@ilyazh/crypto')`);
+  return mod as any;
+}
 import { keystore } from './keystore';
 import { fetchPeerIdentity, createAuthHeaders } from './identity';
 import { getRelayUrl } from './relay-url';
@@ -289,7 +285,7 @@ export async function refreshSessionFromPeer({
       // The signature was created with serializePrekeyBundle() which uses length-prefixed format
       // NOT raw concatenation! See prekeys.ts:115-120
       // Import locally to avoid circular dependency
-      const { serializePrekeyBundle } = await import('@ilyazh/crypto');
+      const { serializePrekeyBundle } = await cryptoMod();
 
       const signatureMessage = serializePrekeyBundle({
         x25519Pub: peerBundle.x25519Ephemeral,
@@ -297,6 +293,7 @@ export async function refreshSessionFromPeer({
         pqSigPub: undefined,
       });
 
+      const { ed25519Verify } = await cryptoMod();
       const signatureValid = ed25519Verify(
         peerBundle.ed25519Signature,
         signatureMessage,
@@ -323,6 +320,7 @@ export async function refreshSessionFromPeer({
     // STEP 4: Initiate new handshake
     logDebug('ratchet', 'Initiating new handshake...');
 
+    const { initiateHandshake } = await cryptoMod();
     const { message: handshakeMessage, ephemeralX25519Secret, ephemeralMLKEMSecret } = await initiateHandshake(
       ourIdentity,
       peerIdentity.identityEd25519,
@@ -347,6 +345,7 @@ export async function refreshSessionFromPeer({
       mldsaSignature: peerBundle.mldsaSignature,
     };
 
+    const { finalizeHandshake } = await cryptoMod();
     const newSession = await finalizeHandshake(
       ephemeralX25519Secret,
       ephemeralMLKEMSecret || new Uint8Array(0),
@@ -391,6 +390,7 @@ export async function refreshSessionFromPeer({
     // CRITICAL: Must include auth headers to avoid 403
     logDebug('ratchet', '========== STEP 7: Sending handshake message to relay ==========');
     try {
+      const { encodeHandshakeMessage } = await cryptoMod();
       const wireData = encodeHandshakeMessage(handshakeMessage);
       const data = Buffer.from(wireData).toString('base64');
 

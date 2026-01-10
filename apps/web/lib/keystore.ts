@@ -7,8 +7,19 @@
  */
 
 import { type IdentityKeyPair, type HandshakeState } from '@ilyazh/crypto';
-import _sodium from 'libsodium-wrappers-sumo';
 import { logDebug, logInfo, logWarn, logError } from './logger';
+
+let _sodiumPromise: Promise<any> | null = null;
+async function getSodium() {
+  if (!_sodiumPromise) {
+    _sodiumPromise = (async () => {
+      const mod = (await import('libsodium-wrappers-sumo')).default as any;
+      await mod.ready;
+      return mod as any;
+    })();
+  }
+  return _sodiumPromise;
+}
 
 // ==================== KDF State Tracking ====================
 
@@ -40,8 +51,7 @@ export function isKDFDegraded(): boolean {
  */
 export async function debugLibsodiumAvailability(): Promise<void> {
   try {
-    await _sodium.ready;
-    const sodium = _sodium as any;
+    const sodium = await getSodium();
 
     const checks = {
       'crypto_pwhash (Argon2id)': typeof sodium.crypto_pwhash === 'function',
@@ -94,8 +104,7 @@ export async function debugLibsodiumAvailability(): Promise<void> {
  * - Used if SENSITIVE parameters cause browser to hang
  */
 async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promise<Uint8Array> {
-  await _sodium.ready;
-  const sodium = _sodium as any;
+  const sodium = await getSodium();
 
   const keyLength = sodium.crypto_secretbox_KEYBYTES || 32; // 32 bytes
 
@@ -191,8 +200,7 @@ async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promis
  * Returns: salt (32 bytes) || nonce (24 bytes) || ciphertext
  */
 async function encryptWithPassword(plaintext: Uint8Array, password: string): Promise<string> {
-  await _sodium.ready;
-  const sodium = _sodium;
+  const sodium = await getSodium();
 
   // Generate random salt for password derivation
   // Use standard size: 16 bytes for Argon2id
@@ -225,8 +233,7 @@ async function encryptWithPassword(plaintext: Uint8Array, password: string): Pro
  * Input format: salt (32 bytes) || nonce (24 bytes) || ciphertext
  */
 async function decryptWithPassword(encryptedBase64: string, password: string): Promise<Uint8Array> {
-  await _sodium.ready;
-  const sodium = _sodium;
+  const sodium = await getSodium();
 
   // Use libsodium for browser-compatible base64 decoding
   const combined = sodium.from_base64(encryptedBase64, sodium.base64_variants.ORIGINAL);
@@ -388,8 +395,7 @@ class KeyStore {
 
   async saveIdentity(username: string, identity: IdentityKeyPair): Promise<void> {
     const db = this.ensureDB();
-    await _sodium.ready;
-    const sodium = _sodium;
+    const sodium = await getSodium();
 
     // Validate username
     if (!username || username.trim() === '') {
@@ -483,8 +489,7 @@ class KeyStore {
       request.onerror = () => reject(request.error);
       request.onsuccess = async () => {
         try {
-          await _sodium.ready;
-          const sodium = _sodium;
+          const sodium = await getSodium();
 
           const stored = request.result as StoredIdentity | undefined;
           if (!stored) {
@@ -553,8 +558,7 @@ class KeyStore {
 
   async saveSession(sessionId: Uint8Array, peerUsername: string, state: HandshakeState): Promise<void> {
     const db = this.ensureDB();
-    await _sodium.ready;
-    const sodium = _sodium;
+    const sodium = await getSodium();
 
     const stored: StoredSession = {
       // Use libsodium's to_hex for browser compatibility
@@ -577,8 +581,7 @@ class KeyStore {
 
   async loadSession(sessionId: Uint8Array): Promise<HandshakeState | null> {
     const db = this.ensureDB();
-    await _sodium.ready;
-    const sodium = _sodium;
+    const sodium = await getSodium();
 
     // Use libsodium's to_hex for browser compatibility
     const sessionIdHex = sodium.to_hex(sessionId);
@@ -620,8 +623,7 @@ class KeyStore {
 
   async deleteSession(sessionId: Uint8Array): Promise<void> {
     const db = this.ensureDB();
-    await _sodium.ready;
-    const sodium = _sodium;
+    const sodium = await getSodium();
 
     // Use libsodium's to_hex for browser compatibility
     const sessionIdHex = sodium.to_hex(sessionId);

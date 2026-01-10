@@ -26,6 +26,7 @@
     "@openforge-sh/liboqs": "^0.14.3",
     "cbor-x": "^1.6.0",
     "libsodium-wrappers": "^0.7.15",
+    "libsodium-wrappers-sumo": "^0.7.12",
     "mlkem-wasm": "^0.0.7",
     "mldsa-wasm": "^0.0.3"
   },

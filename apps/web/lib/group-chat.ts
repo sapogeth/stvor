@@ -3,14 +3,11 @@
  * Handles group creation, session establishment, and message encryption
  */
 
-import {
-  deriveGroupSession,
-  encryptGroupMessage,
-  decryptGroupMessage,
-  type GroupRatchetState,
-  type GroupParticipant,
-} from '@ilyazh/crypto';
-import type { IdentityKeyPair, PrekeyBundle } from '@ilyazh/crypto';
+import type { GroupRatchetState, GroupParticipant, IdentityKeyPair, PrekeyBundle } from '@ilyazh/crypto';
+// Avoid static value imports from '@ilyazh/crypto' to prevent bundling server-only crypto
+async function cryptoMod() {
+  return await import('@ilyazh/crypto');
+}
 
 /**
  * Group chat state stored in IndexedDB
@@ -130,7 +127,8 @@ export async function createGroupChat(
     ephemeralMLKEMSecret: new Uint8Array(2400),
   }));
 
-  // Derive group session
+  // Derive group session (loaded dynamically at runtime)
+  const { deriveGroupSession } = await cryptoMod();
   const groupState = deriveGroupSession(groupId, groupName, myUsername, myIdentity, pairwiseHandshakes);
 
   // Store as StoredGroupChat
@@ -206,6 +204,7 @@ export async function encryptForGroup(
     })),
   };
 
+  const { encryptGroupMessage } = await cryptoMod();
   const result = await encryptGroupMessage(groupState, plaintext);
 
   // Convert to base64 for transmission

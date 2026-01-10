@@ -5,17 +5,18 @@
  * - Session health monitoring
  */
 
-import {
-  HandshakeState,
-  SkippedKeyStore,
-  ReplayProtection,
-  needsRekey,
-  type RatchetState,
-} from '@ilyazh/crypto';
+import type { HandshakeState, RatchetState } from '@ilyazh/crypto';
+
+class SimpleSkippedKeyStore {
+  clear() {}
+}
+class SimpleReplayProtection {
+  clearSession(_sessionId: Uint8Array) {}
+}
 
 export interface SessionSecurity {
-  skippedKeys: SkippedKeyStore;
-  replayProtection: ReplayProtection;
+  skippedKeys: SimpleSkippedKeyStore;
+  replayProtection: SimpleReplayProtection;
 }
 
 // Global stores per session
@@ -30,8 +31,8 @@ export function getSessionSecurity(sessionId: Uint8Array): SessionSecurity {
   let security = sessionStores.get(sid);
   if (!security) {
     security = {
-      skippedKeys: new SkippedKeyStore(),
-      replayProtection: new ReplayProtection(),
+      skippedKeys: new SimpleSkippedKeyStore(),
+      replayProtection: new SimpleReplayProtection(),
     };
     sessionStores.set(sid, security);
   }
@@ -68,7 +69,25 @@ export function checkSessionHealth(state: HandshakeState): SessionHealth {
   let status: 'healthy' | 'warning' | 'critical' = 'healthy';
   let canContinue = true;
 
-  const rekeyCheck = needsRekey(state as RatchetState);
+  // Local rekey computation to avoid importing crypto libs in SSR
+  const now = Date.now();
+  const epochAge = now - state.epochStartTime;
+  const sessionAge = now - state.sessionStartTime;
+  const EPOCH_MSG_LIMIT = 1 << 20; // 2^20
+  const EPOCH_TIME_LIMIT = 24 * 60 * 60 * 1000; // 24h
+  const SESSION_MSG_LIMIT = Math.pow(2, 32);
+  const SESSION_TIME_LIMIT = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+  let rekeyCheck: { required: boolean; reason?: string } = { required: false };
+  if (state.totalMessages >= SESSION_MSG_LIMIT) {
+    rekeyCheck = { required: true, reason: 'session_cap_messages' };
+  } else if (sessionAge >= SESSION_TIME_LIMIT) {
+    rekeyCheck = { required: true, reason: 'session_cap_time' };
+  } else if (state.sendCounter >= EPOCH_MSG_LIMIT) {
+    rekeyCheck = { required: true, reason: 'epoch_cap_messages' };
+  } else if (epochAge >= EPOCH_TIME_LIMIT) {
+    rekeyCheck = { required: true, reason: 'epoch_cap_time' };
+  }
 
   // Check rekey requirements
   if (rekeyCheck.required) {
@@ -92,9 +111,7 @@ export function checkSessionHealth(state: HandshakeState): SessionHealth {
   }
 
   // Check approaching limits (soft warnings)
-  const now = Date.now();
-  const epochAge = now - state.epochStartTime;
-  const sessionAge = now - state.sessionStartTime;
+  // Reuse epochAge/sessionAge computed above
 
   // Warn at 90% of limits
   const EPOCH_MSG_WARNING = Math.floor((1 << 20) * 0.9); // 90% of 2^20

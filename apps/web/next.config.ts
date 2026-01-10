@@ -1,5 +1,12 @@
 import type { NextConfig } from 'next';
 import path from 'path';
+import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
+
+// ESM-compatible __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const require = createRequire(import.meta.url);
 
 // Diagnostic logging
 const appDir = __dirname;
@@ -10,15 +17,10 @@ console.log('[next-config] Workspace root (outputFileTracingRoot) =', workspaceR
 console.log('[next-config] Expected page.tsx at:', path.join(appDir, 'app', 'page.tsx'));
 
 const nextConfig: NextConfig = {
-  // CRITICAL FIX: Explicitly set workspace root to prevent Next.js from detecting
-  // the wrong root due to lockfiles in parent directories
-  outputFileTracingRoot: workspaceRoot,
-
   // Transpile monorepo packages
   transpilePackages: ['@ilyazh/crypto'],
 
-  // Next.js 16: Use Turbopack for build performance
-  turbopack: {},
+  // Using default webpack bundler (Next 14.x). No Turbopack config.
 
   webpack: (config, { isServer }) => {
     // Browser-side: stub out the heavy PQ library to prevent webpack errors

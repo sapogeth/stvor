@@ -12,19 +12,11 @@
  * @see packages/crypto/src/defense-in-depth.ts for implementation details
  */
 
-import {
-  RelayPinner,
-  padMessage,
-  unpadMessage,
-  encryptWithPadding,
-  decryptWithUnpadding,
-  PrivacyConfigManager,
-  type RelayIdentityConfig,
-  type PaddingConfig,
-  type PrivacySettings,
-  DEFAULT_PADDING_CONFIG,
-  DEFAULT_PRIVACY_SETTINGS
-} from '@ilyazh/crypto';
+import type { RelayIdentityConfig, PaddingConfig, PrivacySettings } from '@ilyazh/crypto';
+
+async function cryptoMod() {
+  return await import('@ilyazh/crypto');
+}
 
 // ============================================================================
 // WebSocket Connection Manager (with Relay Pinning)
@@ -48,7 +40,8 @@ import {
  * @see EREBUS (Kang et al., 2020): Network partitioning attacks
  */
 export class SecureWebSocketManager {
-  private relayPinner: RelayPinner;
+  private relayPinner: any | null = null;
+  private relayConfig: RelayIdentityConfig;
   private ws: WebSocket | null = null;
   private isConnected: boolean = false;
   private reconnectAttempts: number = 0;
@@ -56,7 +49,7 @@ export class SecureWebSocketManager {
   private reconnectDelayMs: number = 1000;
 
   constructor(relayConfig: RelayIdentityConfig) {
-    this.relayPinner = new RelayPinner(relayConfig);
+    this.relayConfig = relayConfig;
   }
 
   /**
@@ -75,6 +68,10 @@ export class SecureWebSocketManager {
           console.info('[SecureWSManager] WebSocket connected, verifying relay identity...');
 
           try {
+            if (!this.relayPinner) {
+              const mod = await cryptoMod();
+              this.relayPinner = new mod.RelayPinner(this.relayConfig);
+            }
             // Verify relay identity
             const isVerified = await this.relayPinner.verifyRelayIdentity(this.ws!);
 
@@ -189,9 +186,12 @@ export class SecureWebSocketManager {
 export async function encryptMessageWithPadding(
   message: string,
   encryptFn: (data: Uint8Array) => Promise<Uint8Array>,
-  paddingConfig: PaddingConfig = DEFAULT_PADDING_CONFIG
+  paddingConfig?: PaddingConfig
 ): Promise<Uint8Array> {
-  const paddedMessage = padMessage(message, paddingConfig);
+  const mod = await cryptoMod();
+  const effectiveConfig: PaddingConfig =
+    paddingConfig ?? (mod.DEFAULT_PADDING_CONFIG as PaddingConfig);
+  const paddedMessage = mod.padMessage(message, effectiveConfig);
   return encryptFn(paddedMessage);
 }
 
@@ -209,10 +209,12 @@ export async function encryptMessageWithPadding(
 export async function decryptMessageWithUnpadding(
   ciphertext: Uint8Array,
   decryptFn: (data: Uint8Array) => Promise<Uint8Array>,
-  blockSize: number = DEFAULT_PADDING_CONFIG.blockSize
+  blockSize?: number
 ): Promise<string> {
+  const mod = await cryptoMod();
+  const effectiveBlockSize = blockSize ?? mod.DEFAULT_PADDING_CONFIG.blockSize;
   const plaintext = await decryptFn(ciphertext);
-  const unpadded = unpadMessage(plaintext, blockSize);
+  const unpadded = mod.unpadMessage(plaintext, effectiveBlockSize);
   return new TextDecoder().decode(unpadded);
 }
 
@@ -246,11 +248,11 @@ export async function decryptMessageWithUnpadding(
  * @see I Know You Pin Me (Woo, Song, Kang, 2024): Privacy-invasive indicators
  */
 export class PrivacyAwareMessageSender {
-  private privacyManager: PrivacyConfigManager;
+  private privacyManager: any;
   private sendEventFn: (event: any) => Promise<void>;
 
   constructor(
-    privacyManager: PrivacyConfigManager,
+    privacyManager: any,
     sendEventFn: (event: any) => Promise<void>
   ) {
     this.privacyManager = privacyManager;
@@ -489,7 +491,12 @@ export function createPrivacyConfigFromStorage(): PrivacySettings {
       console.warn('[DefenseIntegration] Failed to parse stored privacy settings');
     }
   }
-  return { ...DEFAULT_PRIVACY_SETTINGS };
+  return {
+    typingIndicatorEnabled: false,
+    readReceiptEnabled: false,
+    presenceIndicatorEnabled: false,
+    consentTimestamp: null,
+  } as PrivacySettings;
 }
 
 /**
