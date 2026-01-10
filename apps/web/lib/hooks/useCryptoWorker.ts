@@ -24,7 +24,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
-import { getCryptoWorkerManager, terminateCryptoWorker } from './crypto-worker-manager';
+import { getCryptoWorkerBridge, terminateCryptoWorker } from '@/lib/workers/crypto-worker-bridge';
 
 export interface UseCryptoWorkerResult {
   generateIdentity: () => Promise<any>;
@@ -39,8 +39,8 @@ export function useCryptoWorker(): UseCryptoWorkerResult {
 
   // Инициализируем Worker при монтировании компонента
   useEffect(() => {
-    const manager = getCryptoWorkerManager();
-    manager
+    const bridge = getCryptoWorkerBridge();
+    bridge
       .initialize()
       .then(() => {
         setLoading(false);
@@ -48,7 +48,7 @@ export function useCryptoWorker(): UseCryptoWorkerResult {
       })
       .catch((err) => {
         console.error('[useCryptoWorker] Failed to initialize worker:', err);
-        setError(err);
+        setError(err instanceof Error ? err : new Error(String(err)));
         setLoading(false);
       });
 
@@ -60,10 +60,10 @@ export function useCryptoWorker(): UseCryptoWorkerResult {
   }, []);
 
   const generateIdentity = useCallback(async () => {
-    const manager = getCryptoWorkerManager();
+    const bridge = getCryptoWorkerBridge();
     try {
       setLoading(true);
-      const result = await manager.generateIdentity();
+      const result = await bridge.generateIdentity('');
       setLoading(false);
       return result;
     } catch (err) {
@@ -75,18 +75,9 @@ export function useCryptoWorker(): UseCryptoWorkerResult {
   }, []);
 
   const generateMLKEMKeyPair = useCallback(async () => {
-    const manager = getCryptoWorkerManager();
-    try {
-      setLoading(true);
-      const result = await manager.generateMLKEMKeyPair();
-      setLoading(false);
-      return result;
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      setError(error);
-      setLoading(false);
-      throw error;
-    }
+    // Не реализовано в CryptoWorkerBridge; оставлено для совместимости API
+    // При необходимости используйте bridge.generatePrekeyBundle()
+    throw new Error('generateMLKEMKeyPair is not implemented via worker bridge');
   }, []);
 
   return {
