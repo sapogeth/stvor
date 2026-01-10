@@ -6,6 +6,21 @@ const nextConfig = {
   // Транспиляция монорепо-пакета с криптографией
   transpilePackages: ['@ilyazh/crypto'],
 
+  // CRITICAL: Rewrites для проксирования запросов к Relay серверу
+  // В браузере все запросы идут через /api/relay/*, которые проксируются на Railway
+  async rewrites() {
+    const relayUrl = process.env.RELAY_BASE_URL || process.env.RELAY_INTERNAL_URL || 'http://localhost:3001';
+    
+    console.log('[Next.js] Relay rewrites configured:', relayUrl);
+    
+    return [
+      {
+        source: '/api/relay/:path*',
+        destination: `${relayUrl}/:path*`,
+      },
+    ];
+  },
+
   webpack: (config, { isServer }) => {
     // 1. Включаем поддержку WebAssembly (нужно для PQ-криптографии)
     config.experiments = {
