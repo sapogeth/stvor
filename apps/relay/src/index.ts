@@ -146,6 +146,13 @@ fastify.addHook('onRequest', async (request, reply) => {
 
   // If request has no origin header, require X-API-Key header
   const origin = request.headers.origin;
+  // Allow unauthenticated access to public liveness/readiness endpoints
+  // This is required for platform health checks (Railway/Render/etc.)
+  const path = (request.url || '').split('?')[0];
+  const publicHealthPaths = new Set(['/healthz', '/health', '/ready', '/metrics']);
+  if (publicHealthPaths.has(path)) {
+    return; // do not enforce API key on health endpoints
+  }
   if (!origin) {
     const apiKey = request.headers['x-api-key'] as string | undefined;
 
