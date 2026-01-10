@@ -9,6 +9,10 @@ import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import { getProfileByUserId } from '../storage';
 
+// Force Node.js runtime (required for Clerk SDK and Supabase)
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/profiles/me
  * Get current user's profile

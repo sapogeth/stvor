@@ -25,6 +25,10 @@ import {
   deleteProfile,
 } from './storage';
 
+// Force Node.js runtime (required for Clerk SDK and Supabase)
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/profiles?username=foo
  * Search for a profile by username
