@@ -782,12 +782,16 @@ console.log('[Session] ✅ Session storage initialized (in-memory)');
  * GET /directory/:id
  * Returns canonical identity and prekey bundle for a user
  * 
- * CRITICAL SECURITY: Requires intent to be registered first
- * This prevents directory enumeration and prekey scraping
+ * CRITICAL SECURITY:
+ * - Browser clients: Blocked (403 without API key)
+ * - Server clients: Required API key in Authorization header
+ * 
+ * Architecture:
+ * Browser → Next.js API (with API key) → Relay
  * 
  * Returns:
- * - 200: Prekey bundle (intent verified)
- * - 403: Intent not registered (must POST /intent first)
+ * - 200: Prekey bundle (API key verified)
+ * - 403: API key required / Intent not registered
  * - 404: User not found
  */
 fastify.get<{ Params: { id: string } }>('/directory/:id', async (request, reply) => {
@@ -795,6 +799,22 @@ fastify.get<{ Params: { id: string } }>('/directory/:id', async (request, reply)
   const id = normalizeUsername(rawId);
 
   console.log(`[Directory] GET /directory/${rawId} → canonical: ${id}`);
+
+  // ========== SECURITY: Require API key (server-only) ==========
+  // Browser cannot access this without going through Next.js API
+  const authHeader = request.headers.authorization || '';
+  const providedKey = authHeader.replace('Bearer ', '');
+  const expectedKey = process.env.RELAY_API_KEY;
+
+  if (!providedKey || providedKey !== expectedKey) {
+    console.warn('[Directory] 🔴 403: API key required or invalid');
+    return reply.code(403).send({
+      error: 'api_key_required',
+      message: 'API key required. Browser clients must use server-side proxy.',
+    });
+  }
+
+  console.log('[relay] 🔐 API key verified ✅');
 
   // ========== SECURITY: Check intent first ==========
   // Client must have registered intent before accessing directory

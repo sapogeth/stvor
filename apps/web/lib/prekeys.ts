@@ -215,14 +215,17 @@ export async function registerIntent(peer: string, identityEd25519: Uint8Array):
 }
 
 /**
- * Fetch a peer's prekey bundle from relay directory
+ * Fetch a peer's prekey bundle
  * 
- * CRITICAL SECURITY: Only works after intent is registered
- * API endpoint checks intent before returning data
+ * SECURITY ARCHITECTURE (Signal/WhatsApp/Matrix model):
+ * Browser → Next.js API (/api/handshake/fetch-peer) → Relay
+ *
+ * Browser NEVER sees relay API or API key
+ * Next.js API uses server-only RELAY_API_KEY
  * 
  * Flow:
- * 1. registerIntent() - register with API (which checks Clerk auth)
- * 2. fetchPeerBundle() - fetch from API (which checks intent)
+ * 1. registerIntent() - authenticate with Clerk
+ * 2. fetchPeerBundle() - call server-only proxy
  * 3. Handshake can proceed
  */
 export async function fetchPeerBundle(username: string, token?: string): Promise<{
@@ -246,18 +249,21 @@ export async function fetchPeerBundle(username: string, token?: string): Promise
     throw new Error("Peer username is required");
   }
 
-  console.debug('[Prekey] fetchPeerBundle', { username, canonical });
+  console.log('[Prekey] 🔐 Fetching peer bundle via server-only proxy', { peer: canonical });
 
-  // Call local API endpoint (which checks intent before forwarding to relay)
-  const url = `/api/relay/directory/${encodeURIComponent(canonical)}`;
-
-  const res = await fetch(url, {
-    method: "GET",
-    credentials: "include",
+  // Call server-only API proxy
+  // This endpoint uses RELAY_API_KEY (never exposed to browser)
+  const res = await fetch('/api/handshake/fetch-peer', {
+    method: 'POST',
+    credentials: 'include',
     headers: {
-      "Accept": "application/json",
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
+    body: JSON.stringify({
+      username: canonical,
+    }),
   });
 
   // If API returned 200 with data
@@ -267,27 +273,28 @@ export async function fetchPeerBundle(username: string, token?: string): Promise
     if (!normalized) {
       throw new Error(`Invalid directory response for ${username}`);
     }
+    console.log('[Prekey] ✅ Got peer bundle', { peer: canonical, bundleId: normalized.prekey?.bundleId || 'dev' });
     return normalized;
-  }
-
-  // 403: No valid intent (must registerIntent first)
-  if (res.status === 403) {
-    const error = await res.json();
-    throw new Error(`Intent required: ${error.message || 'Must call registerIntent() first'}`);
   }
 
   // 401: Not authenticated
   if (res.status === 401) {
+    console.warn('[Prekey] 🔴 401: Not authenticated');
     throw new Error('Authentication required');
   }
 
   // 404: User not found
   if (res.status === 404) {
+    console.warn('[Prekey] 🔴 404: User not found', { peer: canonical });
     throw new Error(`User not found: ${canonical}`);
   }
 
-  // if still 503 → show nicer message but DO NOT spam console
-  console.warn("[fetchPeerBundle] relay/proxy still returned", res.status, url);
+  // Other error
+  const errorText = await res.text();
+  console.warn("[Prekey] 🔴 fetch-peer error", {
+    status: res.status,
+    error: errorText,
+  });
   throw new Error(`Relay/proxy is not reachable for ${canonical}`);
 }
 
