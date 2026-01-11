@@ -14,11 +14,7 @@
  */
 
 import type { IdentityKeyPair, PrekeyBundle, HandshakeState } from '@/lib/crypto';
-// Use standard dynamic import to a local re-export so Next bundler resolves correctly
-async function cryptoMod() {
-  const mod = await import('@/lib/crypto');
-  return mod as any;
-}
+import * as crypto from '@/lib/crypto';
 import { keystore } from './keystore';
 import { fetchPeerIdentity, createAuthHeaders } from './identity';
 import { getRelayUrl } from './relay-url';
@@ -284,17 +280,13 @@ export async function refreshSessionFromPeer({
       // CRITICAL FIX: Use the SAME serialization format that was used to CREATE the signature
       // The signature was created with serializePrekeyBundle() which uses length-prefixed format
       // NOT raw concatenation! See prekeys.ts:115-120
-      // Import locally to avoid circular dependency
-      const { serializePrekeyBundle } = await cryptoMod();
-
-      const signatureMessage = serializePrekeyBundle({
+      const signatureMessage = crypto.serializePrekeyBundle({
         x25519Pub: peerBundle.x25519Ephemeral,
         pqKemPub: peerBundle.mlkemPublicKey.length > 0 ? peerBundle.mlkemPublicKey : undefined,
         pqSigPub: undefined,
       });
 
-      const { ed25519Verify } = await cryptoMod();
-      const signatureValid = ed25519Verify(
+      const signatureValid = crypto.ed25519Verify(
         peerBundle.ed25519Signature,
         signatureMessage,
         peerIdentity.identityEd25519
@@ -320,8 +312,7 @@ export async function refreshSessionFromPeer({
     // STEP 4: Initiate new handshake
     logDebug('ratchet', 'Initiating new handshake...');
 
-    const { initiateHandshake } = await cryptoMod();
-    const { message: handshakeMessage, ephemeralX25519Secret, ephemeralMLKEMSecret } = await initiateHandshake(
+    const { message: handshakeMessage, ephemeralX25519Secret, ephemeralMLKEMSecret } = await crypto.initiateHandshake(
       ourIdentity,
       peerIdentity.identityEd25519,
       peerIdentity.identityMLDSA,
@@ -345,8 +336,7 @@ export async function refreshSessionFromPeer({
       mldsaSignature: peerBundle.mldsaSignature,
     };
 
-    const { finalizeHandshake } = await cryptoMod();
-    const newSession = await finalizeHandshake(
+    const session = await crypto.finalizeHandshake(
       ephemeralX25519Secret,
       ephemeralMLKEMSecret || new Uint8Array(0),
       handshakeMessage,
@@ -390,8 +380,7 @@ export async function refreshSessionFromPeer({
     // CRITICAL: Must include auth headers to avoid 403
     logDebug('ratchet', '========== STEP 7: Sending handshake message to relay ==========');
     try {
-      const { encodeHandshakeMessage } = await cryptoMod();
-      const wireData = encodeHandshakeMessage(handshakeMessage);
+      const wireData = crypto.encodeHandshakeMessage(handshakeMessage);
       const data = Buffer.from(wireData).toString('base64');
 
       // Use our username for auth headers

@@ -13,10 +13,7 @@
  */
 
 import type { RelayIdentityConfig, PaddingConfig, PrivacySettings } from '@/lib/crypto';
-
-async function cryptoMod() {
-  return await import('@/lib/crypto');
-}
+import * as crypto from '@/lib/crypto';
 
 // ============================================================================
 // WebSocket Connection Manager (with Relay Pinning)
@@ -69,8 +66,7 @@ export class SecureWebSocketManager {
 
           try {
             if (!this.relayPinner) {
-              const mod = await cryptoMod();
-              this.relayPinner = new mod.RelayPinner(this.relayConfig);
+              this.relayPinner = new crypto.RelayPinner(this.relayConfig);
             }
             // Verify relay identity
             const isVerified = await this.relayPinner.verifyRelayIdentity(this.ws!);
@@ -188,10 +184,9 @@ export async function encryptMessageWithPadding(
   encryptFn: (data: Uint8Array) => Promise<Uint8Array>,
   paddingConfig?: PaddingConfig
 ): Promise<Uint8Array> {
-  const mod = await cryptoMod();
   const effectiveConfig: PaddingConfig =
-    paddingConfig ?? (mod.DEFAULT_PADDING_CONFIG as PaddingConfig);
-  const paddedMessage = mod.padMessage(message, effectiveConfig);
+    paddingConfig ?? (crypto.DEFAULT_PADDING_CONFIG as PaddingConfig);
+  const paddedMessage = crypto.padMessage(message, effectiveConfig);
   return encryptFn(paddedMessage);
 }
 
@@ -211,10 +206,9 @@ export async function decryptMessageWithUnpadding(
   decryptFn: (data: Uint8Array) => Promise<Uint8Array>,
   blockSize?: number
 ): Promise<string> {
-  const mod = await cryptoMod();
-  const effectiveBlockSize = blockSize ?? mod.DEFAULT_PADDING_CONFIG.blockSize;
+  const effectiveBlockSize = blockSize ?? crypto.DEFAULT_PADDING_CONFIG.blockSize;
   const plaintext = await decryptFn(ciphertext);
-  const unpadded = mod.unpadMessage(plaintext, effectiveBlockSize);
+  const unpadded = crypto.unpadMessage(plaintext, effectiveBlockSize);
   return new TextDecoder().decode(unpadded);
 }
 

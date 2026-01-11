@@ -4,10 +4,7 @@
  */
 
 import type { GroupRatchetState, GroupParticipant, IdentityKeyPair, PrekeyBundle } from '@/lib/crypto';
-// Avoid static value imports from '@ilyazh/crypto' to prevent bundling server-only crypto
-async function cryptoMod() {
-  return await import('@/lib/crypto');
-}
+import * as crypto from '@/lib/crypto';
 
 /**
  * Group chat state stored in IndexedDB
@@ -127,9 +124,8 @@ export async function createGroupChat(
     ephemeralMLKEMSecret: new Uint8Array(2400),
   }));
 
-  // Derive group session (loaded dynamically at runtime)
-  const { deriveGroupSession } = await cryptoMod();
-  const groupState = deriveGroupSession(groupId, groupName, myUsername, myIdentity, pairwiseHandshakes);
+  // Derive group session
+  const groupState = crypto.deriveGroupSession(groupId, groupName, myUsername, myIdentity, pairwiseHandshakes);
 
   // Store as StoredGroupChat
   const storedGroup: StoredGroupChat = {
@@ -204,8 +200,7 @@ export async function encryptForGroup(
     })),
   };
 
-  const { encryptGroupMessage } = await cryptoMod();
-  const result = await encryptGroupMessage(groupState, plaintext);
+  const result = await crypto.encryptGroupMessage(groupState, plaintext);
 
   // Convert to base64 for transmission
   return {

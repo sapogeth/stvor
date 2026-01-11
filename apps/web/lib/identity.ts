@@ -9,10 +9,7 @@
  */
 
 import type { IdentityKeyPair } from '@/lib/crypto';
-// Avoid static imports from crypto package; use local re-export for bundler visibility
-async function cryptoMod() {
-  return await import('@/lib/crypto');
-}
+import * as crypto from '@/lib/crypto';
 import { keystore } from './keystore';
 import { getRelayUrl } from './relay-url';
 import { verifyRelaySignature, isRelayIdentityVerified } from './relay-identity';
@@ -184,8 +181,7 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
   // This prevents race conditions where generateIdentity() tries to use ML-KEM-768/ML-DSA-65
   // before they're loaded. Without this, we get "crypto not ready" errors masquerading as PQ_NOT_READY.
   try {
-    const { waitForPQReady } = await cryptoMod();
-    await waitForPQReady();
+    await crypto.waitForPQReady();
   } catch (err) {
     logError('identity', 'PQ crypto initialization timed out - cannot proceed with identity generation', { error: err });
     throw new Error('PQ crypto initialization failed. Please refresh the page and try again.');
@@ -336,8 +332,7 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
   logInfo('identity', 'No canonical identity on relay, generating new one');
 
   // Generate new identity keypair
-  const { generateIdentity } = await cryptoMod();
-  const identity = await generateIdentity();
+  const identity = await crypto.generateIdentity();
 
   logInfo('identity', 'Generated new identity keypair', {
     ed25519Public: redactPublicKey(identity.ed25519.publicKey),

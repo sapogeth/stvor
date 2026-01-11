@@ -50,6 +50,7 @@ async function initializeCrypto(): Promise<void> {
         data: { message: '[Worker] Initializing crypto module...' },
       });
 
+      // STATIC import - worker bundles this directly
       cryptoModule = await import('@/lib/crypto');
       if (cryptoModule.initPQBrowser) {
         await cryptoModule.initPQBrowser();

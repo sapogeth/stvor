@@ -82,9 +82,9 @@ export async function initCryptoOnce(): Promise<void> {
       if (process.env.NODE_ENV !== 'production') {
         console.log('[crypto-init] Loading libsodium WASM...');
       }
-      // Dynamically import browser-safe crypto only at runtime to avoid SSR bundling
-      const cryptoPkg = await import('@/lib/crypto');
-      const initPrimitives = cryptoPkg.initCrypto;
+      // Use statically imported browser-safe crypto
+      const crypto = await import('@/lib/crypto');
+      const initPrimitives = crypto.initCrypto;
       if (typeof initPrimitives !== 'function') {
         throw new Error('initCrypto not available from @ilyazh/crypto');
       }
@@ -103,8 +103,8 @@ export async function initCryptoOnce(): Promise<void> {
       if (process.env.NODE_ENV !== 'production') {
         console.log('[crypto-init] Loading liboqs WASM...');
       }
-      const { initPQBrowser } = await import('@/lib/crypto');
-      const { pqAvailable, pqReallyUnavailable } = await initPQBrowser();
+      const crypto = await import('@/lib/crypto');
+      const { pqAvailable, pqReallyUnavailable } = await crypto.initPQBrowser();
       if (process.env.NODE_ENV !== 'production') {
         console.log('[crypto-init] liboqs initialization result:', {
           pqAvailable,
