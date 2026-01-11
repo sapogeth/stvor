@@ -16,7 +16,7 @@
 import type { IdentityKeyPair, PrekeyBundle, HandshakeState } from '@/lib/crypto';
 import * as crypto from '@/lib/crypto';
 import { keystore } from './keystore';
-import { fetchPeerIdentity, createAuthHeaders } from './identity';
+import { createAuthHeaders } from './identity';
 import { getRelayUrl } from './relay-url';
 import { deserializeSession, pushSessionToRelay } from './session-serializer';
 import { clearSessionSecurity } from './session-security';
@@ -217,60 +217,88 @@ export async function refreshSessionFromPeer({
       logWarn('ratchet', 'Exception fetching sync', { error: syncErr });
     }
 
-    // FALLBACK: If sync didn't give us the peer identity, try direct directory lookup
-    if (!peerIdentity && canonicalPeerUsername) {
-      logDebug('ratchet', 'Fetching peer identity from directory', { peer: canonicalPeerUsername });
-      peerIdentity = await fetchPeerIdentity(canonicalPeerUsername);
-    }
+    // ========== STEP 1.1: SERVER-SIDE PEER RESOLUTION ==========
+    // CRITICAL SECURITY IMPROVEMENT:
+    // Instead of browser → relay (direct), use browser → server → relay
+    // This:
+    // - Hides relay from browser (no metadata leakage)
+    // - Prevents username enumeration (server gates access)
+    // - Normalizes timing (no timing oracle)
+    // - Requires Clerk auth (user must be logged in)
+    
+    let peerBundle: PrekeyBundle | null = null;
+    
+    if (!peerIdentity) {
+      logDebug('ratchet', 'Resolving peer via server (/api/chat/resolve-peer)', { peer });
+      
+      try {
+        const resolveRes = await fetch('/api/chat/resolve-peer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ peerUsername: peer }),
+        });
 
-    // LAST RESORT: Try canonical peer username (provided by caller)
-    if (!peerIdentity && peer) {
-      logDebug('ratchet', 'Trying canonical peer username', { peer });
-      peerIdentity = await fetchPeerIdentity(peer);
+        if (!resolveRes.ok) {
+          if (resolveRes.status === 404) {
+            logError('ratchet', 'Peer user not found or not registered', { peer });
+            throw new Error(`User not found: ${peer}`);
+          } else if (resolveRes.status === 401) {
+            logError('ratchet', 'Unauthorized - check Clerk auth', { status: resolveRes.status });
+            throw new Error('Authentication required');
+          } else {
+            logError('ratchet', 'Failed to resolve peer', { status: resolveRes.status });
+            throw new Error(`Peer resolution failed: ${resolveRes.status}`);
+          }
+        }
 
-      if (peerIdentity) {
-        canonicalPeerUsername = peer;
+        const peerData = await resolveRes.json();
+        
+        canonicalPeerUsername = peerData.peerUsername;
+        peerIdentity = {
+          identityEd25519: new Uint8Array(Buffer.from(peerData.identity.ed25519, 'base64')),
+          identityMLDSA: new Uint8Array(Buffer.from(peerData.identity.identityMLDSA || '', 'base64')),
+        };
+        
+        logDebug('ratchet', 'Peer resolved via server', { peer: canonicalPeerUsername });
+
+        // STEP 2: Extract peer prekey bundle from server response
+        const prekeyBundle = peerData.prekeyBundle;
+        if (!prekeyBundle) {
+          logError('ratchet', 'Server response missing prekey bundle');
+          throw new Error('Invalid peer data from server');
+        }
+
+        peerBundle = {
+          x25519Ephemeral: new Uint8Array(Buffer.from(prekeyBundle.x25519Ephemeral, 'base64')),
+          mlkemPublicKey: new Uint8Array(Buffer.from(prekeyBundle.mlkemPublicKey || '', 'base64')),
+          ed25519Signature: new Uint8Array(Buffer.from(prekeyBundle.ed25519Signature, 'base64')),
+          mldsaSignature: new Uint8Array(Buffer.from(prekeyBundle.mldsaSignature || '', 'base64')),
+          bundleId: prekeyBundle.bundleId,
+          timestamp: prekeyBundle.timestamp,
+        };
+
+        logDebug('ratchet', 'Prekey bundle resolved from server', { bundleId: peerBundle.bundleId });
+      } catch (err) {
+        logError('ratchet', 'Server peer resolution failed', { error: err });
+        throw err;
       }
     }
 
     // If still no peer identity, FAIL LOUDLY (do NOT fabricate identities!)
     if (!peerIdentity || !canonicalPeerUsername) {
-      logError('ratchet', 'Failed to fetch peer identity');
-      logError('ratchet', 'Tried: sync participants, directory lookup, normalized username');
-      logError('ratchet', 'Relay does not know about peer or peer never registered');
+      logError('ratchet', 'Failed to resolve peer');
+      logError('ratchet', 'Either: peer not found, or server returned incomplete data');
       throw new Error(`No identity found for user: ${peer}`);
     }
 
-    logDebug('ratchet', 'Peer identity resolved', { peer: canonicalPeerUsername });
+    logDebug('ratchet', 'Peer fully resolved', { peer: canonicalPeerUsername });
 
-    // STEP 2: Fetch peer's latest prekey bundle
-    // Use canonical peer username (already normalized)
-    logDebug('ratchet', 'Fetching peer prekey bundle for peer', { peer: canonicalPeerUsername });
-    const prekeyRes = await fetch(`${relayUrl}/prekey/${encodeURIComponent(canonicalPeerUsername)}`);
-
-    if (!prekeyRes.ok) {
-      logError('ratchet', 'Failed to fetch prekey bundle', { status: prekeyRes.status });
-      return null;
+    // Ensure we have prekey bundle
+    if (!peerBundle) {
+      logError('ratchet', 'FATAL: No prekey bundle available');
+      throw new Error('No prekey bundle available for peer');
     }
-
-    const prekeyData = await prekeyRes.json();
-
-    if (!prekeyData.bundle) {
-      logError('ratchet', 'No prekey bundle found for peer');
-      return null;
-    }
-
-    const peerBundle: PrekeyBundle = {
-      x25519Ephemeral: new Uint8Array(Buffer.from(prekeyData.bundle.x25519Ephemeral, 'base64')),
-      mlkemPublicKey: new Uint8Array(Buffer.from(prekeyData.bundle.mlkemPublicKey || '', 'base64')),
-      ed25519Signature: new Uint8Array(Buffer.from(prekeyData.bundle.ed25519Signature, 'base64')),
-      mldsaSignature: new Uint8Array(Buffer.from(prekeyData.bundle.mldsaSignature || '', 'base64')),
-      bundleId: prekeyData.bundle.bundleId,
-      timestamp: prekeyData.bundle.timestamp,
-    };
-
-    logDebug('ratchet', 'Prekey bundle fetched');
-    logDebug('ratchet', 'Prekey bundle fetched', { bundleId: peerBundle.bundleId });
 
     // STEP 3: Verify bundle signatures (CRITICAL - prevent MITM)
     // Skip ONLY in dev mode or if explicitly requested
