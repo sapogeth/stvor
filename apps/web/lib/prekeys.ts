@@ -168,7 +168,7 @@ export async function generateAndUploadPrekeyBundle(
  * 2. Intent Registration (PHASE 1.5): Tell relay "I'm about to talk to this peer"
  * 3. Handshake (PHASE 2): Fetch prekey bundle with valid intent
  * 
- * Without intent, relay returns 403 Forbidden to prevent enumeration attacks
+ * Without intent, local API returns 403 Forbidden to prevent enumeration attacks
  * 
  * @param peer - Target username
  * @param identityEd25519 - Our Ed25519 identity key (for MITM detection)
@@ -181,11 +181,12 @@ export async function registerIntent(peer: string, identityEd25519: Uint8Array):
 
   const identityKey = Buffer.from(identityEd25519).toString('base64');
 
-  console.log('[Intent] Registering intent with relay...', { peer: canonical });
+  console.log('[Intent] 🔐 Registering intent...', { peer: canonical });
 
+  // Call local API endpoint (which has access to currentUser())
   const res = await fetch('/api/relay/intent', {
     method: 'POST',
-    credentials: 'include',
+    credentials: 'include', // CRITICAL: Must include cookies for authentication
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -215,7 +216,14 @@ export async function registerIntent(peer: string, identityEd25519: Uint8Array):
 
 /**
  * Fetch a peer's prekey bundle from relay directory
- * ALWAYS uses /api/relay proxy in browser
+ * 
+ * CRITICAL SECURITY: Only works after intent is registered
+ * API endpoint checks intent before returning data
+ * 
+ * Flow:
+ * 1. registerIntent() - register with API (which checks Clerk auth)
+ * 2. fetchPeerBundle() - fetch from API (which checks intent)
+ * 3. Handshake can proceed
  */
 export async function fetchPeerBundle(username: string, token?: string): Promise<{
   identity: {
@@ -240,8 +248,8 @@ export async function fetchPeerBundle(username: string, token?: string): Promise
 
   console.debug('[Prekey] fetchPeerBundle', { username, canonical });
 
-  const base = getRelayUrl();
-  const url = `${base}/directory/${encodeURIComponent(canonical)}`;
+  // Call local API endpoint (which checks intent before forwarding to relay)
+  const url = `/api/relay/directory/${encodeURIComponent(canonical)}`;
 
   const res = await fetch(url, {
     method: "GET",
@@ -252,7 +260,7 @@ export async function fetchPeerBundle(username: string, token?: string): Promise
     },
   });
 
-  // If proxy synthesized a dev user, it will send 200
+  // If API returned 200 with data
   if (res.ok) {
     const raw = await res.json();
     const normalized = normalizePeerDirectory(raw);
@@ -262,7 +270,18 @@ export async function fetchPeerBundle(username: string, token?: string): Promise
     return normalized;
   }
 
-  // if still 404 → real not found
+  // 403: No valid intent (must registerIntent first)
+  if (res.status === 403) {
+    const error = await res.json();
+    throw new Error(`Intent required: ${error.message || 'Must call registerIntent() first'}`);
+  }
+
+  // 401: Not authenticated
+  if (res.status === 401) {
+    throw new Error('Authentication required');
+  }
+
+  // 404: User not found
   if (res.status === 404) {
     throw new Error(`User not found: ${canonical}`);
   }
