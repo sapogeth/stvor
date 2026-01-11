@@ -93,6 +93,17 @@ export async function initCryptoOnce(): Promise<void> {
         console.log('[crypto-init] libsodium ready');
       }
 
+      // Step 2.1: Initialize crypto runtime (register SHA-512 for @noble/ed25519)
+      // CRITICAL: Must happen BEFORE any Ed25519 operations
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[crypto-init] Registering SHA-512 backend...');
+      }
+      const { initCryptoRuntime } = await import('@/lib/crypto/crypto-runtime');
+      await initCryptoRuntime();
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[crypto-init] SHA-512 backend registered');
+      }
+
       // Step 2.5: Debug libsodium availability (KDF validation)
       if (process.env.NODE_ENV !== 'production') {
         console.log('[crypto-init] Checking KDF availability...');
