@@ -16,12 +16,11 @@
  */
 
 import * as ed from '@noble/ed25519';
-import sodium from 'libsodium-wrappers';
 
 /**
  * Initialize crypto runtime - registers SHA-512 backend
  * 
- * Call this BEFORE:
+ * Call this AFTER libsodium is initialized but BEFORE:
  * - generatePrekey
  * - ratchetInit
  * - serializeForSigning
@@ -35,18 +34,23 @@ import sodium from 'libsodium-wrappers';
  * ```
  */
 export async function initCryptoRuntime(): Promise<void> {
-  // Ensure libsodium is ready
-  await sodium.ready;
+  // Get libsodium sha512 from already-initialized crypto module
+  // This avoids direct import that causes webpack issues
+  const crypto = await import('@/lib/crypto');
+  
+  if (typeof crypto.sha512Sodium !== 'function') {
+    throw new Error('sha512Sodium not available from crypto module - ensure libsodium is initialized');
+  }
 
   // Register constant-time SHA-512 from libsodium
   ed.etc.sha512Sync = (msg: Uint8Array): Uint8Array => {
-    return sodium.crypto_hash_sha512(msg);
+    return crypto.sha512Sodium(msg);
   };
 
   // Also set async version (required by some @noble/ed25519 code paths)
   ed.etc.sha512Async = async (...messages: Uint8Array[]): Promise<Uint8Array> => {
     const concatenated = ed.etc.concatBytes(...messages);
-    return sodium.crypto_hash_sha512(concatenated);
+    return crypto.sha512Sodium(concatenated);
   };
 
   console.log('[crypto-runtime] SHA-512 backend registered (libsodium constant-time)');

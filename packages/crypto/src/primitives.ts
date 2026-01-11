@@ -303,6 +303,18 @@ export function ed25519Verify(signature: Uint8Array, message: Uint8Array, public
   return sodium.crypto_sign_verify_detached(signature, message, publicKey);
 }
 
+// ==================== SHA-512 (for @noble/ed25519 initialization) ====================
+
+/**
+ * SHA-512 hash function using libsodium (constant-time)
+ * Exported for @noble/ed25519 initialization
+ * 
+ * NOTE: Different from @noble/hashes sha512 - this uses libsodium for constant-time guarantees
+ */
+export function sha512Sodium(message: Uint8Array): Uint8Array {
+  return sodium.crypto_hash_sha512(message);
+}
+
 // ==================== ML-KEM-768 (Post-Quantum KEM) ====================
 
 export interface MLKEMKeyPair {
