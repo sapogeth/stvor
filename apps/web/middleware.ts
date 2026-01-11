@@ -151,10 +151,13 @@ export default clerkMiddleware(async (auth, request) => {
 });
 
 export const config = {
-  // Exclude static files and Next.js internals
-  // NOTE: We DON'T exclude /api/* because some API routes need Clerk (e.g. /api/profiles)
-  // We only bypass /api/relay/* via early return in middleware function
+  // Clerk middleware MUST explicitly include /api/* routes
+  // Without this, auth() in API route handlers returns null
+  // Even with valid cookies, middleware won't initialize Clerk context
   matcher: [
+    // Page routes (App Router pages)
     '/((?!_next/static|_next/image|favicon.ico).*)',
+    // API routes - CRITICAL for Clerk SDK initialization
+    '/api/(.*)',
   ],
 };
