@@ -14,9 +14,9 @@
  */
 
 import type { IdentityKeyPair, PrekeyBundle, HandshakeState } from '@ilyazh/crypto';
-// Avoid bundler pulling libsodium by using eval-based dynamic imports
+// Use standard dynamic import so Next bundler resolves the workspace package
 async function cryptoMod() {
-  const mod = await (0, eval)(`import('@ilyazh/crypto')`);
+  const mod = await import('@ilyazh/crypto');
   return mod as any;
 }
 import { keystore } from './keystore';
