@@ -344,17 +344,17 @@ export async function refreshSessionFromPeer({
     );
 
     logDebug('ratchet', 'New session created');
-    logInfo('ratchet', 'New session created', { sessionId: redactSessionId(newSession.sessionId) });;
+    logInfo('ratchet', 'New session created', { sessionId: redactSessionId(session.sessionId) });
 
     // STEP 6: Save new session to keystore
     logDebug('ratchet', 'Saving new session to keystore...');
     await keystore.init();
-    await keystore.saveSession(newSession.sessionId, canonicalPeerUsername, newSession);
+    await keystore.saveSession(session.sessionId, canonicalPeerUsername, session);
     logDebug('ratchet', 'New session saved');
 
     // CRITICAL FIX: Clear replay protection cache for new session
     // This prevents false "replay detected" errors when relay re-sends messages
-    clearSessionSecurity(newSession.sessionId);
+    clearSessionSecurity(session.sessionId);
     logDebug('ratchet', 'Cleared replay cache for new session');
 
     // ========== CRITICAL: PUSH FULL SESSION STATE TO RELAY ==========
@@ -374,7 +374,7 @@ export async function refreshSessionFromPeer({
       },
     ];
 
-    await pushSessionToRelay(chatId, newSession, relayUrl, participants);
+    await pushSessionToRelay(chatId, session, relayUrl, participants);
 
     // STEP 7: Send handshake message to relay (so peer knows about session refresh)
     // CRITICAL: Must include auth headers to avoid 403
@@ -402,7 +402,7 @@ export async function refreshSessionFromPeer({
       if (sendRes.ok || sendRes.status === 409) {
         logDebug('ratchet', 'Handshake message sent to relay');
         logDebug('ratchet', 'Session refresh complete');
-        return newSession;
+        return session;
       } else {
         logWarn('ratchet', 'Relay refused handshake', { status: sendRes.status });
 
@@ -420,7 +420,7 @@ export async function refreshSessionFromPeer({
         logWarn('ratchet', 'Session marked as pending, will retry on next message');
 
         // Return session with pending flag
-        return { ...newSession, _pending: true } as any;
+        return { ...session, _pending: true } as any;
       }
     } catch (sendErr) {
       logError('ratchet', 'Error sending handshake to relay', { error: sendErr });
@@ -441,7 +441,7 @@ export async function refreshSessionFromPeer({
         logError('ratchet', 'Failed to mark session as pending', { error: e });
       }
 
-      return { ...newSession, _pending: true } as any;
+      return { ...session, _pending: true } as any;
     }
 
   } catch (err) {
