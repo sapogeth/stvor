@@ -103,7 +103,6 @@ export async function initCryptoOnce(): Promise<void> {
       if (process.env.NODE_ENV !== 'production') {
         console.log('[crypto-init] Loading liboqs WASM...');
       }
-      const crypto = await import('@/lib/crypto');
       const { pqAvailable, pqReallyUnavailable } = await crypto.initPQBrowser();
       if (process.env.NODE_ENV !== 'production') {
         console.log('[crypto-init] liboqs initialization result:', {
