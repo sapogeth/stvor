@@ -100,7 +100,8 @@ export async function POST(req: NextRequest) {
       // Try alternative: verify session manually
       if (sessionId) {
         try {
-          const session = await clerkClient.sessions.getSession(sessionId);
+          const client = await clerkClient();
+          const session = await client.sessions.getSession(sessionId);
           console.log('[API profiles POST] Manual session lookup:', { userId: session.userId, status: session.status });
           if (session.userId) {
             // Continue with manual userId
