@@ -25,9 +25,11 @@ import {
   deleteProfile,
 } from './storage';
 
-// Force Node.js runtime (required for Clerk SDK and Supabase)
+// CRITICAL: Node.js runtime (REQUIRED for Clerk SDK and Supabase)
+// - Clerk server SDK requires Node.js to decode JWT from cookies
+// - Edge runtime cannot access cookies or decode Clerk sessions
+// - NO edge, NO force-static, NO preferredRegion
 export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/profiles?username=foo
