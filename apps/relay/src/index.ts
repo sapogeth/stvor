@@ -812,7 +812,7 @@ fastify.get<{ Params: { id: string } }>('/directory/:id', async (request, reply)
     const intent = intentMap.get(intentKey);
 
     if (!intent) {
-      console.warn(`[Directory] Access denied: no intent from ${requestorUsername} to ${id}`);
+      console.warn(`[Directory] ❌ Access denied: no intent from ${requestorUsername} to ${id}`);
       return reply.code(403).send({
         error: 'intent_not_found',
         message: 'Must register intent first (POST /intent)',
@@ -821,13 +821,16 @@ fastify.get<{ Params: { id: string } }>('/directory/:id', async (request, reply)
 
     // Check if intent expired
     if (intent.expiresAt < Date.now()) {
-      console.warn(`[Directory] Intent expired for ${requestorUsername} → ${id}`);
+      console.warn(`[Directory] ❌ Intent expired for ${requestorUsername} → ${id}`);
       intentMap.delete(intentKey);
       return reply.code(403).send({
         error: 'intent_expired',
         message: 'Intent has expired. Register again.',
       });
     }
+
+    // Intent is valid ✅
+    console.log(`[relay] 🔐 Intent verified ✅ ${requestorUsername} → ${id}`);
 
     console.log(`[Directory] Intent verified: ${requestorUsername} → ${id}`);
   } else {
@@ -1153,7 +1156,14 @@ fastify.post<{ Body: IntentBody }>('/intent', async (request, reply) => {
     (global as any).INTENT_MAP = (global as any).INTENT_MAP || new Map();
     (global as any).INTENT_MAP.set(intentKey, intentData);
 
-    console.log(`[Intent] ✅ Registered: ${fromUsername} → ${toNormalized}`);
+    console.log('[relay] 🔐 Intent registered ✅');
+    console.log('[relay] intent registered', {
+      from: fromUsername,
+      to: toNormalized,
+      timestamp: intentData.timestamp,
+      expiresAt: intentData.expiresAt,
+      identityKeyPrefix: identityEd25519.substring(0, 16) + '...',
+    });
 
     return {
       status: 'intent_registered',

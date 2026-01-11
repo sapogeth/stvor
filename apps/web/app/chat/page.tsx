@@ -1488,8 +1488,18 @@ export default function ChatPage() {
 
       console.log('[Handshake] No existing session, initiating new handshake...');
 
-      // 3. Fetch recipient's identity and prekey bundle from relay (with retry)
-      console.log('[Handshake] Fetching peer bundle with retry...');
+      // PHASE 1.5: Register intent with relay BEFORE accessing directory
+      console.log('[Handshake] PHASE 1.5: Registering intent with relay...');
+      const { registerIntent } = await import('@/lib/prekeys');
+      try {
+        await registerIntent(recipientCanonical, identity.ed25519.publicKey);
+        console.log('[Handshake] ✅ Intent registered');
+      } catch (err) {
+        console.warn('[Handshake] Intent registration failed (non-fatal):', err);
+      }
+
+      // 3. PHASE 2: Fetch recipient's identity and prekey bundle from relay (with retry)
+      console.log('[Handshake] PHASE 2: Fetching peer bundle with retry...');
       let peerData;
       let lastError;
 

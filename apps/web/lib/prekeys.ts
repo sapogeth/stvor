@@ -160,6 +160,58 @@ export async function generateAndUploadPrekeyBundle(
   console.log('[Prekey] Response:', result);
 }
 
+/**
+ * Register intent with relay before accessing directory
+ * 
+ * This is PHASE 1.5 of the handshake protocol:
+ * 1. Discovery (PHASE 1): Check if user exists in profiles
+ * 2. Intent Registration (PHASE 1.5): Tell relay "I'm about to talk to this peer"
+ * 3. Handshake (PHASE 2): Fetch prekey bundle with valid intent
+ * 
+ * Without intent, relay returns 403 Forbidden to prevent enumeration attacks
+ * 
+ * @param peer - Target username
+ * @param identityEd25519 - Our Ed25519 identity key (for MITM detection)
+ */
+export async function registerIntent(peer: string, identityEd25519: Uint8Array): Promise<void> {
+  const canonical = (peer ?? "").toLowerCase().trim();
+  if (!canonical) {
+    throw new Error("Peer username is required for intent registration");
+  }
+
+  const identityKey = Buffer.from(identityEd25519).toString('base64');
+
+  console.log('[Intent] Registering intent with relay...', { peer: canonical });
+
+  const res = await fetch('/api/relay/intent', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify({
+      peer: canonical,
+      identityEd25519: identityKey,
+    }),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.warn('[Intent] Failed to register intent (relay may not support it):', {
+      status: res.status,
+      error: errorText,
+    });
+    // Non-fatal: continue anyway for backward compatibility
+    return;
+  }
+
+  const data = await res.json();
+  console.log('[Intent] ✅ Intent registered successfully', {
+    to: canonical,
+    expiresAt: data.expiresAt,
+  });
+}
 
 /**
  * Fetch a peer's prekey bundle from relay directory
