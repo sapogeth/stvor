@@ -16,7 +16,7 @@
  * - Profile changes do not affect cryptographic identity
  */
 
-import { auth, currentUser } from '@clerk/nextjs/server';
+import { getAuth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getProfileByUsername,
@@ -80,38 +80,18 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    // Authenticate - try currentUser first (more reliable)
-    let userId: string | null = null;
-    
-    try {
-      // Method 1: currentUser()
-      const user = await currentUser();
-      userId = user?.id || null;
-      console.log('[API profiles POST] currentUser():', userId);
-    } catch (err) {
-      console.error('[API profiles POST] currentUser() failed:', err);
-    }
-    
-    // Method 2: fallback to auth()
-    if (!userId) {
-      try {
-        const authResult = await auth();
-        userId = authResult.userId;
-        console.log('[API profiles POST] auth() fallback:', userId);
-      } catch (err) {
-        console.error('[API profiles POST] auth() failed:', err);
-      }
-    }
+    // Authenticate via request context (satellite-friendly)
+    const { userId, sessionId } = getAuth(req);
 
     if (!userId) {
-      console.error('[API profiles POST] All auth methods failed');
+      console.error('[API profiles POST] Unauthorized: no userId', { hasSessionId: !!sessionId });
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    console.log('[API profiles POST] Authenticated userId:', userId);
+    console.log('[API profiles POST] Authenticated', { userId, hasSessionId: !!sessionId });
 
     const body = await req.json();
     const { username, displayName } = body;
@@ -168,10 +148,10 @@ export async function POST(req: NextRequest) {
  * DELETE /api/profiles
  * Delete current user's profile
  */
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
   try {
-    // Authenticate request
-    const { userId } = await auth();
+    // Authenticate via request context
+    const { userId } = getAuth(req);
 
     if (!userId) {
       return NextResponse.json(
