@@ -80,11 +80,16 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
     ];
 
 // CRITICAL SECURITY: API key validation for no-origin requests
+// Default to RELAY_API_KEY (with dev fallback) so server-to-server calls work out of the box
+const DEFAULT_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
 const VALID_API_KEYS = new Set(
-  (process.env.VALID_API_KEYS || '')
-    .split(',')
-    .map(key => key.trim())
-    .filter(Boolean)
+  [
+    ...(process.env.VALID_API_KEYS || '')
+      .split(',')
+      .map(key => key.trim())
+      .filter(Boolean),
+    DEFAULT_API_KEY,
+  ].filter(Boolean)
 );
 
 function isValidAPIKey(apiKey: string | undefined): boolean {
@@ -158,7 +163,12 @@ fastify.addHook('onRequest', async (request, reply) => {
     return; // do not enforce API key on health endpoints
   }
   if (!origin) {
-    const apiKey = request.headers['x-api-key'] as string | undefined;
+    const apiKeyHeader = request.headers['x-api-key'] as string | undefined;
+    const authHeader = request.headers.authorization;
+    const bearerKey = authHeader && authHeader.startsWith('Bearer ')
+      ? authHeader.slice('Bearer '.length)
+      : undefined;
+    const apiKey = apiKeyHeader || bearerKey;
 
     // If no origin and no API key, block the request
     if (!isValidAPIKey(apiKey)) {
