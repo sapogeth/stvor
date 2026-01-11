@@ -804,10 +804,13 @@ fastify.get<{ Params: { id: string } }>('/directory/:id', async (request, reply)
   // Browser cannot access this without going through Next.js API
   const authHeader = request.headers.authorization || '';
   const providedKey = authHeader.replace('Bearer ', '');
-  const expectedKey = process.env.RELAY_API_KEY;
+  const expectedKey = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
 
   if (!providedKey || providedKey !== expectedKey) {
-    console.warn('[Directory] 🔴 403: API key required or invalid');
+    console.warn('[Directory] 🔴 403: API key required or invalid', {
+      provided: providedKey ? providedKey.substring(0, 10) + '...' : 'none',
+      expected: expectedKey.substring(0, 10) + '...',
+    });
     return reply.code(403).send({
       error: 'api_key_required',
       message: 'API key required. Browser clients must use server-side proxy.',

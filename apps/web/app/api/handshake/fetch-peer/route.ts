@@ -63,8 +63,21 @@ export async function POST(req: Request) {
     });
 
     // Step 3: Call relay with SERVER API KEY (never exposed to browser)
-    const relayUrl = process.env.RELAY_URL || 'http://localhost:3001';
+    const relayUrl = process.env.RELAY_URL;
     const apiKey = process.env.RELAY_API_KEY;
+
+    console.log('[api/handshake/fetch-peer] Environment check:', {
+      relayUrl: relayUrl ? '✅ set' : '❌ missing',
+      apiKey: apiKey ? '✅ set' : '❌ missing',
+    });
+
+    if (!relayUrl) {
+      console.error('[api/handshake/fetch-peer] 🔴 500: RELAY_URL not configured');
+      return NextResponse.json(
+        { error: 'internal_error', message: 'Relay URL not configured' },
+        { status: 500 }
+      );
+    }
 
     if (!apiKey) {
       console.error('[api/handshake/fetch-peer] 🔴 500: RELAY_API_KEY not configured');
@@ -74,13 +87,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const relayUrl2 = `${relayUrl}/directory/${encodeURIComponent(peerUsername)}`;
+    const relayDirectoryUrl = `${relayUrl}/directory/${encodeURIComponent(peerUsername)}`;
 
     console.log('[api/handshake/fetch-peer] Calling relay', {
-      relayUrl: relayUrl2,
+      url: relayDirectoryUrl,
+      authHeader: `Bearer ${apiKey.substring(0, 10)}...`,
     });
 
-    const relayRes = await fetch(relayUrl2, {
+    const relayRes = await fetch(relayDirectoryUrl, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -89,12 +103,17 @@ export async function POST(req: Request) {
       },
     });
 
+    console.log('[api/handshake/fetch-peer] Relay response:', {
+      status: relayRes.status,
+      statusText: relayRes.statusText,
+    });
+
     // Step 4: Handle relay response
     if (!relayRes.ok) {
       const errorText = await relayRes.text();
       console.warn('[api/handshake/fetch-peer] Relay returned error', {
         status: relayRes.status,
-        error: errorText,
+        error: errorText.substring(0, 500),
       });
 
       return new Response(errorText, {
@@ -124,3 +143,4 @@ export async function POST(req: Request) {
     );
   }
 }
+
