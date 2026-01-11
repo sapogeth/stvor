@@ -277,25 +277,42 @@ export async function fetchPeerBundle(username: string, token?: string): Promise
     return normalized;
   }
 
+  // Parse error response (might be JSON or plain text)
+  let errorMsg = `HTTP ${res.status}`;
+  try {
+    const errorJson = await res.json();
+    errorMsg = errorJson.message || errorJson.error || errorMsg;
+    if (errorJson.details) {
+      console.error('[Prekey] Server error details:', errorJson.details);
+    }
+  } catch {
+    errorMsg = await res.text();
+  }
+
   // 401: Not authenticated
   if (res.status === 401) {
-    console.warn('[Prekey] 🔴 401: Not authenticated');
+    console.warn('[Prekey] 🔴 401: Not authenticated', { error: errorMsg });
     throw new Error('Authentication required');
   }
 
   // 404: User not found
   if (res.status === 404) {
-    console.warn('[Prekey] 🔴 404: User not found', { peer: canonical });
+    console.warn('[Prekey] 🔴 404: User not found', { peer: canonical, error: errorMsg });
     throw new Error(`User not found: ${canonical}`);
   }
 
+  // 500: Server error
+  if (res.status === 500) {
+    console.error('[Prekey] 🔴 500: Server error', { error: errorMsg });
+    throw new Error(`Server error: ${errorMsg}`);
+  }
+
   // Other error
-  const errorText = await res.text();
   console.warn("[Prekey] 🔴 fetch-peer error", {
     status: res.status,
-    error: errorText,
+    error: errorMsg,
   });
-  throw new Error(`Relay/proxy is not reachable for ${canonical}`);
+  throw new Error(`Failed to fetch peer bundle: ${errorMsg}`);
 }
 
 /**

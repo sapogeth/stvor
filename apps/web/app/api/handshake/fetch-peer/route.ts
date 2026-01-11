@@ -133,11 +133,16 @@ export async function POST(req: Request) {
 
     return NextResponse.json(peerBundle);
   } catch (err) {
-    console.error('[api/handshake/fetch-peer] 🔴 500: Unexpected error', err);
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error('[api/handshake/fetch-peer] 🔴 500: Unexpected error', {
+      error: errorMsg,
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     return NextResponse.json(
       {
         error: 'internal_error',
-        message: err instanceof Error ? err.message : 'Unknown error',
+        message: errorMsg,
+        details: process.env.NODE_ENV === 'development' ? String(err) : undefined,
       },
       { status: 500 }
     );
