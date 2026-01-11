@@ -618,8 +618,7 @@ export async function reEnrollDevice(username: string): Promise<IdentityKeyPair>
   logInfo('identity', 'Old devices will no longer work after this operation');
 
   // Generate new identity keypair
-  const { generateIdentity: generateIdentity2 } = await cryptoMod();
-  const newIdentity = await generateIdentity2();
+  const newIdentity = await crypto.generateIdentity();
 
   logInfo('identity', 'Generated new identity keypair for re-enrollment', {
     ed25519Public: redactPublicKey(newIdentity.ed25519.publicKey),
