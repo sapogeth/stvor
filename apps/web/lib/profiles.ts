@@ -57,6 +57,10 @@ export async function setProfile(
   displayName?: string
 ): Promise<Profile> {
   try {
+    // Debug: log cookies before request
+    console.log('[profiles] setProfile called, cookies:', document.cookie);
+    console.log('[profiles] Sending POST /api/profiles with credentials: include');
+    
     const response = await fetch('/api/profiles', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

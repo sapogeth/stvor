@@ -77,6 +77,8 @@ export function UsernameSetup({ onComplete }: UsernameSetupProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    console.log('[UsernameSetup] Submit clicked, authReady:', authReady, 'isLoaded:', isLoaded, 'isSignedIn:', isSignedIn);
+
     if (!authReady) {
       setError('Please sign in and wait for your session to load');
       return;
