@@ -21,6 +21,10 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
+    console.log('[api/handshake/fetch-peer] Env check (early):', {
+      relayUrl: process.env.RELAY_URL || process.env.NEXT_PUBLIC_RELAY_URL,
+      relayApiKeyPresent: !!process.env.RELAY_API_KEY,
+    });
     // Step 1: Verify user is authenticated
     const user = await currentUser();
 
@@ -87,36 +91,60 @@ export async function POST(req: Request) {
       authHeader: `Bearer ${apiKey.substring(0, 10)}...`,
     });
 
-    const relayRes = await fetch(relayDirectoryUrl, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': `Bearer ${apiKey}`, // 🔐 Server-only API key
-        'X-Relay-User': username, // For logging on relay side
-      },
-    });
+    let relayRes: Response;
+    try {
+      relayRes = await fetch(relayDirectoryUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${apiKey}`, // 🔐 Server-only API key
+          'X-Relay-User': username, // For logging on relay side
+        },
+      });
+    } catch (err) {
+      console.error('[api/handshake/fetch-peer] 🔴 fetch error calling relay', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return NextResponse.json(
+        { error: 'relay_unreachable', message: 'Failed to reach relay' },
+        { status: 502 }
+      );
+    }
+
+    const relayText = await relayRes.text();
 
     console.log('[api/handshake/fetch-peer] Relay response:', {
       status: relayRes.status,
       statusText: relayRes.statusText,
+      bodyPreview: relayText.slice(0, 200),
     });
 
     // Step 4: Handle relay response
     if (!relayRes.ok) {
-      const errorText = await relayRes.text();
       console.warn('[api/handshake/fetch-peer] Relay returned error', {
         status: relayRes.status,
-        error: errorText.substring(0, 500),
+        error: relayText.substring(0, 500),
       });
 
-      return new Response(errorText, {
+      return new Response(relayText || 'Relay error', {
         status: relayRes.status,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
     // Step 5: Return peer bundle to client
-    const peerBundle = await relayRes.json();
+    let peerBundle: any;
+    try {
+      peerBundle = relayText ? JSON.parse(relayText) : {};
+    } catch (err) {
+      console.error('[api/handshake/fetch-peer] 🔴 Failed to parse relay JSON', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return NextResponse.json(
+        { error: 'invalid_relay_response', message: 'Relay returned non-JSON body' },
+        { status: 502 }
+      );
+    }
 
     console.log('[api/handshake/fetch-peer] ✅ Got peer bundle', {
       from: username,
