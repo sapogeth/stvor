@@ -80,8 +80,8 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    // Clerk middleware initializes context; just call auth()
-    const { userId } = auth();
+    // Clerk middleware initializes context; call auth() with await
+    const { userId } = await auth();
 
     if (!userId) {
       console.error('[API profiles POST] Unauthorized: no userId in auth()');
@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     // Clerk middleware initializes context
-    const { userId } = auth();
+    const { userId } = await auth();
 
     if (!userId) {
       return NextResponse.json(
