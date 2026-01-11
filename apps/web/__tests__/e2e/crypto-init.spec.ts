@@ -143,7 +143,7 @@ test.describe('Crypto Initialization', () => {
     const sodiumReady = await page.evaluate(async () => {
       try {
         // Import from the crypto package
-        const { initCrypto } = await import('@ilyazh/crypto');
+        const { initCrypto } = await import('@/lib/crypto');
         await initCrypto();
         return true;
       } catch (err) {

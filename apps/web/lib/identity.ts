@@ -8,10 +8,10 @@
  * - Device re-enrollment when keys are missing
  */
 
-import type { IdentityKeyPair } from '@ilyazh/crypto';
-// Avoid static imports from '@ilyazh/crypto' to prevent bundling server-only crypto in SSR/client build
+import type { IdentityKeyPair } from '@/lib/crypto';
+// Avoid static imports from crypto package; use local re-export for bundler visibility
 async function cryptoMod() {
-  return await import('@ilyazh/crypto');
+  return await import('@/lib/crypto');
 }
 import { keystore } from './keystore';
 import { getRelayUrl } from './relay-url';
@@ -257,6 +257,10 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
         }
         logInfo('identity', 'Local identity verified against relay ✓');
         verificationSucceeded = true;
+      } else if (response.status === 403) {
+        // Relay requires auth for directory; proceed with caution without verification
+        RELAY_VERIFICATION_FAILED = true;
+        logWarn('identity', 'Relay returned 403 for directory (auth required) - proceeding without verification');
       }
     } catch (err) {
       // Check if this is an identity mismatch error (non-recoverable)
@@ -313,6 +317,9 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
 
       // Throw special error that UI can catch and show re-enroll modal
       throw new IdentityReEnrollError(username, remoteEd25519);
+    } else if (response.status === 403) {
+      // Expected when relay requires auth; treat as no identity available to avoid fatal flow
+      logWarn('identity', 'Relay directory returned 403 (auth required) - will generate new identity');
     }
 
     // 404 = relay doesn't have identity yet - this is expected for new users

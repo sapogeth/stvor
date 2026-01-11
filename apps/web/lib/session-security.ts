@@ -5,7 +5,7 @@
  * - Session health monitoring
  */
 
-import type { HandshakeState, RatchetState } from '@ilyazh/crypto';
+import type { HandshakeState, RatchetState } from '@/lib/crypto';
 
 class SimpleSkippedKeyStore {
   clear() {}

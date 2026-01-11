@@ -50,7 +50,7 @@ async function initializeCrypto(): Promise<void> {
         data: { message: '[Worker] Initializing crypto module...' },
       });
 
-      cryptoModule = await import('@ilyazh/crypto');
+      cryptoModule = await import('@/lib/crypto');
       if (cryptoModule.initPQBrowser) {
         await cryptoModule.initPQBrowser();
       }

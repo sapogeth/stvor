@@ -13,10 +13,10 @@
  * NO automatic decryption across sessions. NO bypassing AAD checks.
  */
 
-import type { IdentityKeyPair, PrekeyBundle, HandshakeState } from '@ilyazh/crypto';
-// Use standard dynamic import so Next bundler resolves the workspace package
+import type { IdentityKeyPair, PrekeyBundle, HandshakeState } from '@/lib/crypto';
+// Use standard dynamic import to a local re-export so Next bundler resolves correctly
 async function cryptoMod() {
-  const mod = await import('@ilyazh/crypto');
+  const mod = await import('@/lib/crypto');
   return mod as any;
 }
 import { keystore } from './keystore';

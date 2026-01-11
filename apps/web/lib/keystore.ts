@@ -6,7 +6,7 @@
  * Do not call from server-side rendering contexts or getServerSideProps.
  */
 
-import { type IdentityKeyPair, type HandshakeState } from '@ilyazh/crypto';
+import { type IdentityKeyPair, type HandshakeState } from '@/lib/crypto';
 import { logDebug, logInfo, logWarn, logError } from './logger';
 
 let _sodiumPromise: Promise<any> | null = null;

@@ -60,7 +60,7 @@ class LazyPQLoader {
       const startTime = performance.now();
 
       // Динамически импортируем модуль крипто
-      const crypto = await import('@ilyazh/crypto');
+      const crypto = await import('@/lib/crypto');
 
       // Инициализируем PQ в браузере (WASM загружается и компилируется)
       // Это самая медленная операция, поэтому она находится в отдельном потоке

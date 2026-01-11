@@ -3,10 +3,10 @@
  * Handles group creation, session establishment, and message encryption
  */
 
-import type { GroupRatchetState, GroupParticipant, IdentityKeyPair, PrekeyBundle } from '@ilyazh/crypto';
+import type { GroupRatchetState, GroupParticipant, IdentityKeyPair, PrekeyBundle } from '@/lib/crypto';
 // Avoid static value imports from '@ilyazh/crypto' to prevent bundling server-only crypto
 async function cryptoMod() {
-  return await import('@ilyazh/crypto');
+  return await import('@/lib/crypto');
 }
 
 /**

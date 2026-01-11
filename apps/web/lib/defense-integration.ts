@@ -12,10 +12,10 @@
  * @see packages/crypto/src/defense-in-depth.ts for implementation details
  */
 
-import type { RelayIdentityConfig, PaddingConfig, PrivacySettings } from '@ilyazh/crypto';
+import type { RelayIdentityConfig, PaddingConfig, PrivacySettings } from '@/lib/crypto';
 
 async function cryptoMod() {
-  return await import('@ilyazh/crypto');
+  return await import('@/lib/crypto');
 }
 
 // ============================================================================

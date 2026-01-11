@@ -16,7 +16,7 @@
  * @module secure-keystore
  */
 
-import type { IdentityKeyPair } from '@ilyazh/crypto';
+import type { IdentityKeyPair } from '@/lib/crypto';
 import type { PrekeySecrets } from './prekeys';
 
 /**

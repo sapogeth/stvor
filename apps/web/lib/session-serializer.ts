@@ -5,7 +5,7 @@
  * This ensures consistent serialization across all parts of the app.
  */
 
-import { type HandshakeState } from '@ilyazh/crypto';
+import { type HandshakeState } from '@/lib/crypto';
 
 /**
  * Serialized session format for JSON transport to relay
