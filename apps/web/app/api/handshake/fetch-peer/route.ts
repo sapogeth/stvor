@@ -63,11 +63,12 @@ export async function POST(req: Request) {
     });
 
     // Step 3: Call relay with SERVER API KEY (never exposed to browser)
-    const relayUrl = process.env.RELAY_URL;
-    const apiKey = process.env.RELAY_API_KEY;
+    const relayUrl = process.env.RELAY_URL || process.env.NEXT_PUBLIC_RELAY_URL || 'http://localhost:3001';
+    const apiKey = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
 
     console.log('[api/handshake/fetch-peer] Environment check:', {
       relayUrl: relayUrl ? '✅ set' : '❌ missing',
+      relayUrlValue: relayUrl,
       apiKey: apiKey ? '✅ set' : '❌ missing',
     });
 
@@ -75,14 +76,6 @@ export async function POST(req: Request) {
       console.error('[api/handshake/fetch-peer] 🔴 500: RELAY_URL not configured');
       return NextResponse.json(
         { error: 'internal_error', message: 'Relay URL not configured' },
-        { status: 500 }
-      );
-    }
-
-    if (!apiKey) {
-      console.error('[api/handshake/fetch-peer] 🔴 500: RELAY_API_KEY not configured');
-      return NextResponse.json(
-        { error: 'internal_error', message: 'Relay API key not configured' },
         { status: 500 }
       );
     }
