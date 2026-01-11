@@ -65,7 +65,7 @@ export function DefenseInDepthExample({
 
     // Dynamically load RelayPinner to avoid bundling crypto at build time
     const initRelay = async () => {
-      const { RelayPinner } = await import('@ilyazh/crypto');
+      const { RelayPinner } = await import('@/lib/crypto');
       const pinner = new RelayPinner(relayConfig);
       setRelayPinner(pinner);
       console.log('[Defense] 🔐 RelayPinner initialized', {
@@ -148,7 +148,7 @@ export function DefenseInDepthExample({
       };
 
       // Load padMessage dynamically at call time
-      const { padMessage } = await import('@ilyazh/crypto');
+      const { padMessage } = await import('@/lib/crypto');
       const padded = padMessage(plaintext, paddingConfig);
 
       const overhead = padded.length - plaintext.length;
@@ -180,7 +180,7 @@ export function DefenseInDepthExample({
       | 512
       | 1024) || 256;
 
-    const { unpadMessage } = await import('@ilyazh/crypto');
+    const { unpadMessage } = await import('@/lib/crypto');
     const unpadded = unpadMessage(paddedMessage, blockSize);
     const original = new TextDecoder().decode(unpadded);
 
@@ -230,7 +230,7 @@ export function DefenseInDepthExample({
       };
 
       // Dynamically load PrivacyConfigManager
-      const crypto = await import('@ilyazh/crypto');
+      const crypto = await import('@/lib/crypto');
       const ManagerCtor = crypto.PrivacyConfigManager as unknown as typeof PrivacyConfigManager;
       manager = new ManagerCtor(initialSettings);
       setPrivacyManager(manager);

@@ -283,7 +283,7 @@ export default function ChatPage() {
           typingIndicatorBatchSize: parseInt(process.env.REACT_APP_TYPING_BATCH_SIZE || '5'),
         };
         {
-          const { PrivacyConfigManager } = await import('@ilyazh/crypto');
+          const { PrivacyConfigManager } = await import('@/lib/crypto');
           privacyManagerRef.current = new PrivacyConfigManager(privacySettings);
         }
         console.log('[Chat] Privacy Manager initialized');
@@ -498,7 +498,7 @@ export default function ChatPage() {
                 continue;
               }
 
-              const { decodeHandshakeMessage } = await import('@ilyazh/crypto');
+              const { decodeHandshakeMessage } = await import('@/lib/crypto');
               const handshakeMsg = decodeHandshakeMessage(wireData);
               console.log('[Handshake] Received handshake message, role:', handshakeMsg.role);
 
@@ -518,7 +518,7 @@ export default function ChatPage() {
               console.log('[Handshake] Using prekey bundle:', prekeySecrets.bundleId);
 
               // Complete handshake
-              const { completeHandshake } = await import('@ilyazh/crypto');
+              const { completeHandshake } = await import('@/lib/crypto');
               const { message: responseMessage, state: handshakeState } = await completeHandshake(
                 identity,
                 prekeySecrets.x25519SecretKey,
@@ -547,7 +547,7 @@ export default function ChatPage() {
               await generateAndUploadPrekeyBundle(username, identity);
 
               // Send response handshake
-              const { encodeHandshakeMessage } = await import('@ilyazh/crypto');
+              const { encodeHandshakeMessage } = await import('@/lib/crypto');
               const responseWireData = encodeHandshakeMessage(responseMessage);
               const responseData = Buffer.from(responseWireData).toString('base64');
 
@@ -631,7 +631,7 @@ export default function ChatPage() {
                 mldsaSignature: new Uint8Array(pendingData.initiatorMessage.mldsaSignature),
               };
 
-              const { finalizeHandshake } = await import('@ilyazh/crypto');
+              const { finalizeHandshake } = await import('@/lib/crypto');
               const finalState = await finalizeHandshake(
                 ephemeralX25519Secret,
                 ephemeralMLKEMSecret,
@@ -787,7 +787,7 @@ export default function ChatPage() {
 
             // GUARD: Check if this looks like an encrypted blob before decoding
             {
-              const { isLikelyEncryptedBlob } = await import('@ilyazh/crypto');
+              const { isLikelyEncryptedBlob } = await import('@/lib/crypto');
               if (!isLikelyEncryptedBlob(rawData)) {
               console.warn('[Message] Entry does not look like an encrypted blob, skipping (might be handshake/system message)');
               continue;
@@ -797,7 +797,7 @@ export default function ChatPage() {
             // Normalize wire data to Uint8Array (handles base64, ArrayBuffer, etc.)
             let wireData: Uint8Array;
             try {
-              const { normalizeWireData } = await import('@ilyazh/crypto');
+              const { normalizeWireData } = await import('@/lib/crypto');
               wireData = normalizeWireData(rawData);
             } catch (normErr) {
               console.error('[Message] Failed to normalize wire data:', normErr);
@@ -811,7 +811,7 @@ export default function ChatPage() {
             // This fixes TypeScript error where encryptedRecord was out of scope during session refresh
             let encryptedRecord: any;
             try {
-              const { decodeEncryptedMessage } = await import('@ilyazh/crypto');
+              const { decodeEncryptedMessage } = await import('@/lib/crypto');
               encryptedRecord = decodeEncryptedMessage(wireData);
             } catch (decodeErr) {
               console.error('[Message] Failed to decode encrypted message:', decodeErr);
@@ -957,7 +957,7 @@ export default function ChatPage() {
                 try {
                   // Decrypt message
                   const decryptStartTime = Date.now();
-                  const { decryptMessage } = await import('@ilyazh/crypto');
+                  const { decryptMessage } = await import('@/lib/crypto');
                   const result = await decryptMessage(currentRatchetState, encryptedRecord);
                   const decryptDuration = Date.now() - decryptStartTime;
 
@@ -991,7 +991,7 @@ export default function ChatPage() {
                 // DEFENSE-IN-DEPTH: Remove message padding (traffic analysis resistance)
                 let unpadded = plaintext;
                 if (paddingConfigRef.current?.enabled) {
-                  const { unpadMessage } = await import('@ilyazh/crypto');
+                  const { unpadMessage } = await import('@/lib/crypto');
                   unpadded = unpadMessage(plaintext, paddingConfigRef.current.blockSize);
                   console.log('[Message] 📦 Message padding removed:', {
                     paddedLength: plaintext.length,
@@ -1068,7 +1068,7 @@ export default function ChatPage() {
                       // Don't wait for next poll cycle - session is now in sync!
                       console.log('[Message] 🔄 Retrying decryption with refreshed session...');
                       try {
-                        const { decryptMessage } = await import('@ilyazh/crypto');
+                        const { decryptMessage } = await import('@/lib/crypto');
                         const result = await decryptMessage(currentRatchetState, encryptedRecord);
                         const plaintext = result.plaintext;
                         const newState = result.newState;
@@ -1077,7 +1077,7 @@ export default function ChatPage() {
                         // DEFENSE-IN-DEPTH: Remove message padding
                         let unpadded = plaintext;
                         if (paddingConfigRef.current?.enabled) {
-                          const { unpadMessage } = await import('@ilyazh/crypto');
+                          const { unpadMessage } = await import('@/lib/crypto');
                           unpadded = unpadMessage(plaintext, paddingConfigRef.current.blockSize);
                         }
 
@@ -1184,13 +1184,13 @@ export default function ChatPage() {
 
                       // ✅ Replay protection already handled by nonce dedupe (line 691)
                       // Decrypt message with new session
-                      const { decryptMessage } = await import('@ilyazh/crypto');
+                      const { decryptMessage } = await import('@/lib/crypto');
                       const { plaintext, newState } = await decryptMessage(newSession, encryptedRecord);
 
                       // DEFENSE-IN-DEPTH: Remove message padding
                       let unpadded = plaintext;
                       if (paddingConfigRef.current?.enabled) {
-                        const { unpadMessage } = await import('@ilyazh/crypto');
+                        const { unpadMessage } = await import('@/lib/crypto');
                         unpadded = unpadMessage(plaintext, paddingConfigRef.current.blockSize);
                       }
 
@@ -1268,13 +1268,13 @@ export default function ChatPage() {
                     // Retry decryption with new session
                     try {
                       // ✅ Replay protection already handled by nonce dedupe (line 691)
-                      const { decryptMessage } = await import('@ilyazh/crypto');
+                      const { decryptMessage } = await import('@/lib/crypto');
                       const { plaintext, newState } = await decryptMessage(newSession, encryptedRecord);
 
                       // DEFENSE-IN-DEPTH: Remove message padding
                       let unpadded = plaintext;
                       if (paddingConfigRef.current?.enabled) {
-                        const { unpadMessage } = await import('@ilyazh/crypto');
+                        const { unpadMessage } = await import('@/lib/crypto');
                         unpadded = unpadMessage(plaintext, paddingConfigRef.current.blockSize);
                       }
 
@@ -1409,7 +1409,7 @@ export default function ChatPage() {
       console.log('[Handshake] Starting chat with:', recipientCanonical);
 
       // CRITICAL: Ensure crypto is fully initialized before handshake
-      const { ensureCryptoReady } = await import('@ilyazh/crypto');
+      const { ensureCryptoReady } = await import('@/lib/crypto');
       await ensureCryptoReady();
       console.log('[Handshake] Crypto initialization complete');
 
@@ -1554,7 +1554,7 @@ export default function ChatPage() {
       console.log('[Security] Verifying prekey bundle signatures...');
       console.log('[Security] Bundle ID:', peerBundle.bundleId);
 
-      const { ed25519Verify, serializePrekeyBundle } = await import('@ilyazh/crypto');
+      const { ed25519Verify, serializePrekeyBundle } = await import('@/lib/crypto');
 
       // Serialize bundle using SAME function that was used during signing
       const bundleData = serializePrekeyBundle({
@@ -1602,7 +1602,7 @@ export default function ChatPage() {
       console.log('[Handshake] Initiating handshake with verified peer bundle...');
 
       // 6. Initiate handshake (we are Alice)
-      const { initiateHandshake } = await import('@ilyazh/crypto');
+      const { initiateHandshake } = await import('@/lib/crypto');
       const { message: handshakeMessage, ephemeralX25519Secret, ephemeralMLKEMSecret } = await initiateHandshake(
         identity,
         peerIdentity.ed25519.publicKey,
@@ -1629,7 +1629,7 @@ export default function ChatPage() {
       }));
 
       // 8. Encode and send handshake message
-      const { encodeHandshakeMessage } = await import('@ilyazh/crypto');
+      const { encodeHandshakeMessage } = await import('@/lib/crypto');
       const wireData = encodeHandshakeMessage(handshakeMessage);
       const data = Buffer.from(wireData).toString('base64');
 
@@ -1736,7 +1736,7 @@ export default function ChatPage() {
         const originalLength = plaintextToEncrypt.length;
 
         if (paddingConfigRef.current?.enabled) {
-          const { padMessage } = await import('@ilyazh/crypto');
+          const { padMessage } = await import('@/lib/crypto');
           plaintextToEncrypt = padMessage(plaintextToEncrypt, paddingConfigRef.current) as Uint8Array;
           console.log('[Send] 📦 Message padding applied:', {
             originalLength,
@@ -1748,7 +1748,7 @@ export default function ChatPage() {
 
         // Encrypt message using ratchet
         const encryptStartTime = Date.now();
-        const { encryptMessage } = await import('@ilyazh/crypto');
+        const { encryptMessage } = await import('@/lib/crypto');
         const { record, newState } = await encryptMessage(ratchetState, plaintextToEncrypt);
         const encryptDuration = Date.now() - encryptStartTime;
 
@@ -1767,7 +1767,7 @@ export default function ChatPage() {
         console.log('[Send] ✅ Session saved to IndexedDB');
 
         // Encode as wire format
-        const { encodeEncryptedMessage } = await import('@ilyazh/crypto');
+        const { encodeEncryptedMessage } = await import('@/lib/crypto');
         const wireData = encodeEncryptedMessage(record);
         data = Buffer.from(wireData).toString('base64');
         console.log('[Send] ✅ Message encoded to base64, length:', data.length);

@@ -9,14 +9,9 @@
  */
 
 import type { IdentityKeyPair, PrekeyBundle } from '@ilyazh/crypto';
-// NOTE: Avoid static value imports from '@ilyazh/crypto' to prevent bundling server-only crypto
-async function cryptoMod() {
-  // Use eval-based dynamic import to avoid bundler static analysis pulling libsodium
-  const mod = await (0, eval)(`import('@ilyazh/crypto')`);
-  return mod as any;
-}
 // Use local Ed25519 implementation to avoid pulling libsodium in the browser
 import { ed25519Sign as localEd25519Sign } from './crypto/local-ed25519';
+import * as crypto from '@/lib/crypto';
 import { keystore } from './keystore';
 import { getCryptoOrThrow } from './runtime/crypto-safe';
 import { createAuthHeaders } from './identity';
@@ -94,8 +89,7 @@ export async function generateAndUploadPrekeyBundle(
   const bundleId = randomUUID();
 
   // Generate bundle with internal signatures (for old relay endpoints)
-  const { generatePrekeyBundle } = await cryptoMod();
-  const bundle = await generatePrekeyBundle(identity, bundleId);
+  const bundle = await crypto.generatePrekeyBundle(identity, bundleId);
 
   console.log('[Prekey] Generated bundle:', bundleId);
   console.log('[Prekey] - X25519 ephemeral public:', Buffer.from(bundle.x25519Ephemeral).toString('hex').slice(0, 32) + '...');
@@ -114,8 +108,7 @@ export async function generateAndUploadPrekeyBundle(
   console.log('[Prekey] Saved prekey secrets to IndexedDB');
 
   // NEW: Serialize bundle deterministically and sign with identity key
-  const { serializePrekeyBundle } = await cryptoMod();
-  const canonicalBundle = serializePrekeyBundle({
+  const canonicalBundle = crypto.serializePrekeyBundle({
     x25519Pub: bundle.x25519Ephemeral,
     pqKemPub: bundle.mlkemPublicKey.length > 0 ? bundle.mlkemPublicKey : undefined,
     pqSigPub: undefined, // No PQ sig key in prekey bundle
@@ -145,14 +138,14 @@ export async function generateAndUploadPrekeyBundle(
     method: 'POST',
     headers,
     body: JSON.stringify({
-      identityEd25519: (await cryptoMod()).toBase64(identity.ed25519.publicKey),
-      identityMLDSA: (await cryptoMod()).toBase64(identity.mldsa.publicKey),
+      identityEd25519: crypto.toBase64(identity.ed25519.publicKey),
+      identityMLDSA: crypto.toBase64(identity.mldsa.publicKey),
       prekeyBundle: {
-        x25519Pub: (await cryptoMod()).toBase64(bundle.x25519Ephemeral),
-        pqKemPub: bundle.mlkemPublicKey.length > 0 ? (await cryptoMod()).toBase64(bundle.mlkemPublicKey) : '',
+        x25519Pub: crypto.toBase64(bundle.x25519Ephemeral),
+        pqKemPub: bundle.mlkemPublicKey.length > 0 ? crypto.toBase64(bundle.mlkemPublicKey) : '',
         pqSigPub: '', // No PQ sig key
       },
-      prekeySignature: (await cryptoMod()).toBase64(signature),
+      prekeySignature: crypto.toBase64(signature),
     }),
   });
 

@@ -90,7 +90,7 @@ export function CryptoInitializerOptimized(options: CryptoInitializerOptions = {
             // Fallback: инициализируем PQ в Main Thread
             // (не рекомендуется, может вызвать лаги)
             console.log('[CryptoInitializer] Phase 2: PQ in Main Thread (slower)...');
-            const { initPQBrowser } = await import('@ilyazh/crypto');
+            const { initPQBrowser } = await import('@/lib/crypto');
             await initPQBrowser();
             console.log('[CryptoInitializer] ✓ Phase 2 (Main) complete');
           }
