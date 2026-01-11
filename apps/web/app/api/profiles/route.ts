@@ -16,7 +16,7 @@
  * - Profile changes do not affect cryptographic identity
  */
 
-import { auth, clerkClient } from '@clerk/nextjs/server';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getProfileByUsername,
@@ -80,38 +80,31 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    // Debug: log request details
-    console.log('[API profiles POST] Incoming request');
-    console.log('[API profiles POST] Headers:', Object.fromEntries(req.headers.entries()));
-    console.log('[API profiles POST] Cookies:', req.cookies.getAll());
+    // Authenticate - try currentUser first (more reliable)
+    let userId: string | null = null;
     
-    // Authenticate request - try getting session token from header
-    const sessionToken = req.cookies.get('__session')?.value;
-    console.log('[API profiles POST] Session token present:', !!sessionToken);
+    try {
+      // Method 1: currentUser()
+      const user = await currentUser();
+      userId = user?.id || null;
+      console.log('[API profiles POST] currentUser():', userId);
+    } catch (err) {
+      console.error('[API profiles POST] currentUser() failed:', err);
+    }
     
-    // Use auth() to get userId
-    const authResult = await auth();
-    console.log('[API profiles POST] auth() result:', authResult);
-    const { userId, sessionId } = authResult;
+    // Method 2: fallback to auth()
+    if (!userId) {
+      try {
+        const authResult = await auth();
+        userId = authResult.userId;
+        console.log('[API profiles POST] auth() fallback:', userId);
+      } catch (err) {
+        console.error('[API profiles POST] auth() failed:', err);
+      }
+    }
 
     if (!userId) {
-      console.error('[API profiles POST] No userId in auth result');
-      
-      // Try alternative: verify session manually
-      if (sessionId) {
-        try {
-          const client = await clerkClient();
-          const session = await client.sessions.getSession(sessionId);
-          console.log('[API profiles POST] Manual session lookup:', { userId: session.userId, status: session.status });
-          if (session.userId) {
-            // Continue with manual userId
-            console.log('[API profiles POST] Using manual userId:', session.userId);
-          }
-        } catch (sessionErr) {
-          console.error('[API profiles POST] Manual session lookup failed:', sessionErr);
-        }
-      }
-      
+      console.error('[API profiles POST] All auth methods failed');
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
