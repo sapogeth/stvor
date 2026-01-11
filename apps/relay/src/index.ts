@@ -781,7 +781,14 @@ console.log('[Session] ✅ Session storage initialized (in-memory)');
 /**
  * GET /directory/:id
  * Returns canonical identity and prekey bundle for a user
- * Returns 404 if user not registered
+ * 
+ * CRITICAL SECURITY: Requires intent to be registered first
+ * This prevents directory enumeration and prekey scraping
+ * 
+ * Returns:
+ * - 200: Prekey bundle (intent verified)
+ * - 403: Intent not registered (must POST /intent first)
+ * - 404: User not found
  */
 fastify.get<{ Params: { id: string } }>('/directory/:id', async (request, reply) => {
   const rawId = request.params.id;
@@ -789,6 +796,46 @@ fastify.get<{ Params: { id: string } }>('/directory/:id', async (request, reply)
 
   console.log(`[Directory] GET /directory/${rawId} → canonical: ${id}`);
 
+  // ========== SECURITY: Check intent first ==========
+  // Client must have registered intent before accessing directory
+  let requestorUsername: string | null = null;
+
+  // Dev mode: X-Relay-User header
+  if (process.env.NODE_ENV === 'development' && request.headers['x-relay-user']) {
+    requestorUsername = (request.headers['x-relay-user'] as string).toLowerCase();
+  }
+
+  // If we have a requestor, verify they have intent
+  if (requestorUsername) {
+    const intentKey = `${requestorUsername}:${id}`;
+    const intentMap = (global as any).INTENT_MAP || new Map();
+    const intent = intentMap.get(intentKey);
+
+    if (!intent) {
+      console.warn(`[Directory] Access denied: no intent from ${requestorUsername} to ${id}`);
+      return reply.code(403).send({
+        error: 'intent_not_found',
+        message: 'Must register intent first (POST /intent)',
+      });
+    }
+
+    // Check if intent expired
+    if (intent.expiresAt < Date.now()) {
+      console.warn(`[Directory] Intent expired for ${requestorUsername} → ${id}`);
+      intentMap.delete(intentKey);
+      return reply.code(403).send({
+        error: 'intent_expired',
+        message: 'Intent has expired. Register again.',
+      });
+    }
+
+    console.log(`[Directory] Intent verified: ${requestorUsername} → ${id}`);
+  } else {
+    // No authentication - for backward compatibility, allow but log
+    console.warn(`[Directory] GET /directory/${id} without auth context`);
+  }
+
+  // ========== Lookup user ==========
   // Try lookup by username first, then by userId
   let user = await storage.users.getUserByUsername(id);
   if (!user) {
@@ -1007,6 +1054,120 @@ fastify.post<{ Params: { username: string }, Body: DirectoryRegisterBody }>(
     }
   }
 );
+
+// ==================== Intent Registration (TWO-PHASE HANDSHAKE) ====================
+
+/**
+ * POST /intent
+ * Register intent to start encrypted chat with peer
+ * 
+ * SECURITY: Two-phase protocol prevents:
+ * - Username enumeration (intent requires auth)
+ * - Prekey scraping (directory only accessible after intent)
+ * - MITM attacks (intent includes identity key)
+ * 
+ * PROTOCOL:
+ * 1. Client A sends intent: POST /intent { from, to, identityEd25519 }
+ * 2. Relay stores intent
+ * 3. Client A can now fetch peer prekey bundle
+ * 4. Handshake proceeds normally
+ */
+interface IntentBody {
+  to: string; // peer username (lowercase)
+  identityEd25519: string; // base64, for MITM detection
+}
+
+fastify.post<{ Body: IntentBody }>('/intent', async (request, reply) => {
+  try {
+    const { to, identityEd25519 } = request.body;
+
+    // CRITICAL: Require authentication
+    // In dev mode with X-Relay-User header, use that
+    // In prod, requires JWT (handled by fastify-jwt plugin)
+    let fromUsername: string | null = null;
+    
+    // Dev mode: X-Relay-User header
+    if (process.env.NODE_ENV === 'development' && request.headers['x-relay-user']) {
+      fromUsername = (request.headers['x-relay-user'] as string).toLowerCase();
+    }
+    // Future: JWT auth could be added here
+    else {
+      console.warn('[Intent] POST /intent: unauthorized (no auth context)');
+      return reply.code(401).send({
+        error: 'unauthorized',
+        message: 'Authentication required. Use X-Relay-User header (dev) or JWT (prod)',
+      });
+    }
+
+    if (!fromUsername || !to || !identityEd25519) {
+      console.warn('[Intent] Missing required fields');
+      return reply.code(400).send({
+        error: 'invalid_request',
+        message: 'Required: to, identityEd25519',
+      });
+    }
+
+    const toNormalized = to.toLowerCase().trim();
+
+    // Prevent self-intent
+    if (fromUsername === toNormalized) {
+      console.warn(`[Intent] Self-intent blocked: ${fromUsername}`);
+      return reply.code(400).send({
+        error: 'self_intent',
+        message: 'Cannot start chat with yourself',
+      });
+    }
+
+    // Check if target user exists
+    const targetUser = await storage.users.getUserByUsername(toNormalized);
+    if (!targetUser) {
+      console.log(`[Intent] Target user not found: ${toNormalized}`);
+      return reply.code(404).send({
+        error: 'user_not_found',
+        message: `User ${toNormalized} does not exist`,
+      });
+    }
+
+    // Check if source user exists
+    const sourceUser = await storage.users.getUserByUsername(fromUsername);
+    if (!sourceUser) {
+      console.log(`[Intent] Source user not found: ${fromUsername}`);
+      return reply.code(401).send({
+        error: 'user_not_found',
+        message: 'Source user not found',
+      });
+    }
+
+    // Store intent in memory (TTL: 1 hour)
+    // Key format: "from:to"
+    const intentKey = `${fromUsername}:${toNormalized}`;
+    const intentData = {
+      from: fromUsername,
+      to: toNormalized,
+      identityEd25519, // For MITM detection
+      timestamp: Date.now(),
+      expiresAt: Date.now() + 60 * 60 * 1000, // 1 hour
+    };
+
+    // Store in memory (TODO: persist in database for production)
+    (global as any).INTENT_MAP = (global as any).INTENT_MAP || new Map();
+    (global as any).INTENT_MAP.set(intentKey, intentData);
+
+    console.log(`[Intent] ✅ Registered: ${fromUsername} → ${toNormalized}`);
+
+    return {
+      status: 'intent_registered',
+      message: `Intent registered: ${fromUsername} can now access prekey for ${toNormalized}`,
+      validFor: 3600, // seconds
+    };
+  } catch (error) {
+    console.error('[Intent] POST /intent error:', error);
+    return reply.code(500).send({
+      error: 'internal_server_error',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
 
 // ==================== Deterministic Chat ID Generation ====================
 

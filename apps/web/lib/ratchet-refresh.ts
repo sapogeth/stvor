@@ -273,8 +273,45 @@ export async function refreshSessionFromPeer({
             displayName: discoveryData.displayName,
           });
           
+          // ========== PHASE 1.5: REGISTER INTENT ==========
+          // CRITICAL SECURITY: Tell relay that we intend to chat with this peer
+          // This prevents prekey directory scraping and enables relay to gate access
+          logDebug('ratchet', 'PHASE 1.5: Registering intent with relay', { peer });
+          
+          try {
+            const intentRes = await fetch(`${relayUrl}/intent`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Relay-User': ourUsername || '', // Dev mode auth
+              },
+              body: JSON.stringify({
+                to: peer,
+                identityEd25519: crypto.toBase64(ourIdentity.ed25519.publicKey),
+              }),
+            });
+
+            if (!intentRes.ok) {
+              const intentErr = await intentRes.json();
+              logWarn('ratchet', 'Intent registration failed', { 
+                status: intentRes.status,
+                error: intentErr.error,
+              });
+              // Non-fatal: continue anyway (old relays may not support intent)
+            } else {
+              const intentData = await intentRes.json();
+              logDebug('ratchet', 'Intent registered with relay', { 
+                status: intentData.status,
+                validFor: intentData.validFor,
+              });
+            }
+          } catch (intentErr) {
+            logWarn('ratchet', 'Intent submission error (non-fatal)', { error: intentErr });
+            // Non-fatal: continue anyway
+          }
+
           // Now proceed to Phase 2: Handshake with intent confirmation
-          logDebug('ratchet', 'PHASE 2: Handshake - initiating with intent confirmation', { peer });
+          logDebug('ratchet', 'PHASE 2: Handshake - fetching peer bundle', { peer });
           
           const handshakeRes = await fetch('/api/chat/resolve-peer', {
             method: 'POST',
