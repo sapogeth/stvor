@@ -17,6 +17,7 @@
  */
 
 import { useState } from 'react';
+import { useUser } from '@clerk/nextjs';
 import { setProfile, checkUsernameAvailable } from '@/lib/profiles';
 
 interface UsernameSetupProps {
@@ -30,6 +31,8 @@ export function UsernameSetup({ onComplete }: UsernameSetupProps) {
   const [isAvailable, setIsAvailable] = useState<boolean | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { isLoaded, isSignedIn } = useUser();
+  const authReady = isLoaded && isSignedIn;
 
   const validateUsername = (value: string): boolean => {
     const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
@@ -40,6 +43,11 @@ export function UsernameSetup({ onComplete }: UsernameSetupProps) {
     setUsername(value);
     setError(null);
     setIsAvailable(null);
+
+    if (!authReady) {
+      setError('Please sign in before choosing a username');
+      return;
+    }
 
     if (!value) {
       return;
@@ -68,6 +76,11 @@ export function UsernameSetup({ onComplete }: UsernameSetupProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!authReady) {
+      setError('Please sign in and wait for your session to load');
+      return;
+    }
 
     if (!username || !validateUsername(username)) {
       setError('Invalid username format');
@@ -136,7 +149,7 @@ export function UsernameSetup({ onComplete }: UsernameSetupProps) {
                 value={username}
                 onChange={(e) => handleUsernameChange(e.target.value)}
                 placeholder="myusername"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !authReady}
                 className="w-full pl-8 pr-10 py-3 bg-black border border-gray-800 text-white rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent disabled:opacity-50 font-mono placeholder:text-gray-600"
                 autoComplete="off"
                 maxLength={20}
@@ -173,7 +186,7 @@ export function UsernameSetup({ onComplete }: UsernameSetupProps) {
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="John Doe"
-              disabled={isSubmitting}
+              disabled={isSubmitting || !authReady}
               className="w-full px-3 py-3 bg-black border border-gray-800 text-white rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent disabled:opacity-50 placeholder:text-gray-600"
               maxLength={50}
             />
@@ -194,6 +207,7 @@ export function UsernameSetup({ onComplete }: UsernameSetupProps) {
             type="submit"
             disabled={
               isSubmitting ||
+              !authReady ||
               !username ||
               isChecking ||
               isAvailable === false ||
