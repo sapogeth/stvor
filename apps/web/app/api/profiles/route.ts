@@ -80,15 +80,25 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
+    // Debug: log request details
+    console.log('[API profiles POST] Incoming request');
+    console.log('[API profiles POST] Headers:', Object.fromEntries(req.headers.entries()));
+    console.log('[API profiles POST] Cookies:', req.cookies.getAll());
+    
     // Authenticate request
-    const { userId } = await auth();
+    const authResult = await auth();
+    console.log('[API profiles POST] auth() result:', authResult);
+    const { userId } = authResult;
 
     if (!userId) {
+      console.error('[API profiles POST] No userId in auth result');
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
+
+    console.log('[API profiles POST] Authenticated userId:', userId);
 
     const body = await req.json();
     const { username, displayName } = body;
