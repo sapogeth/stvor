@@ -16,7 +16,7 @@
  * - Profile changes do not affect cryptographic identity
  */
 
-import { auth } from '@clerk/nextjs/server';
+import { auth, clerkClient } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getProfileByUsername,
@@ -85,13 +85,32 @@ export async function POST(req: NextRequest) {
     console.log('[API profiles POST] Headers:', Object.fromEntries(req.headers.entries()));
     console.log('[API profiles POST] Cookies:', req.cookies.getAll());
     
-    // Authenticate request
+    // Authenticate request - try getting session token from header
+    const sessionToken = req.cookies.get('__session')?.value;
+    console.log('[API profiles POST] Session token present:', !!sessionToken);
+    
+    // Use auth() to get userId
     const authResult = await auth();
     console.log('[API profiles POST] auth() result:', authResult);
-    const { userId } = authResult;
+    const { userId, sessionId } = authResult;
 
     if (!userId) {
       console.error('[API profiles POST] No userId in auth result');
+      
+      // Try alternative: verify session manually
+      if (sessionId) {
+        try {
+          const session = await clerkClient.sessions.getSession(sessionId);
+          console.log('[API profiles POST] Manual session lookup:', { userId: session.userId, status: session.status });
+          if (session.userId) {
+            // Continue with manual userId
+            console.log('[API profiles POST] Using manual userId:', session.userId);
+          }
+        } catch (sessionErr) {
+          console.error('[API profiles POST] Manual session lookup failed:', sessionErr);
+        }
+      }
+      
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
