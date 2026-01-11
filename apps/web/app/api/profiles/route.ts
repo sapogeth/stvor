@@ -16,7 +16,7 @@
  * - Profile changes do not affect cryptographic identity
  */
 
-import { getAuth } from '@clerk/nextjs/server';
+import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getProfileByUsername,
@@ -80,18 +80,18 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    // Authenticate via request context (satellite-friendly)
-    const { userId, sessionId } = getAuth(req);
+    // Clerk middleware initializes context; just call auth()
+    const { userId } = auth();
 
     if (!userId) {
-      console.error('[API profiles POST] Unauthorized: no userId', { hasSessionId: !!sessionId });
+      console.error('[API profiles POST] Unauthorized: no userId in auth()');
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    console.log('[API profiles POST] Authenticated', { userId, hasSessionId: !!sessionId });
+    console.log('[API profiles POST] Authenticated userId:', userId);
 
     const body = await req.json();
     const { username, displayName } = body;
@@ -150,8 +150,8 @@ export async function POST(req: NextRequest) {
  */
 export async function DELETE(req: NextRequest) {
   try {
-    // Authenticate via request context
-    const { userId } = getAuth(req);
+    // Clerk middleware initializes context
+    const { userId } = auth();
 
     if (!userId) {
       return NextResponse.json(
