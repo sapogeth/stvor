@@ -201,6 +201,7 @@ export async function fetchFreshRelayToken(userId: string): Promise<string | nul
     const response = await fetch('/api/auth/relay-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ userId }),
     });
 

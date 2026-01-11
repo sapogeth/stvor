@@ -147,6 +147,7 @@ export default function NotificationsPage() {
         const serverRes = await fetch('/api/invitations/accept', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ invitationId: invitation.invitationId }),
         });
         if (serverRes.ok) {
@@ -180,6 +181,7 @@ export default function NotificationsPage() {
         const serverRes = await fetch('/api/invitations/reject', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ invitationId }),
         });
         if (serverRes.ok) {

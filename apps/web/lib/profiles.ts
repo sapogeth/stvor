@@ -23,7 +23,8 @@ export async function getProfileByUsername(
 ): Promise<Profile | null> {
   try {
     const response = await fetch(
-      `/api/profiles?username=${encodeURIComponent(username)}`
+      `/api/profiles?username=${encodeURIComponent(username)}`,
+      { credentials: 'include' }
     );
 
     if (response.status === 404) {
@@ -59,6 +60,7 @@ export async function setProfile(
     const response = await fetch('/api/profiles', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ username, displayName }),
     });
 
@@ -86,6 +88,7 @@ export async function deleteProfile(): Promise<void> {
   try {
     const response = await fetch('/api/profiles', {
       method: 'DELETE',
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -104,7 +107,10 @@ export async function checkUsernameAvailable(
   username: string
 ): Promise<boolean> {
   try {
-    const response = await fetch(`/api/profiles/check?username=${encodeURIComponent(username)}`);
+    const response = await fetch(
+      `/api/profiles/check?username=${encodeURIComponent(username)}`,
+      { credentials: 'include' }
+    );
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
@@ -125,7 +131,9 @@ export async function checkUsernameAvailable(
  */
 export async function getCurrentUserProfile(): Promise<Profile | null> {
   try {
-    const response = await fetch('/api/profiles/me');
+    const response = await fetch('/api/profiles/me', {
+      credentials: 'include',
+    });
 
     if (response.status === 404) {
       return null;

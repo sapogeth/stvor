@@ -104,6 +104,7 @@ export default function GroupsPage() {
             const serverRes = await fetch('/api/invitations/store', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
               body: JSON.stringify({
                 invitationId,
                 groupId,
