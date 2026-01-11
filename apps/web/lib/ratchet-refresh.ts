@@ -217,68 +217,160 @@ export async function refreshSessionFromPeer({
       logWarn('ratchet', 'Exception fetching sync', { error: syncErr });
     }
 
-    // ========== STEP 1.1: SERVER-SIDE PEER RESOLUTION ==========
-    // CRITICAL SECURITY IMPROVEMENT:
-    // Instead of browser → relay (direct), use browser → server → relay
-    // This:
-    // - Hides relay from browser (no metadata leakage)
-    // - Prevents username enumeration (server gates access)
-    // - Normalizes timing (no timing oracle)
-    // - Requires Clerk auth (user must be logged in)
+    // ========== STEP 1.1: SERVER-SIDE PEER RESOLUTION (TWO-PHASE) ==========
+    // SECURITY ARCHITECTURE:
+    // Phase 1 (DISCOVERY): Check if peer exists via /api/profiles (always safe)
+    // Phase 2 (HANDSHAKE): Only after discovery, fetch crypto bundle with intent confirmation
+    //
+    // This prevents:
+    // - False "user not found" when relay is just auth-restricted
+    // - Username enumeration (profile + relay separation)
+    // - Relay metadata leakage (server-side only)
+    // - Eager relay queries before user intent
     
     let peerBundle: PrekeyBundle | null = null;
     
     if (!peerIdentity) {
-      logDebug('ratchet', 'Resolving peer via server (/api/chat/resolve-peer)', { peer });
+      logDebug('ratchet', 'PHASE 1: Discovery - checking if peer exists', { peer });
       
       try {
-        const resolveRes = await fetch('/api/chat/resolve-peer', {
+        // PHASE 1: Discovery (no intent yet)
+        // Just check if user exists in profiles
+        const discoveryRes = await fetch('/api/chat/resolve-peer', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ peerUsername: peer }),
+          body: JSON.stringify({ 
+            peerUsername: peer,
+            confirmIntent: false,  // Phase 1: only check if user exists
+          }),
         });
 
-        if (!resolveRes.ok) {
-          if (resolveRes.status === 404) {
-            logError('ratchet', 'Peer user not found or not registered', { peer });
-            throw new Error(`User not found: ${peer}`);
-          } else if (resolveRes.status === 401) {
-            logError('ratchet', 'Unauthorized - check Clerk auth', { status: resolveRes.status });
-            throw new Error('Authentication required');
-          } else {
-            logError('ratchet', 'Failed to resolve peer', { status: resolveRes.status });
-            throw new Error(`Peer resolution failed: ${resolveRes.status}`);
+        // Handle discovery response
+        if (discoveryRes.status === 404) {
+          const discoveryErr = await discoveryRes.json();
+          logError('ratchet', 'Peer user does not exist', { 
+            peer, 
+            error: discoveryErr.message 
+          });
+          throw new Error(`User ${peer} does not exist`);
+        }
+
+        if (!discoveryRes.ok && discoveryRes.status !== 200) {
+          logError('ratchet', 'Discovery failed', { 
+            status: discoveryRes.status, 
+            peer 
+          });
+          throw new Error(`Discovery failed: ${discoveryRes.status}`);
+        }
+
+        const discoveryData = await discoveryRes.json();
+        
+        // Check if we're in "awaiting intent" state
+        if (discoveryData.status === 'awaiting_intent') {
+          logDebug('ratchet', 'PHASE 1 Complete: User found, proceeding to Phase 2 handshake', { 
+            peer,
+            displayName: discoveryData.displayName,
+          });
+          
+          // Now proceed to Phase 2: Handshake with intent confirmation
+          logDebug('ratchet', 'PHASE 2: Handshake - initiating with intent confirmation', { peer });
+          
+          const handshakeRes = await fetch('/api/chat/resolve-peer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ 
+              peerUsername: peer,
+              confirmIntent: true,  // Phase 2: now fetch crypto bundle
+            }),
+          });
+
+          if (!handshakeRes.ok) {
+            const handshakeErr = await handshakeRes.json();
+            
+            // Different handling for different error types
+            if (handshakeRes.status === 403) {
+              logError('ratchet', 'Relay authorization required (user exists but bundle unavailable)', { 
+                peer,
+                error: handshakeErr.error,
+              });
+              throw new Error(`Relay authorization required for ${peer}`);
+            }
+            
+            if (handshakeRes.status === 404) {
+              logError('ratchet', 'Prekey bundle not available (user has not published crypto keys yet)', { 
+                peer,
+                error: handshakeErr.error,
+              });
+              throw new Error(`${peer} has not published cryptographic keys yet`);
+            }
+
+            if (handshakeRes.status === 503) {
+              logError('ratchet', 'Relay temporarily unavailable', { 
+                peer,
+                error: handshakeErr.error,
+              });
+              throw new Error('Relay service temporarily unavailable');
+            }
+
+            logError('ratchet', 'Handshake failed', { 
+              status: handshakeRes.status,
+              peer,
+            });
+            throw new Error(`Handshake failed: ${handshakeRes.status}`);
+          }
+
+          const handshakeData = await handshakeRes.json();
+          
+          canonicalPeerUsername = handshakeData.peerUsername;
+          peerIdentity = {
+            identityEd25519: new Uint8Array(Buffer.from(handshakeData.identity.ed25519, 'base64')),
+            identityMLDSA: new Uint8Array(Buffer.from(handshakeData.identity.identityMLDSA || '', 'base64')),
+          };
+          
+          logDebug('ratchet', 'PHASE 2 Complete: Peer identity resolved', { peer: canonicalPeerUsername });
+
+          // Extract prekey bundle
+          const prekeyBundle = handshakeData.prekeyBundle;
+          if (!prekeyBundle) {
+            logError('ratchet', 'Server response missing prekey bundle');
+            throw new Error('Invalid peer data from server');
+          }
+
+          peerBundle = {
+            x25519Ephemeral: new Uint8Array(Buffer.from(prekeyBundle.x25519Ephemeral, 'base64')),
+            mlkemPublicKey: new Uint8Array(Buffer.from(prekeyBundle.mlkemPublicKey || '', 'base64')),
+            ed25519Signature: new Uint8Array(Buffer.from(prekeyBundle.ed25519Signature, 'base64')),
+            mldsaSignature: new Uint8Array(Buffer.from(prekeyBundle.mldsaSignature || '', 'base64')),
+            bundleId: prekeyBundle.bundleId,
+            timestamp: prekeyBundle.timestamp,
+          };
+
+          logDebug('ratchet', 'Prekey bundle resolved', { bundleId: peerBundle.bundleId });
+        } else if (discoveryData.status === 'ready') {
+          // Unexpected: server returned ready without awaiting intent
+          // But handle it anyway (backward compatibility)
+          logWarn('ratchet', 'Server returned ready status immediately (no intent phase)', { peer });
+          
+          canonicalPeerUsername = discoveryData.peerUsername;
+          peerIdentity = {
+            identityEd25519: new Uint8Array(Buffer.from(discoveryData.identity.ed25519, 'base64')),
+            identityMLDSA: new Uint8Array(Buffer.from(discoveryData.identity.identityMLDSA || '', 'base64')),
+          };
+
+          const prekeyBundle = discoveryData.prekeyBundle;
+          if (prekeyBundle) {
+            peerBundle = {
+              x25519Ephemeral: new Uint8Array(Buffer.from(prekeyBundle.x25519Ephemeral, 'base64')),
+              mlkemPublicKey: new Uint8Array(Buffer.from(prekeyBundle.mlkemPublicKey || '', 'base64')),
+              ed25519Signature: new Uint8Array(Buffer.from(prekeyBundle.ed25519Signature, 'base64')),
+              mldsaSignature: new Uint8Array(Buffer.from(prekeyBundle.mldsaSignature || '', 'base64')),
+              bundleId: prekeyBundle.bundleId,
+              timestamp: prekeyBundle.timestamp,
+            };
           }
         }
-
-        const peerData = await resolveRes.json();
-        
-        canonicalPeerUsername = peerData.peerUsername;
-        peerIdentity = {
-          identityEd25519: new Uint8Array(Buffer.from(peerData.identity.ed25519, 'base64')),
-          identityMLDSA: new Uint8Array(Buffer.from(peerData.identity.identityMLDSA || '', 'base64')),
-        };
-        
-        logDebug('ratchet', 'Peer resolved via server', { peer: canonicalPeerUsername });
-
-        // STEP 2: Extract peer prekey bundle from server response
-        const prekeyBundle = peerData.prekeyBundle;
-        if (!prekeyBundle) {
-          logError('ratchet', 'Server response missing prekey bundle');
-          throw new Error('Invalid peer data from server');
-        }
-
-        peerBundle = {
-          x25519Ephemeral: new Uint8Array(Buffer.from(prekeyBundle.x25519Ephemeral, 'base64')),
-          mlkemPublicKey: new Uint8Array(Buffer.from(prekeyBundle.mlkemPublicKey || '', 'base64')),
-          ed25519Signature: new Uint8Array(Buffer.from(prekeyBundle.ed25519Signature, 'base64')),
-          mldsaSignature: new Uint8Array(Buffer.from(prekeyBundle.mldsaSignature || '', 'base64')),
-          bundleId: prekeyBundle.bundleId,
-          timestamp: prekeyBundle.timestamp,
-        };
-
-        logDebug('ratchet', 'Prekey bundle resolved from server', { bundleId: peerBundle.bundleId });
       } catch (err) {
         logError('ratchet', 'Server peer resolution failed', { error: err });
         throw err;
