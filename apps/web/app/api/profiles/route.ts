@@ -16,7 +16,7 @@
  * - Profile changes do not affect cryptographic identity
  */
 
-import { auth } from '@clerk/nextjs/server';
+import { currentUser } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getProfileByUsername,
@@ -80,18 +80,20 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    // Clerk middleware initializes context; call auth() with await
-    const { userId } = await auth();
+    // App Router: use currentUser() (NOT auth() or getAuth())
+    // This is the ONLY correct API for app/api/* routes
+    const user = await currentUser();
 
-    if (!userId) {
-      console.error('[API profiles POST] Unauthorized: no userId in auth()');
+    if (!user) {
+      console.error('[API profiles POST] Unauthorized: no currentUser()');
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    console.log('[API profiles POST] Authenticated userId:', userId);
+    console.log('[API profiles POST] Authenticated userId:', user.id);
+    const userId = user.id;
 
     const body = await req.json();
     const { username, displayName } = body;
@@ -150,15 +152,17 @@ export async function POST(req: NextRequest) {
  */
 export async function DELETE(req: NextRequest) {
   try {
-    // Clerk middleware initializes context
-    const { userId } = await auth();
+    // App Router: use currentUser() (NOT auth() or getAuth())
+    const user = await currentUser();
 
-    if (!userId) {
+    if (!user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
+
+    const userId = user.id;
 
     if (!(await deleteProfile(userId))) {
       return NextResponse.json(
