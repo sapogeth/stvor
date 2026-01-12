@@ -29,13 +29,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pat
 
     console.log(`[Proxy] POST /${path}`);
 
-    // Forward all headers, especially Authorization
+    // Forward all headers, especially Authorization from client
+    const clientAuth = req.headers.get('authorization');
     const headers: Record<string, string> = {
-      'Authorization': `Bearer ${RELAY_API_KEY}`, // Add API key for relay authentication
+      'Authorization': clientAuth || `Bearer ${RELAY_API_KEY}`, // Forward client JWT, fallback to API key
     };
     req.headers.forEach((value, key) => {
-      // Skip host and connection headers
-      if (!['host', 'connection', 'content-length'].includes(key.toLowerCase())) {
+      // Skip host, connection, and authorization (already handled above)
+      if (!['host', 'connection', 'content-length', 'authorization'].includes(key.toLowerCase())) {
         headers[key] = value;
       }
     });
@@ -83,13 +84,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ path
 
     console.log(`[Proxy] GET /${path}${searchParams ? "?" + searchParams : ""}`);
 
-    // Forward all headers, especially Authorization
+    // Forward all headers, especially Authorization from client
+    const clientAuth = req.headers.get('authorization');
     const headers: Record<string, string> = {
-      'Authorization': `Bearer ${RELAY_API_KEY}`, // Add API key for relay authentication
+      'Authorization': clientAuth || `Bearer ${RELAY_API_KEY}`, // Forward client JWT, fallback to API key
     };
     req.headers.forEach((value, key) => {
-      // Skip host and connection headers
-      if (!['host', 'connection', 'content-length'].includes(key.toLowerCase())) {
+      // Skip host, connection, and authorization (already handled above)
+      if (!['host', 'connection', 'content-length', 'authorization'].includes(key.toLowerCase())) {
         headers[key] = value;
       }
     });
