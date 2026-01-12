@@ -10,11 +10,13 @@ const RELAY_URL =
   process.env.NEXT_PUBLIC_RELAY_URL ||
   'http://localhost:3001';
 
+const RELAY_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
+
 /**
  * Transparent API proxy to relay server
  * Forwards all /api/relay/* requests to the real relay
+ * Adds RELAY_API_KEY server-side for authentication
  * NO synthetic responses, NO dev mode auto-create
- * NO Clerk authentication (bypassed in middleware)
  */
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
@@ -28,7 +30,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pat
     console.log(`[Proxy] POST /${path}`);
 
     // Forward all headers, especially Authorization
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${RELAY_API_KEY}`, // Add API key for relay authentication
+    };
     req.headers.forEach((value, key) => {
       // Skip host and connection headers
       if (!['host', 'connection', 'content-length'].includes(key.toLowerCase())) {
@@ -80,7 +84,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ path
     console.log(`[Proxy] GET /${path}${searchParams ? "?" + searchParams : ""}`);
 
     // Forward all headers, especially Authorization
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${RELAY_API_KEY}`, // Add API key for relay authentication
+    };
     req.headers.forEach((value, key) => {
       // Skip host and connection headers
       if (!['host', 'connection', 'content-length'].includes(key.toLowerCase())) {

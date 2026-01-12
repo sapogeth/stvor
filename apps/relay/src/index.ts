@@ -253,9 +253,11 @@ console.log('[Security] ✅ JWT (HS256, 30d expiry)');
 // Without this key, clients cannot verify relay authenticity, enabling EREBUS/MITM attacks
 // This must be configured in ALL environments (dev, staging, production)
 console.log('[Startup] 🔐 Checking RELAY_IDENTITY_KEY configuration...');
-const RELAY_IDENTITY_KEY_PEM = process.env.RELAY_IDENTITY_KEY;
+let RELAY_IDENTITY_KEY_PEM = process.env.RELAY_IDENTITY_KEY;
 
-if (!RELAY_IDENTITY_KEY_PEM) {
+// DEVELOPMENT ONLY: Generate a temporary key for Fly.io preview if not set
+if (!RELAY_IDENTITY_KEY_PEM && process.env.NODE_ENV === 'production') {
+  // Production: Must be provided
   console.error('❌ CRITICAL: RELAY_IDENTITY_KEY is not set');
   console.error('   This is MANDATORY for all environments (dev, staging, production)');
   console.error('   Without it, clients cannot verify relay authenticity');
@@ -265,6 +267,14 @@ if (!RELAY_IDENTITY_KEY_PEM) {
   console.error('     cat relay_key.pem | base64 -w 0');
   console.error('   Set RELAY_IDENTITY_KEY=<base64-encoded-pem>');
   process.exit(1); // SECURITY: Fail-closed - refuse to start
+} else if (!RELAY_IDENTITY_KEY_PEM) {
+  // Development fallback: Generate a temporary key
+  console.warn('⚠️  WARNING: RELAY_IDENTITY_KEY not set. Generating temporary key for development...');
+  const { privateKeyPem } = crypto.generateKeyPairSync('ed25519', {
+    format: 'pem'
+  }) as any;
+  RELAY_IDENTITY_KEY_PEM = Buffer.from(privateKeyPem).toString('base64');
+  console.warn('⚠️  This key is temporary and will change on restart. For production, use environment variable.');
 }
 
 if (typeof RELAY_IDENTITY_KEY_PEM !== 'string' || RELAY_IDENTITY_KEY_PEM.length === 0) {

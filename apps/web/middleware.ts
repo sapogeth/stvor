@@ -38,8 +38,10 @@ const CSP = [
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://*.clerk.accounts.dev https://clerk.stvor.xyz https://challenges.cloudflare.com",
   // Script elements: CRITICAL for CAPTCHA - must include challenges.cloudflare.com + Clerk custom domain
   "script-src-elem 'self' 'unsafe-inline' https://*.clerk.accounts.dev https://clerk.stvor.xyz https://challenges.cloudflare.com",
-  // Connections: Clerk API (default + custom domain) + Supabase relay + Fly relay + localhost dev + WebSocket relay server
-  "connect-src 'self' https://*.clerk.accounts.dev https://clerk.stvor.xyz https://*.clerk.services https://api.clerk.com https://api.clerk.dev https://*.supabase.co https://stvor-relay.fly.dev wss://stvor-relay.fly.dev https://challenges.cloudflare.com http://localhost:* ws://localhost:* wss://localhost:* wss://*.railway.app",
+  // Connections: Clerk API (default + custom domain) + Supabase relay + localhost dev + WebSocket relay server
+  // NOTE: Relay (stvor-relay.fly.dev) is NOT in this list - browser never accesses relay directly
+  // All relay requests go through /api/relay/* proxy which adds API key server-side
+  "connect-src 'self' https://*.clerk.accounts.dev https://clerk.stvor.xyz https://*.clerk.services https://api.clerk.com https://api.clerk.dev https://*.supabase.co https://challenges.cloudflare.com http://localhost:* ws://localhost:* wss://localhost:* wss://*.railway.app",
   // Web Workers: CRITICAL for CAPTCHA + WASM support - allows blob: URLs and Cloudflare workers
   "worker-src 'self' blob: https://*.clerk.accounts.dev https://clerk.stvor.xyz https://challenges.cloudflare.com",
   // Child contexts: Fallback for older browsers (same as worker-src)

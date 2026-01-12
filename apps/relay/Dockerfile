@@ -26,6 +26,9 @@ COPY turbo.json ./
 COPY packages ./packages
 COPY apps/relay ./apps/relay
 
+# Force cache invalidation with timestamp
+RUN echo "Build timestamp: $(date)"
+
 # Install ALL dependencies (including devDependencies for build)
 # No cache mount - Railway compatible
 RUN pnpm install --frozen-lockfile
