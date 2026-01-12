@@ -19,8 +19,6 @@ import { getRelayUrl } from './relay-url';
 
 const RELAY_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
 
-const RELAY_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
-
 /**
  * Stored prekey secrets (private keys)
  * These are needed to complete the handshake when someone initiates with our bundle
