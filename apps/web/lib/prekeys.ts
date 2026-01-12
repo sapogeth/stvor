@@ -17,6 +17,8 @@ import { getCryptoOrThrow } from './runtime/crypto-safe';
 import { createAuthHeaders } from './identity';
 import { getRelayUrl } from './relay-url';
 
+const RELAY_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
+
 /**
  * Stored prekey secrets (private keys)
  * These are needed to complete the handshake when someone initiates with our bundle
@@ -132,6 +134,9 @@ export async function generateAndUploadPrekeyBundle(
   const token = typeof window !== 'undefined' ? localStorage.getItem(`jwt_token_${canonical}`) : null;
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+  } else if (typeof window === 'undefined') {
+    // Server-side: use API key
+    headers['Authorization'] = `Bearer ${RELAY_API_KEY}`;
   }
 
   const res = await fetch(`${relayBase}/directory/${encodeURIComponent(canonical)}`, {

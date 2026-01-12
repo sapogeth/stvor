@@ -15,6 +15,8 @@ import { getRelayUrl } from './relay-url';
 import { verifyRelaySignature, isRelayIdentityVerified } from './relay-identity';
 import { logDebug, logInfo, logWarn, logError, redactToken, redactPublicKey } from './logger';
 
+const RELAY_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
+
 // ==================== Relay Identity Verification State ====================
 
 /**
@@ -236,7 +238,10 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
 
     try {
       const response = await fetch(`${relayUrl}/directory/${username}`, {
-        signal: AbortSignal.timeout(10000) // 10s timeout (more forgiving for prod networks)
+        signal: AbortSignal.timeout(10000), // 10s timeout (more forgiving for prod networks)
+        headers: {
+          'Authorization': `Bearer ${RELAY_API_KEY}`,
+        },
       });
       if (response.ok) {
         const data = await response.json();
@@ -297,7 +302,11 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
   const relayUrl = getRelayUrl();
 
   try {
-    const response = await fetch(`${relayUrl}/directory/${username}`);
+    const response = await fetch(`${relayUrl}/directory/${username}`, {
+      headers: {
+        'Authorization': `Bearer ${RELAY_API_KEY}`,
+      },
+    });
 
     if (response.ok) {
       const data = await response.json();
@@ -472,7 +481,10 @@ async function registerWithRelay(username: string, identity: IdentityKeyPair): P
 
   const response = await fetch(`${relayUrl}/register`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${RELAY_API_KEY}`,
+    },
     body: JSON.stringify({
       userId: username,
       username: username,
@@ -552,7 +564,11 @@ export async function fetchPeerIdentity(username: string): Promise<{
     logInfo('identity', 'Normalized to', { username: canonicalUsername });
   }
 
-  const response = await fetch(`${relayUrl}/directory/${canonicalUsername}`);
+  const response = await fetch(`${relayUrl}/directory/${canonicalUsername}`, {
+    headers: {
+      'Authorization': `Bearer ${RELAY_API_KEY}`,
+    },
+  });
 
   if (!response.ok) {
     logWarn('identity', 'Peer not found in directory', { username: canonicalUsername, status: response.status });

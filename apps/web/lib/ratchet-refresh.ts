@@ -22,6 +22,8 @@ import { deserializeSession, pushSessionToRelay } from './session-serializer';
 import { clearSessionSecurity } from './session-security';
 import { logDebug, logInfo, logWarn, logError, redactSessionId } from './logger';
 
+const RELAY_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
+
 /**
  * Session metadata from relay
  * Relay is the SOURCE OF TRUTH for sessions
@@ -94,7 +96,11 @@ export async function refreshSessionFromPeer({
     logDebug('ratchet', '========== STEP 0: Checking relay for canonical session ==========');
 
     try {
-      const sessionRes = await fetch(`${relayUrl}/chat/${chatId}/session`);
+      const sessionRes = await fetch(`${relayUrl}/chat/${chatId}/session`, {
+        headers: {
+          'Authorization': `Bearer ${RELAY_API_KEY}`,
+        },
+      });
 
       if (sessionRes.ok) {
         const { session } = await sessionRes.json();
@@ -166,7 +172,11 @@ export async function refreshSessionFromPeer({
     let canonicalPeerUsername: string | null = null;
 
     try {
-      const syncRes = await fetch(`${relayUrl}/sync/${chatId}?since=0&limit=10`);
+      const syncRes = await fetch(`${relayUrl}/sync/${chatId}?since=0&limit=10`, {
+        headers: {
+          'Authorization': `Bearer ${RELAY_API_KEY}`,
+        },
+      });
 
       if (syncRes.ok) {
         const syncData = await syncRes.json();
@@ -283,6 +293,7 @@ export async function refreshSessionFromPeer({
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
+                'Authorization': `Bearer ${RELAY_API_KEY}`,
                 'X-Relay-User': ourUsername || '', // Dev mode auth
               },
               body: JSON.stringify({
@@ -547,6 +558,7 @@ export async function refreshSessionFromPeer({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${RELAY_API_KEY}`,
           ...authHeaders,
         },
         body: JSON.stringify({

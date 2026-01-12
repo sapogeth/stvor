@@ -7,6 +7,8 @@
 
 import { type HandshakeState } from '@/lib/crypto';
 
+const RELAY_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
+
 /**
  * Serialized session format for JSON transport to relay
  */
@@ -133,7 +135,10 @@ export async function pushSessionToRelay(
 
     const res = await fetch(`${relayUrl}/chat/${chatId}/session`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${RELAY_API_KEY}`,
+      },
       body: JSON.stringify(serialized),
     });
 
