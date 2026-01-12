@@ -37,6 +37,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const RELAY_BASE =
+  process.env.RELAY_URL ||
+  process.env.RELAY_BASE_URL ||
   process.env.NEXT_PUBLIC_RELAY_URL || 'http://localhost:3001';
 
 /**

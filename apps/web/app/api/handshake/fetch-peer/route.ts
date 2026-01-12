@@ -67,7 +67,7 @@ export async function POST(req: Request) {
     });
 
     // Step 3: Call relay with SERVER API KEY (never exposed to browser)
-    const relayUrl = process.env.RELAY_URL || process.env.NEXT_PUBLIC_RELAY_URL || 'http://localhost:3001';
+    const relayUrl = process.env.RELAY_URL || process.env.RELAY_BASE_URL || process.env.NEXT_PUBLIC_RELAY_URL || 'http://localhost:3001';
     const apiKey = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
 
     console.log('[api/handshake/fetch-peer] Environment check:', {
