@@ -19,6 +19,8 @@ import { getRelayUrl } from './relay-url';
 
 const RELAY_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
 
+const RELAY_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
+
 /**
  * Stored prekey secrets (private keys)
  * These are needed to complete the handshake when someone initiates with our bundle
@@ -122,15 +124,18 @@ export async function generateAndUploadPrekeyBundle(
   const signature = await localEd25519Sign(canonicalBundle, identity.ed25519.secretKey);
   console.log('[Prekey] Signed bundle with Ed25519, signature length:', signature.length);
 
-  // Upload to NEW endpoint /directory/:username with signature
-  const relayBase = getRelayUrl();
+  // Upload to directory endpoint
+  // Use proxy in browser, direct relay on server
+  const directoryUrl = typeof window !== 'undefined'
+    ? `/api/relay/directory/${encodeURIComponent(canonical)}` // Browser: use Next.js API proxy
+    : `${getRelayUrl()}/directory/${encodeURIComponent(canonical)}`; // Server: direct relay
 
   // Build headers - MUST set Content-Type for JSON body
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
 
-  // Add Authorization header if we have a token
+  // Add Authorization header
   const token = typeof window !== 'undefined' ? localStorage.getItem(`jwt_token_${canonical}`) : null;
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -138,8 +143,9 @@ export async function generateAndUploadPrekeyBundle(
     // Server-side: use API key
     headers['Authorization'] = `Bearer ${RELAY_API_KEY}`;
   }
+  // Note: Browser requests to proxy don't need Authorization - proxy adds it
 
-  const res = await fetch(`${relayBase}/directory/${encodeURIComponent(canonical)}`, {
+  const res = await fetch(directoryUrl, {
     method: 'POST',
     headers,
     body: JSON.stringify({
