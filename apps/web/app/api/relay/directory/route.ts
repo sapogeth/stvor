@@ -18,6 +18,8 @@ import { currentUser } from '@clerk/nextjs/server';
 import { getIntent } from '@/lib/intent-storage';
 import { getRelayUrl } from '@/lib/relay-url';
 
+const RELAY_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
+
 // Force Node.js runtime (not Edge)
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -88,6 +90,7 @@ export async function GET(
       method: 'GET',
       headers: {
         'Accept': 'application/json',
+        'Authorization': `Bearer ${RELAY_API_KEY}`,
         // Pass username to relay for logging
         'X-Relay-User': username,
       },
@@ -138,6 +141,7 @@ export async function POST(req: Request) {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
+        'Authorization': `Bearer ${RELAY_API_KEY}`,
       },
       body: JSON.stringify(body),
     });

@@ -9,6 +9,8 @@ const RELAY_BASE =
   process.env.NEXT_PUBLIC_RELAY_URL ||
   'http://localhost:3001';
 
+const RELAY_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ username: string }> }
@@ -21,6 +23,7 @@ export async function GET(
       method: 'GET',
       headers: {
         'content-type': 'application/json',
+        'Authorization': `Bearer ${RELAY_API_KEY}`,
       },
     });
 

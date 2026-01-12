@@ -5,6 +5,8 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const RELAY_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
+
 const RELAY_BASE = process.env.NEXT_PUBLIC_RELAY_URL || 'http://localhost:3001';
 
 /**
@@ -35,7 +37,7 @@ export async function POST(
     const res = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': auth,
+        'Authorization': `Bearer ${RELAY_API_KEY}`,
         'Content-Type': contentType,
         'Origin': origin,
       },
@@ -94,7 +96,7 @@ export async function GET(
     const res = await fetch(url, {
       method: 'GET',
       headers: {
-        'Authorization': auth,
+        'Authorization': `Bearer ${RELAY_API_KEY}`,
         'Content-Type': 'application/json',
       },
     });

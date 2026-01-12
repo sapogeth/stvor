@@ -18,6 +18,8 @@ import { NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { storeIntent } from '@/lib/intent-storage';
 
+const RELAY_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
+
 export async function POST(req: Request) {
   try {
     // CRITICAL: Use currentUser() from Clerk (not auth())
