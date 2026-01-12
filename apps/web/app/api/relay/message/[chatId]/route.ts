@@ -25,19 +25,19 @@ export async function POST(
     // Read body as text to forward raw JSON
     const body = await req.text();
 
-    // Extract headers
+    // Extract headers - CRITICAL: Forward JWT from client
     const auth = req.headers.get('authorization') || '';
     const contentType = req.headers.get('content-type') || 'application/json';
     const origin = req.headers.get('origin') || '';
 
-    console.log(`[Proxy] POST /message/${chatId}`);
+    console.log(`[Proxy] POST /message/${chatId}`, { hasAuth: !!auth });
 
     // Forward to relay with authentication
     const url = `${RELAY_BASE}/message/${chatId}`;
     const res = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${RELAY_API_KEY}`,
+        'Authorization': auth || `Bearer ${RELAY_API_KEY}`,  // Forward JWT, fallback to API key
         'Content-Type': contentType,
         'Origin': origin,
       },
@@ -90,13 +90,13 @@ export async function GET(
 
     const auth = req.headers.get('authorization') || '';
 
-    console.log(`[Proxy] GET /message/${chatId}`);
+    console.log(`[Proxy] GET /message/${chatId}`, { hasAuth: !!auth });
 
     const url = `${RELAY_BASE}/message/${chatId}`;
     const res = await fetch(url, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${RELAY_API_KEY}`,
+        'Authorization': auth || `Bearer ${RELAY_API_KEY}`,  // Forward JWT, fallback to API key
         'Content-Type': 'application/json',
       },
     });

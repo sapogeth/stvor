@@ -172,9 +172,17 @@ export async function refreshSessionFromPeer({
     let canonicalPeerUsername: string | null = null;
 
     try {
+      // Get JWT from localStorage (same place where ensureRelayJwt stored it)
+      const username = our;  // Use our username to fetch JWT
+      let jwtToken = '';
+      if (typeof window !== 'undefined' && username) {
+        jwtToken = localStorage.getItem(`jwt_token_${username}`) || '';
+      }
+      logDebug('ratchet', 'Fetching sync with JWT', { hasJWT: !!jwtToken });
+
       const syncRes = await fetch(`${relayUrl}/sync/${chatId}?since=0&limit=10`, {
         headers: {
-          'Authorization': `Bearer ${RELAY_API_KEY}`,
+          'Authorization': jwtToken ? `Bearer ${jwtToken}` : `Bearer ${RELAY_API_KEY}`,
         },
       });
 
