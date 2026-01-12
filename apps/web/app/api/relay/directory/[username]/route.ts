@@ -5,8 +5,10 @@ import { NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const RELAY_BASE =
-  process.env.NEXT_PUBLIC_RELAY_URL || 'http://localhost:3001';
+const RELAY_URL =
+  process.env.RELAY_URL ||
+  process.env.NEXT_PUBLIC_RELAY_URL ||
+  'http://localhost:3001';
 const RELAY_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
 
 // READ prekey bundle / identity
@@ -19,8 +21,11 @@ export async function GET(
     const raw = resolvedParams.username || '';
     const username = raw.toLowerCase().trim();
 
-    const url = `${RELAY_BASE}/directory/${username}`;
+    const url = `${RELAY_URL}/directory/${username}`;
+    console.error(`[Proxy/directory] GET /directory/${username} -> ${url}`);
+    
     const res = await fetch(url, {
+      signal: AbortSignal.timeout(10000),
       method: 'GET',
       headers: {
         'content-type': 'application/json',
@@ -28,8 +33,9 @@ export async function GET(
       },
     });
 
+    console.error(`[Proxy/directory] Relay response: ${res.status} ${res.statusText}`);
+    
     if (!res.ok) {
-      console.warn(`[Proxy] Directory GET /${username} -> ${res.status}`);
       return NextResponse.json(
         {
           error: 'directory_not_found',
@@ -40,8 +46,7 @@ export async function GET(
     }
 
     const data = await res.json();
-
-    console.log(`[Proxy] Directory GET /${username} -> 200`);
+    console.error(`[Proxy/directory] Successfully fetched directory for ${username}`);
 
     const ed25519 = data.identityPublicKey || data.identityEd25519 || data.ed25519;
     const mldsa = data.identityMLDSA || '';
@@ -67,10 +72,27 @@ export async function GET(
         data.prekeyBundle?.signature ||
         null,
     });
-  } catch (error) {
-    console.error('[API] directory GET error:', error);
+  } catch (error: any) {
+    console.error('[Proxy/directory] GET error:', {
+      username: (await params).username,
+      error: error.message,
+      code: error.code,
+      cause: error.cause?.message
+    });
+    
+    // Check if it's a network error (ECONNREFUSED = relay down)
+    if (error.cause?.code === 'ECONNREFUSED' || error.code === 'ECONNREFUSED') {
+      return NextResponse.json(
+        { 
+          error: 'relay_unavailable',
+          message: 'Relay server is not responding. Check RELAY_URL environment variable.' 
+        },
+        { status: 502 }
+      );
+    }
+    
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error.message },
       { status: 500 }
     );
   }
@@ -87,9 +109,9 @@ export async function POST(
     const username = raw.toLowerCase().trim();
     const body = await req.json();
 
-    const url = `${RELAY_BASE}/directory/${username}`;
+    const url = `${RELAY_URL}/directory/${username}`;
 
-    console.log(`[Proxy] Directory POST /${username}`);
+    console.error(`[Proxy/directory] POST /directory/${username} -> ${url}`);
 
     const res = await fetch(url, {
       method: 'POST',
@@ -112,13 +134,25 @@ export async function POST(
       }
     })();
 
-    console.log(`[Proxy] Directory POST /${username} -> ${res.status}`);
+    console.error(`[Proxy/directory] POST response: ${res.status}`);
 
     return NextResponse.json(maybeJson, { status: res.status });
-  } catch (error) {
-    console.error('[API] directory POST error:', error);
+  } catch (error: any) {
+    console.error('[Proxy/directory] POST error:', {
+      username: (await params).username,
+      error: error.message,
+      code: error.code
+    });
+    
+    if (error.cause?.code === 'ECONNREFUSED' || error.code === 'ECONNREFUSED') {
+      return NextResponse.json(
+        { error: 'relay_unavailable', message: 'Relay server is not responding' },
+        { status: 502 }
+      );
+    }
+    
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error.message },
       { status: 500 }
     );
   }
@@ -135,9 +169,9 @@ export async function PUT(
     const username = raw.toLowerCase().trim();
     const body = await req.json();
 
-    const url = `${RELAY_BASE}/directory/${username}`;
+    const url = `${RELAY_URL}/directory/${username}`;
 
-    console.log(`[Proxy] Directory PUT /${username}`);
+    console.error(`[Proxy/directory] PUT /directory/${username} -> ${url}`);
 
     const res = await fetch(url, {
       method: 'PUT',
