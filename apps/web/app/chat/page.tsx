@@ -199,6 +199,30 @@ export default function ChatPage() {
   // PART 3: Per-chat cursor tracking (persists across renders, doesn't trigger re-render)
   const cursorsRef = useRef<Record<string, number>>({});
 
+  // Ensure the relay JWT is present for this user so relay endpoints accept requests
+  const ensureRelayJwt = async (canonicalUsername: string) => {
+    try {
+      const response = await fetch('/api/auth/relay-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: canonicalUsername }),
+      });
+
+      if (!response.ok) {
+        console.error('[Chat] Failed to fetch relay JWT', response.status);
+        return;
+      }
+
+      const data = await response.json();
+      if (data?.token) {
+        localStorage.setItem(`jwt_token_${canonicalUsername}`, data.token);
+        console.log('[Chat] Relay JWT refreshed for user');
+      }
+    } catch (err) {
+      console.error('[Chat] Error fetching relay JWT', err);
+    }
+  };
+
   // Load or generate identity on mount using Clerk userId
   // Use ref to prevent React StrictMode double-initialization race condition
   const initRef = useRef(false);
@@ -250,6 +274,9 @@ export default function ChatPage() {
 
       try {
         console.log('[Chat] Initializing E2E identity with username:', canonicalUsername);
+
+        // Ensure a fresh relay JWT exists before contacting the relay
+        await ensureRelayJwt(canonicalUsername);
 
         // CRITICAL: Use human-readable username, NOT Clerk ID
         // This ensures relay validation passes (3-20 chars, lowercase alphanumeric + underscore)

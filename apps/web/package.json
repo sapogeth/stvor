@@ -17,6 +17,7 @@
     "@openforge-sh/liboqs": "^0.14.3",
     "@supabase/supabase-js": "^2.84.0",
     "buffer": "^6.0.3",
+    "jose": "^5.9.4",
     "libsodium-wrappers": "^0.7.15",
     "lucide-react": "^0.553.0",
     "mldsa-wasm": "^0.0.3",
