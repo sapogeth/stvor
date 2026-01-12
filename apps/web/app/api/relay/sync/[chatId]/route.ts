@@ -21,17 +21,22 @@ export async function GET(
     const resolvedParams = await params;
     const chatId = resolvedParams.chatId;
 
-    // Extract JWT from request
+    // Extract JWT from request - try header first, then query param as fallback
     const auth = req.headers.get('authorization') || '';
     const searchParams = req.nextUrl.searchParams;
+    const jwtFromQuery = searchParams.get('jwt') || '';
     const since = searchParams.get('since') || '0';
     const limit = searchParams.get('limit') || '10';
 
-    console.log(`[Proxy/sync] GET /sync/${chatId}`, { 
+    // Use JWT from header or query param
+    const finalAuth = auth || (jwtFromQuery ? `Bearer ${jwtFromQuery}` : '');
+
+    console.error(`[Proxy/sync] GET /sync/${chatId}`, { 
       since, 
       limit, 
-      hasAuth: !!auth,
-      authPreview: auth ? auth.substring(0, 30) + '...' : 'MISSING'
+      hasAuthHeader: !!auth,
+      hasAuthQuery: !!jwtFromQuery,
+      authPreview: finalAuth ? finalAuth.substring(0, 30) + '...' : 'MISSING'
     });
 
     // Build relay URL with query params
@@ -39,15 +44,15 @@ export async function GET(
     const res = await fetch(url, {
       method: 'GET',
       headers: {
-        'Authorization': auth || `Bearer ${RELAY_API_KEY}`,  // Forward JWT, fallback to API key
+        'Authorization': finalAuth || `Bearer ${RELAY_API_KEY}`,  // Forward JWT, fallback to API key
         'Content-Type': 'application/json',
       },
     });
 
-    console.log(`[Proxy/sync] Relay response:`, {
+    console.error(`[Proxy/sync] Relay response:`, {
       status: res.status,
       statusText: res.statusText,
-      sentAuth: auth ? 'JWT' : 'API_KEY'
+      sentAuth: finalAuth ? 'JWT' : 'API_KEY'
     });
 
     const responseText = await res.text();

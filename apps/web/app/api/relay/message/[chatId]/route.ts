@@ -30,9 +30,10 @@ export async function POST(
     const contentType = req.headers.get('content-type') || 'application/json';
     const origin = req.headers.get('origin') || '';
 
-    console.log(`[Proxy/message] POST /message/${chatId}`, { 
+    console.error(`[Proxy/message] POST /message/${chatId}`, { 
       hasAuth: !!auth,
-      authPreview: auth ? auth.substring(0, 30) + '...' : 'MISSING'
+      authPreview: auth ? auth.substring(0, 30) + '...' : 'MISSING',
+      allHeaders: Array.from(req.headers.entries()).map(([k, v]) => `${k}: ${v.substring(0, 50)}`)
     });
 
     // Forward to relay with authentication
@@ -47,7 +48,7 @@ export async function POST(
       body,
     });
 
-    console.log(`[Proxy/message] Relay response:`, {
+    console.error(`[Proxy/message] Relay response:`, {
       status: res.status,
       statusText: res.statusText,
       sentAuth: auth ? 'JWT' : 'API_KEY'
