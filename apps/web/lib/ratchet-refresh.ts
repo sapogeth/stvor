@@ -180,7 +180,12 @@ export async function refreshSessionFromPeer({
       }
       logDebug('ratchet', 'Fetching sync with JWT', { hasJWT: !!jwtToken });
 
-      const syncRes = await fetch(`${relayUrl}/sync/${chatId}?since=0&limit=10`, {
+      // Use browser proxy instead of direct relay (/api/relay/sync adds API key server-side)
+      const syncUrl = typeof window !== 'undefined' 
+        ? `/api/relay/sync/${chatId}?since=0&limit=10`
+        : `${relayUrl}/sync/${chatId}?since=0&limit=10`;
+      
+      const syncRes = await fetch(syncUrl, {
         headers: {
           'Authorization': jwtToken ? `Bearer ${jwtToken}` : `Bearer ${RELAY_API_KEY}`,
         },
