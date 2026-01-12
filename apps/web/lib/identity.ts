@@ -146,10 +146,15 @@ export function getAuthToken(username: string): string | null {
  */
 export function createAuthHeaders(username: string): HeadersInit {
   const token = getAuthToken(username);
-  logDebug('auth', 'Creating auth headers', { username, hasToken: !!token });
-
+  
+  // CRITICAL: Log whether JWT is found
+  console.log(`[createAuthHeaders] Username: "${username}", Has token: ${!!token}`);
+  
   if (token) {
-    logDebug('auth', 'Using JWT from localStorage', { token: redactToken(token) });
+    console.log(`[createAuthHeaders] ✅ Using JWT from localStorage (key: jwt_token_${username})`);
+  } else {
+    console.error(`[createAuthHeaders] ❌ NO JWT TOKEN FOUND! Key tried: jwt_token_${username}`);
+    console.error(`[createAuthHeaders] localStorage keys:`, Object.keys(localStorage));
   }
 
   const headers: HeadersInit = {
