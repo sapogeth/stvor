@@ -27,7 +27,12 @@ export async function GET(
     const since = searchParams.get('since') || '0';
     const limit = searchParams.get('limit') || '10';
 
-    console.log(`[Proxy] GET /sync/${chatId}`, { since, limit, hasAuth: !!auth });
+    console.log(`[Proxy/sync] GET /sync/${chatId}`, { 
+      since, 
+      limit, 
+      hasAuth: !!auth,
+      authPreview: auth ? auth.substring(0, 30) + '...' : 'MISSING'
+    });
 
     // Build relay URL with query params
     const url = `${RELAY_BASE}/sync/${chatId}?since=${since}&limit=${limit}`;
@@ -37,6 +42,12 @@ export async function GET(
         'Authorization': auth || `Bearer ${RELAY_API_KEY}`,  // Forward JWT, fallback to API key
         'Content-Type': 'application/json',
       },
+    });
+
+    console.log(`[Proxy/sync] Relay response:`, {
+      status: res.status,
+      statusText: res.statusText,
+      sentAuth: auth ? 'JWT' : 'API_KEY'
     });
 
     const responseText = await res.text();

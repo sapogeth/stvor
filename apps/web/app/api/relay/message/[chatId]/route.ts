@@ -30,7 +30,10 @@ export async function POST(
     const contentType = req.headers.get('content-type') || 'application/json';
     const origin = req.headers.get('origin') || '';
 
-    console.log(`[Proxy] POST /message/${chatId}`, { hasAuth: !!auth });
+    console.log(`[Proxy/message] POST /message/${chatId}`, { 
+      hasAuth: !!auth,
+      authPreview: auth ? auth.substring(0, 30) + '...' : 'MISSING'
+    });
 
     // Forward to relay with authentication
     const url = `${RELAY_BASE}/message/${chatId}`;
@@ -42,6 +45,12 @@ export async function POST(
         'Origin': origin,
       },
       body,
+    });
+
+    console.log(`[Proxy/message] Relay response:`, {
+      status: res.status,
+      statusText: res.statusText,
+      sentAuth: auth ? 'JWT' : 'API_KEY'
     });
 
     const responseText = await res.text();

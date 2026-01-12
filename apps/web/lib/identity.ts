@@ -152,6 +152,7 @@ export function createAuthHeaders(username: string): HeadersInit {
   
   if (token) {
     console.log(`[createAuthHeaders] ✅ Using JWT from localStorage (key: jwt_token_${username})`);
+    console.log(`[createAuthHeaders] Token preview: ${token.substring(0, 20)}...${token.substring(token.length - 20)}`);
   } else {
     console.error(`[createAuthHeaders] ❌ NO JWT TOKEN FOUND! Key tried: jwt_token_${username}`);
     console.error(`[createAuthHeaders] localStorage keys:`, Object.keys(localStorage));
@@ -162,6 +163,7 @@ export function createAuthHeaders(username: string): HeadersInit {
   };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+    console.log(`[createAuthHeaders] 📤 Setting Authorization header: Bearer ${token.substring(0, 20)}...`);
   } else {
     logWarn('auth', 'No JWT token found for user', { username });
   }
