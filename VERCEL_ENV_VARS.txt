@@ -20,6 +20,12 @@ Scope:          Production
 Why:            Allows browser WebSocket connections to relay server
 
 
+Variable Name:   RELAY_API_KEY
+Value:          dev-key-change-in-production (CHANGE THIS IN PRODUCTION!)
+Scope:          Production
+Why:            Required for server-to-server API authentication with relay. Must match RELAY_API_KEY on Railway.
+
+
 Variable Name:   CLERK_SECRET_KEY
 Value:          sk_live_... (get from https://dashboard.clerk.com/apps/YOUR_APP/api-keys)
 Scope:          Production
