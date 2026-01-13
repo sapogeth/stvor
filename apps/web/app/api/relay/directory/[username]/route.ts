@@ -17,6 +17,22 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ username: string }> }
 ) {
+  // EMERGENCY DEBUG: Return hardcoded response to verify function works
+  const testMode = _req.url?.includes('?debug=1');
+  if (testMode) {
+    console.error('[Proxy/directory] DEBUG MODE: Function is running!');
+    return NextResponse.json({
+      debug: true,
+      message: 'Function works!',
+      env: {
+        RELAY_URL: process.env.RELAY_URL || 'NOT SET',
+        RELAY_BASE_URL: process.env.RELAY_BASE_URL || 'NOT SET',
+        NEXT_PUBLIC_RELAY_URL: process.env.NEXT_PUBLIC_RELAY_URL || 'NOT SET',
+        RELAY_API_KEY: process.env.RELAY_API_KEY ? 'SET' : 'NOT SET',
+      }
+    });
+  }
+
   try {
     const resolvedParams = await params;
     const raw = resolvedParams.username || '';
