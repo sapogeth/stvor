@@ -262,7 +262,8 @@ class SecureKeystoreManager {
 
     // Generate random salt and IV (SYNCHRONOUS)
     const salt = getSecureRandomBytes(SALT_LENGTH);
-    const iv = getSecureRandomBytes(AES_IV_LENGTH);
+    const ivBytes = getSecureRandomBytes(AES_IV_LENGTH);
+    const iv = new Uint8Array(ivBytes); // Ensure ArrayBuffer, not ArrayBufferLike
 
     // Derive key from password
     const key = await this.deriveKey(password, salt);
@@ -305,7 +306,8 @@ class SecureKeystoreManager {
     try {
       // Parse base64 metadata
       const salt = Uint8Array.from(atob(record.salt), (c) => c.charCodeAt(0));
-      const iv = Uint8Array.from(atob(record.iv), (c) => c.charCodeAt(0));
+      const ivBytes = Uint8Array.from(atob(record.iv), (c) => c.charCodeAt(0));
+      const iv = new Uint8Array(ivBytes); // Ensure ArrayBuffer, not ArrayBufferLike
       const ciphertextBytes = Uint8Array.from(atob(record.ciphertext), (c) => c.charCodeAt(0));
 
       // Derive key from password
