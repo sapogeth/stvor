@@ -431,8 +431,11 @@ async function authenticate(request: any, reply: any) {
       path: request.url,
       error: (err as Error).message,
     });
-    console.log(`[Auth] 🚫 Sending 401 reply`);
-    reply.code(401).send({ error: 'Authentication required' });
+    console.log(`[Auth] 🚫 Throwing 401 error`);
+    // CRITICAL: Throw error for proper preHandler error handling
+    const error = new Error('JWT verification failed');
+    (error as any).statusCode = 401;
+    throw error;
   }
 }
 
