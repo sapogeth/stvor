@@ -189,8 +189,8 @@ export async function encryptMessageWithPadding(
   paddingConfig?: PaddingConfig
 ): Promise<Uint8Array> {
   const effectiveConfig: PaddingConfig =
-    paddingConfig ?? (crypto.DEFAULT_PADDING_CONFIG as PaddingConfig);
-  const paddedMessage = crypto.padMessage(message, effectiveConfig);
+    paddingConfig ?? (protocolCrypto.DEFAULT_PADDING_CONFIG as PaddingConfig);
+  const paddedMessage = protocolCrypto.padMessage(message, effectiveConfig);
   return encryptFn(paddedMessage);
 }
 
@@ -210,9 +210,9 @@ export async function decryptMessageWithUnpadding(
   decryptFn: (data: Uint8Array) => Promise<Uint8Array>,
   blockSize?: number
 ): Promise<string> {
-  const effectiveBlockSize = blockSize ?? crypto.DEFAULT_PADDING_CONFIG.blockSize;
+  const effectiveBlockSize = blockSize ?? protocolCrypto.DEFAULT_PADDING_CONFIG.blockSize;
   const plaintext = await decryptFn(ciphertext);
-  const unpadded = crypto.unpadMessage(plaintext, effectiveBlockSize);
+  const unpadded = protocolCrypto.unpadMessage(plaintext, effectiveBlockSize);
   return new TextDecoder().decode(unpadded);
 }
 
