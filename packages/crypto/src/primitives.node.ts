@@ -1,7 +1,10 @@
 /**
- * Cryptographic Primitives Layer
+ * Cryptographic Primitives Layer (Node.js Server-Side ONLY)
  * X25519, Ed25519 via libsodium
  * ML-KEM-768 and ML-DSA-65 via liboqs (OpenForge)
+ * 
+ * SECURITY: This module MUST NOT be imported in browser/client code.
+ * Use primitives.ts (browser-safe) or dynamic imports instead.
  */
 
 import sodium from 'libsodium-wrappers-sumo';
@@ -10,21 +13,29 @@ import { sha384, sha512 } from '@noble/hashes/sha2';
 import { sha256 } from '@noble/hashes/sha256';
 import * as constants from './constants.js';
 
-// Import liboqs for post-quantum cryptography
-import { createMLKEM768, ML_KEM_768_INFO } from '@openforge-sh/liboqs';
-import { createMLDSA65, ML_DSA_65_INFO } from '@openforge-sh/liboqs';
-import type { MLKEM768 } from '@openforge-sh/liboqs';
-import type { MLDSA65 } from '@openforge-sh/liboqs';
+// SECURITY: Dynamic import to prevent build-time evaluation
+// liboqs WASM modules MUST NOT be bundled into client code
+let mlkem768: any = null;
+let mldsa65: any = null;
+let ML_KEM_768_INFO: any = null;
+let ML_DSA_65_INFO: any = null;
 
 let sodiumReady = false;
-let mlkem768: MLKEM768 | null = null;
-let mldsa65: MLDSA65 | null = null;
 
 export async function initCrypto(): Promise<void> {
   if (sodiumReady && mlkem768 && mldsa65) return;
 
   await sodium.ready;
   sodiumReady = true;
+
+  // SECURITY: Dynamic import prevents build-time WASM evaluation
+  // Whitelist ONLY ML-KEM-768 and ML-DSA-65 (no other algorithms)
+  const liboqs = await import('@openforge-sh/liboqs');
+  const { createMLKEM768, ML_KEM_768_INFO: kemInfo } = liboqs;
+  const { createMLDSA65, ML_DSA_65_INFO: dsaInfo } = liboqs;
+  
+  ML_KEM_768_INFO = kemInfo;
+  ML_DSA_65_INFO = dsaInfo;
 
   // Initialize liboqs instances (loads WASM modules)
   mlkem768 = await createMLKEM768();

@@ -46,6 +46,26 @@ const nextConfig = {
       };
     }
 
+    // 4. CRITICAL: Prevent liboqs from bundling in browser
+    // liboqs is WASM-based and should only load dynamically
+    if (!isServer) {
+      config.externals = config.externals || [];
+      // Mark liboqs as external for client bundle - it will be loaded via dynamic import
+      config.externals.push({
+        '@openforge-sh/liboqs': 'commonjs @openforge-sh/liboqs',
+      });
+    }
+
+    // 5. Suppress liboqs "Critical dependency" warnings
+    // These are from dynamic WASM loading and are expected
+    config.ignoreWarnings = [
+      ...(config.ignoreWarnings || []),
+      {
+        module: /node_modules\/@openforge-sh\/liboqs/,
+        message: /Critical dependency: the request of a dependency is an expression/,
+      },
+    ];
+
     return config;
   },
 };

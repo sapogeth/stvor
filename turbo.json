@@ -2,7 +2,6 @@
   "$schema": "https://turbo.build/schema.json",
   "globalEnv": [
     "NEXT_PUBLIC_RELAY_URL",
-    "CLERK_SECRET_KEY",
     "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
     "NEXT_PUBLIC_SUPABASE_URL",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY"
@@ -10,11 +9,25 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**", "build/**"]
+      "outputs": [".next/**", "!.next/cache/**", "dist/**", "build/**"],
+      "env": [
+        "RELAY_API_KEY",
+        "RELAY_JWT_SECRET",
+        "CLERK_SECRET_KEY",
+        "DATABASE_URL",
+        "STORAGE_TYPE"
+      ]
     },
     "dev": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "env": [
+        "RELAY_API_KEY",
+        "RELAY_JWT_SECRET",
+        "CLERK_SECRET_KEY",
+        "DATABASE_URL",
+        "STORAGE_TYPE"
+      ]
     },
     "start": {
       "dependsOn": ["build"],

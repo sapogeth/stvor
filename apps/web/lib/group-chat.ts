@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Group Chat Management
  * Handles group creation, session establishment, and message encryption
@@ -279,11 +281,9 @@ export function generateGroupId(groupName: string, participants: string[]): stri
  */
 export function generateRandomGroupId(): string {
   const bytes = new Uint8Array(32);
-  if (typeof window !== 'undefined') {
-    window.crypto.getRandomValues(bytes);
-  } else {
-    const { randomBytes } = require('crypto');
-    randomBytes(32).copy(bytes);
-  }
+  // Use secure random abstraction (handles browser/Node automatically)
+  const { getSecureRandomBytes } = await import('@/lib/runtime/secure-random');
+  const secureBytes = getSecureRandomBytes(32);
+  bytes.set(secureBytes);
   return Buffer.from(bytes).toString('hex');
 }

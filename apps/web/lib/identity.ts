@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Identity Management for Ilyazh-Web3E2E v0.8
  *
@@ -222,9 +224,9 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
   // TODO: Replace with user-chosen password with proper UI flow
   let password = localStorage.getItem(`ilyazh_keystore_seed_${canonical}`);
   if (!password) {
-    // First time for this user - generate random seed
-    const randomBytes = globalThis.crypto.getRandomValues(new Uint8Array(32));
-    password = Buffer.from(randomBytes).toString('base64');
+    // First time for this user - generate random seed using secure abstraction
+    const { generateSecureSeed } = await import('@/lib/runtime/secure-random');
+    password = generateSecureSeed();
     localStorage.setItem(`ilyazh_keystore_seed_${canonical}`, password);
     logInfo('identity', 'Generated new keystore seed for user (stored in localStorage)');
   } else {

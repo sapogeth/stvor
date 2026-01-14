@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Secure Keystore - Password-Protected E2E Key Storage
  *
@@ -258,8 +260,9 @@ class SecureKeystoreManager {
     console.log('[SecureKeystore] Encrypting keystore with AES-256-GCM');
 
     // Generate random salt and IV
-    const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
-    const iv = crypto.getRandomValues(new Uint8Array(AES_IV_LENGTH));
+    const { getSecureRandomBytes } = await import('@/lib/runtime/secure-random');
+    const salt = getSecureRandomBytes(SALT_LENGTH);
+    const iv = getSecureRandomBytes(AES_IV_LENGTH);
 
     // Derive key from password
     const key = await this.deriveKey(password, salt);
