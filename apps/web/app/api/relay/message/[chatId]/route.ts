@@ -51,7 +51,7 @@ export async function POST(
     console.error(`[Proxy/message] Relay response:`, {
       status: res.status,
       statusText: res.statusText,
-      sentAuth: auth ? 'JWT' : 'API_KEY'
+      sentAuth: jwt ? 'JWT' : 'API_KEY'
     });
 
     const responseText = await res.text();
