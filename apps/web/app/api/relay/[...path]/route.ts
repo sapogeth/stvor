@@ -32,9 +32,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pat
 
     // Forward all headers, especially Authorization from client
     const clientAuth = req.headers.get('authorization');
-    const headers: Record<string, string> = {
-      'Authorization': clientAuth || `Bearer ${RELAY_API_KEY}`, // Forward client JWT, fallback to API key
-    };
+    
+    // CRITICAL: /sync and /message require JWT, not API key
+    const requiresJWT = path.startsWith('sync/') || path.startsWith('message/');
+    
+    const headers: Record<string, string> = {};
+    
+    if (requiresJWT) {
+      // Routes requiring JWT authentication
+      if (!clientAuth) {
+        console.error(`[Proxy] GET /${path}: Missing client JWT for authenticated route`);
+        return NextResponse.json(
+          { error: 'Authentication required', message: 'Client must provide JWT token' },
+          { status: 401 }
+        );
+      }
+      headers['Authorization'] = clientAuth; // Forward client JWT only
+    } else {
+      // Public routes or server-to-server routes
+      headers['Authorization'] = clientAuth || `Bearer ${RELAY_API_KEY}`;
+    }
+    
     req.headers.forEach((value, key) => {
       // Skip host, connection, and authorization (already handled above)
       if (!['host', 'connection', 'content-length', 'authorization'].includes(key.toLowerCase())) {
@@ -87,9 +105,27 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ path
 
     // Forward all headers, especially Authorization from client
     const clientAuth = req.headers.get('authorization');
-    const headers: Record<string, string> = {
-      'Authorization': clientAuth || `Bearer ${RELAY_API_KEY}`, // Forward client JWT, fallback to API key
-    };
+    
+    // CRITICAL: /sync and /message require JWT, not API key
+    const requiresJWT = path.startsWith('sync/') || path.startsWith('message/');
+    
+    const headers: Record<string, string> = {};
+    
+    if (requiresJWT) {
+      // Routes requiring JWT authentication
+      if (!clientAuth) {
+        console.error(`[Proxy] POST /${path}: Missing client JWT for authenticated route`);
+        return NextResponse.json(
+          { error: 'Authentication required', message: 'Client must provide JWT token' },
+          { status: 401 }
+        );
+      }
+      headers['Authorization'] = clientAuth; // Forward client JWT only
+    } else {
+      // Public routes or server-to-server routes
+      headers['Authorization'] = clientAuth || `Bearer ${RELAY_API_KEY}`;
+    }
+    
     req.headers.forEach((value, key) => {
       // Skip host, connection, and authorization (already handled above)
       if (!['host', 'connection', 'content-length', 'authorization'].includes(key.toLowerCase())) {
@@ -139,8 +175,29 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ path
 
     console.log(`[Proxy] PUT /${path}`);
 
-    // Forward all headers, especially Authorization
+    // Forward all headers, especially Authorization from client
+    const clientAuth = req.headers.get('authorization');
+    
+    // CRITICAL: /sync and /message require JWT, not API key
+    const requiresJWT = path.startsWith('sync/') || path.startsWith('message/');
+    
     const headers: Record<string, string> = {};
+    
+    if (requiresJWT) {
+      // Routes requiring JWT authentication
+      if (!clientAuth) {
+        console.error(`[Proxy] PUT /${path}: Missing client JWT for authenticated route`);
+        return NextResponse.json(
+          { error: 'Authentication required', message: 'Client must provide JWT token' },
+          { status: 401 }
+        );
+      }
+      headers['Authorization'] = clientAuth; // Forward client JWT only
+    } else {
+      // Public routes or server-to-server routes
+      headers['Authorization'] = clientAuth || `Bearer ${RELAY_API_KEY}`;
+    }
+    
     req.headers.forEach((value, key) => {
       // Skip host and connection headers
       if (!['host', 'connection', 'content-length'].includes(key.toLowerCase())) {
