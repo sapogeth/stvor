@@ -1,19 +1,18 @@
 // apps/web/app/api/relay/message/[chatId]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { extractJWTFromRequest } from '@/lib/auth-cookies';
 
 // Force Node.js runtime (not Edge)
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const RELAY_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
-
 const RELAY_BASE = process.env.RELAY_URL || process.env.RELAY_BASE_URL || process.env.NEXT_PUBLIC_RELAY_URL || 'http://localhost:3001';
 
 /**
  * POST /api/relay/message/:chatId
- * Forwards message (handshake or encrypted) to relay server
- * SECURITY: JWT extracted from httpOnly cookie (XSS-resistant when accessed via Next.js API routes - see ARCHITECTURAL_ASSUMPTIONS.md §A1)
+ * CRITICAL: Transparent proxy - forwards Authorization header from client
+ * Does NOT verify Clerk session, does NOT use httpOnly cookies
+ * Client sends: Authorization: Bearer <relay_jwt>
+ * Relay verifies JWT with RELAY_JWT_SECRET
  */
 export async function POST(
   req: NextRequest,
@@ -26,32 +25,31 @@ export async function POST(
     // Read body as text to forward raw JSON
     const body = await req.text();
 
-    // SECURITY: Extract JWT from httpOnly cookie
-    const jwt = await extractJWTFromRequest(req);
+    // CRITICAL: Forward Authorization header from client
+    const authHeader = req.headers.get('authorization');
     const contentType = req.headers.get('content-type') || 'application/json';
     const origin = req.headers.get('origin') || '';
 
-    console.error(`[Proxy/message] POST /message/${chatId}`, { 
-      hasJWT: !!jwt,
+    console.log(`[Proxy/message] POST /message/${chatId}`, { 
+      hasAuth: !!authHeader,
     });
 
-    // Forward to relay with authentication
+    // Forward to relay (transparent proxy)
     const url = `${RELAY_BASE}/message/${chatId}`;
-    const authHeader = jwt ? `Bearer ${jwt}` : `Bearer ${RELAY_API_KEY}`;
+    const headers: HeadersInit = {
+      'Content-Type': contentType,
+      'Origin': origin,
+    };
+    
+    // Forward Authorization header if present
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+    
     const res = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': authHeader,
-        'Content-Type': contentType,
-        'Origin': origin,
-      },
+      headers,
       body,
-    });
-
-    console.error(`[Proxy/message] Relay response:`, {
-      status: res.status,
-      statusText: res.statusText,
-      sentAuth: jwt ? 'JWT' : 'API_KEY'
     });
 
     const responseText = await res.text();

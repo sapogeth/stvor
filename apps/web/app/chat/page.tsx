@@ -423,8 +423,9 @@ export default function ChatPage() {
         const token = getAuthToken(username);
         const jwtParam = token ? `&jwt=${encodeURIComponent(token)}` : '';
         
+        const headers = await createAuthHeaders(username);
         const syncRes = await fetch(getRelayUrlForBrowser(`sync/${chatId}?since=${cursor}${jwtParam}`), {
-          headers: createAuthHeaders(username),
+          headers,
         });
 
         if (!syncRes.ok) {
@@ -516,8 +517,9 @@ export default function ChatPage() {
                 wireData = new Uint8Array(Buffer.from(msg.cipher, 'base64'));
               } else if (entry.blobRef) {
                 // Real relay: fetch blob by reference
+                const headers = await createAuthHeaders(username);
                 const blobRes = await fetch(getRelayUrlForBrowser(`blob/${chatId}/${entry.blobRef}`), {
-                  headers: createAuthHeaders(username),
+                  headers,
                 });
 
                 if (!blobRes.ok) continue;
@@ -582,9 +584,10 @@ export default function ChatPage() {
               const responseWireData = encodeHandshakeMessage(responseMessage);
               const responseData = Buffer.from(responseWireData).toString('base64');
 
+              const headers = await createAuthHeaders(username);
               const handshakeRes = await fetch(getRelayUrlForBrowser(`message/${chatId}`), {
                 method: 'POST',
-                headers: createAuthHeaders(username),
+                headers,
                 body: JSON.stringify({
                   type: 'handshake',
                   from: username,
@@ -597,7 +600,21 @@ export default function ChatPage() {
               if (handshakeRes.status === 409) {
                 console.warn('[Handshake] Relay returned 409 (handshake response already exists), but session is saved locally');
               } else if (!handshakeRes.ok) {
-                console.warn('[Handshake] Relay returned', handshakeRes.status, 'but continuing in DEV mode');
+                // CRITICAL: ABORT on any error (401, 403, 500)
+                console.error('[Handshake] ❌ Handshake response failed:', handshakeRes.status);
+                const errorData = await handshakeRes.json().catch(() => ({ error: 'Unknown error' }));
+                
+                // Mark relay auth as FAILED
+                const { relayAuthController } = await import('@/lib/relay-auth-controller');
+                relayAuthController.markFailed(
+                  `Handshake response failed: ${errorData.error || handshakeRes.statusText}`,
+                  handshakeRes.status as 401 | 403
+                );
+                
+                throw new Error(
+                  `Cannot complete handshake: relay returned ${handshakeRes.status}. ` +
+                  `Please check your authentication and try again.`
+                );
               }
 
               console.log('[Handshake] Response sent');
@@ -803,8 +820,9 @@ export default function ChatPage() {
             } else if (entry.blobRef) {
               // Real relay: fetch blob by reference
               console.log(`[Message] Fetching blob by reference: ${entry.blobRef}`);
+              const headers = await createAuthHeaders(username);
               const blobRes = await fetch(getRelayUrlForBrowser(`blob/${chatId}/${entry.blobRef}`), {
-                headers: createAuthHeaders(username),
+                headers,
               });
 
               if (!blobRes.ok) continue;
@@ -1456,9 +1474,10 @@ export default function ChatPage() {
 
       // 1. Get canonical chatId from relay FIRST (always!)
       console.log('[Chat] Getting canonical chat ID from relay...');
+      const headers = await createAuthHeaders(usernameCanonical);
       const initRes = await fetch(getRelayUrlForBrowser('chat/init'), {
         method: 'POST',
-        headers: createAuthHeaders(usernameCanonical),
+        headers,
         body: JSON.stringify({
           participants: [usernameCanonical, recipientCanonical],
         }),
@@ -1671,9 +1690,10 @@ export default function ChatPage() {
 
       console.log('[Handshake] Sending handshake message to relay...');
 
+      const headers = await createAuthHeaders(usernameCanonical);
       const sendRes = await fetch(getRelayUrlForBrowser(`message/${canonicalChatId}`), {
         method: 'POST',
-        headers: createAuthHeaders(usernameCanonical),
+        headers,
         body: JSON.stringify({
           type: 'handshake',
           from: usernameCanonical,
@@ -1686,7 +1706,21 @@ export default function ChatPage() {
       if (sendRes.status === 409) {
         console.warn('[Handshake] Relay returned 409 (handshake already exists), proceeding with local session init');
       } else if (!sendRes.ok) {
-        console.warn('[Handshake] Relay returned', sendRes.status, 'but continuing in DEV mode');
+        // CRITICAL: ABORT on any error (401, 403, 500)
+        console.error('[Handshake] ❌ Handshake send failed:', sendRes.status);
+        const errorData = await sendRes.json().catch(() => ({ error: 'Unknown error' }));
+        
+        // Mark relay auth as FAILED
+        const { relayAuthController } = await import('@/lib/relay-auth-controller');
+        relayAuthController.markFailed(
+          `Handshake send failed: ${errorData.error || sendRes.statusText}`,
+          sendRes.status as 401 | 403
+        );
+        
+        throw new Error(
+          `Cannot initiate handshake: relay returned ${sendRes.status}. ` +
+          `Please check your authentication and try again.`
+        );
       }
 
       console.log('[Handshake] Handshake message sent, waiting for response...');
@@ -1833,9 +1867,10 @@ export default function ChatPage() {
         version: requestBody.version,
       });
 
+      const headers = await createAuthHeaders(usernameCanonical);
       const response = await fetch(getRelayUrlForBrowser(`message/${chatId}`), {
         method: 'POST',
-        headers: createAuthHeaders(usernameCanonical),
+        headers,
         body: JSON.stringify(requestBody),
       });
 

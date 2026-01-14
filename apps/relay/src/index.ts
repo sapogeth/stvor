@@ -105,6 +105,9 @@ declare module 'fastify' {
   }
 }
 
+// ==================== Web JWT Auth Middleware ====================
+import { requireWebAuth, requireParticipant, optionalWebAuth } from './web-jwt-auth';
+
 // ==================== Storage Initialization ====================
 
 let storage: IStorageAdapter | null = null;
@@ -1552,27 +1555,20 @@ function detectMessageType(body: MessageBody): 'handshake' | 'message' {
 
 fastify.post<{ Params: { chatId: string }, Body: MessageBody }>(
   '/message/:chatId',
+  {
+    preHandler: [requireWebAuth, requireParticipant], // CRITICAL: Enforce auth + authorization
+  },
   async (request, reply) => {
-    // CRITICAL: Verify JWT INSIDE handler, not in preHandler
-    // This avoids Fastify preHandler error handling issues
-    // Supports JWT from Authorization header OR query parameter
-    try {
-      const decoded = await verifyJWTFromRequest(request);
-      request.user = decoded;
-      request.authenticatedUserId = decoded.username || decoded.sub;
-    } catch (err) {
-      console.error(`[Message] ❌ JWT verification failed:`, (err as Error).message);
-      return reply.code(401).send({ error: 'Authentication required' });
-    }
-
     const { chatId } = request.params;
+    
+    // CRITICAL: Username is guaranteed by requireWebAuth middleware
+    const senderId = request.user!.username;
 
     // Support both new and legacy body formats
-    let senderId = request.body.senderId || request.body.from;
     const encryptedBlob = request.body.encryptedBlob || request.body.blob;
 
-    if (!chatId || !encryptedBlob || !senderId) {
-      return reply.code(400).send({ error: 'Missing required fields (chatId, encryptedBlob/blob, senderId/from)' });
+    if (!chatId || !encryptedBlob) {
+      return reply.code(400).send({ error: 'Missing required fields (chatId, encryptedBlob/blob)' });
     }
 
     // Validate chatId format
@@ -1599,39 +1595,6 @@ fastify.post<{ Params: { chatId: string }, Body: MessageBody }>(
       RATE_LIMITS.MESSAGE.windowMs
     );
     if (!rateLimitPassed) return;
-
-    // CRITICAL FIX: Normalize senderId to canonical form (lowercase, trimmed)
-    senderId = senderId.trim().toLowerCase();
-
-    // Validate username format
-    if (!validateUsername(senderId)) {
-      return reply.code(400).send({
-        error: 'Invalid username format for senderId.',
-      });
-    }
-
-    // CRITICAL FIX: Verify sender has registered identity before accepting messages
-    // This ensures ALL messages come from users with verifiable E2E identities
-    try {
-      const senderUser = await storage.users.getUserByUsername(senderId);
-
-      if (!senderUser) {
-        console.warn(`[Message] ❌ Rejected message from unregistered user: ${senderId}`);
-        return reply.code(403).send({
-          error: 'identity_required',
-          message: 'You must register your identity in /directory before sending messages',
-          details: `User '${senderId}' not found in identity directory`,
-        });
-      }
-
-      console.log(`[Message] ✅ Identity verified for sender: ${senderId}`);
-    } catch (err) {
-      console.error(`[Message] ❌ Failed to verify identity for ${senderId}:`, err);
-      return reply.code(500).send({
-        error: 'identity_verification_failed',
-        message: 'Failed to verify sender identity',
-      });
-    }
 
     // CRITICAL FIX: Detect message type (handshake vs message)
     const messageType = detectMessageType(request.body);
@@ -1991,40 +1954,18 @@ fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
         message: 'Authentication required. JWT token invalid or missing.',
         code: 'AUTH_REQUIRED',
       });
-    }
-
-    // STEP 2: Input validation
-    if (!chatId) {
-      return reply.code(400).send({ 
-        error: 'Bad Request',
-        message: 'Missing chatId parameter',
-        code: 'MISSING_CHAT_ID',
-      });
-    }
-
-    if (!validateChatId(chatId)) {
-      return reply.code(400).send({
-        error: 'Bad Request',
-        message: 'Invalid chatId format. Must be a valid SHA256 hash.',
-        code: 'INVALID_CHAT_ID',
-      });
-    }
-
-    // STEP 3: Rate limiting
-    const rateLimitPassed = await rateLimit(
-      request,
-      reply,
-      `sync:${request.ip}`,
-      RATE_LIMITS.SYNC.limit,
-      RATE_LIMITS.SYNC.windowMs
-    );
-    if (!rateLimitPassed) return; // 429 returned by rateLimit()
-
-    // STEP 4: Authorization (membership verification)
-    // SECURITY: Same authorization chain as /message/:chatId uses chat_participants
-    const isParticipant = await storage.chatParticipants.isParticipant(chatId, userId);
-    if (!isParticipant) {
-      // 403 Forbidden: Authenticated but not authorized (not a participant)
+  {
+    preHandler: [requireWebAuth, requireParticipant], // CRITICAL: Enforce auth + authorization
+  },
+  async (request, reply) => {
+    const { chatId } = request.params;
+    const since = parseInt(request.query.since || '0');
+    const limit = Math.min(parseInt(request.query.limit || '100'), 1000);
+    
+    // CRITICAL: Username is guaranteed by requireWebAuth middleware
+    const userId = request.user!.username;
+    
+    console.log(`[Sync] ✅ Authentication successful:`, { userId, chatId }); // 403 Forbidden: Authenticated but not authorized (not a participant)
       logSecurityEvent('SYNC_AUTHORIZATION_FAILED', {
         chatId,
         userId,
@@ -2042,29 +1983,7 @@ fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
     
     console.log(`[Sync] ✅ Authorization successful:`, { userId, chatId, since, limit });
 
-    // STEP 5: Fetch messages
-    const messages = await storage.messages.listBlobsSince(chatId, since, limit);
-
-    console.log(`[Sync] Returning ${messages.length} messages:`, { chatId, since, limit });
-
-    if (messages.length > 0) {
-      const lastSequence = messages[messages.length - 1].sequence;
-      await storage.sync.updateCursor(userId, chatId, lastSequence);
-    }
-
-    // CRITICAL FIX: Include canonical participants with identities
-    // This provides source of truth for E2E identity resolution
-    const participants: Array<{ username: string; canonicalUsername: string; identityEd25519: string; identityMLDSA: string }> = [];
-    const uniqueSenders = new Set<string>(messages.map((m: any) => m.senderId as string).filter(Boolean));
-
-    for (const senderId of uniqueSenders) {
-      try {
-        // Fetch canonical identity for this participant
-        const user = await storage.users.getUserByUsername(senderId as string);
-
-        if (user) {
-          participants.push({
-            username: senderId as string, // Canonical username
+    // STEP 5: Fetch messages (authorization already done by requireParticipant middleware)d as string, // Canonical username
             canonicalUsername: (senderId as string).toLowerCase().trim(), // CRITICAL FIX: Explicit canonical form
             identityEd25519: user.identityEd25519,
             identityMLDSA: user.identityMLDSA,

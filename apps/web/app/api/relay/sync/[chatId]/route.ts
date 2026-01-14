@@ -1,18 +1,18 @@
 // apps/web/app/api/relay/sync/[chatId]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { extractJWTFromRequest } from '@/lib/auth-cookies';
 
 // Force Node.js runtime (not Edge)
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const RELAY_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
 const RELAY_BASE = process.env.RELAY_URL || process.env.RELAY_BASE_URL || process.env.NEXT_PUBLIC_RELAY_URL || 'http://localhost:3001';
 
 /**
  * GET /api/relay/sync/:chatId
- * Fetch sync messages for a chat
- * SECURITY: JWT extracted from httpOnly cookie (XSS-resistant when accessed via Next.js API routes - see ARCHITECTURAL_ASSUMPTIONS.md §A1)
+ * CRITICAL: Transparent proxy - forwards Authorization header from client
+ * Does NOT verify Clerk session, does NOT use httpOnly cookies
+ * Client sends: Authorization: Bearer <relay_jwt>
+ * Relay verifies JWT with RELAY_JWT_SECRET
  */
 export async function GET(
   req: NextRequest,
@@ -22,37 +22,34 @@ export async function GET(
     const resolvedParams = await params;
     const chatId = resolvedParams.chatId;
 
-    // SECURITY: Extract JWT from httpOnly cookie (NOT from JavaScript-accessible storage)
-    const jwt = await extractJWTFromRequest(req);
+    // CRITICAL: Forward Authorization header from client
+    const authHeader = req.headers.get('authorization');
     
     const searchParams = req.nextUrl.searchParams;
     const since = searchParams.get('since') || '0';
     const limit = searchParams.get('limit') || '10';
 
-    console.error(`[Proxy/sync] GET /sync/${chatId}`, { 
+    console.log(`[Proxy/sync] GET /sync/${chatId}`, { 
       since, 
       limit, 
-      hasJWT: !!jwt,
+      hasAuth: !!authHeader,
     });
 
     // Build relay URL with query params
     const url = `${RELAY_BASE}/sync/${chatId}?since=${since}&limit=${limit}`;
     
-    // SECURITY: Use JWT from cookie or fallback to API key
-    const authHeader = jwt ? `Bearer ${jwt}` : `Bearer ${RELAY_API_KEY}`;
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    // Forward Authorization header if present
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
     
     const res = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Authorization': authHeader,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    console.error(`[Proxy/sync] Relay response:`, {
-      status: res.status,
-      statusText: res.statusText,
-      sentAuth: jwt ? 'JWT' : 'API_KEY'
+      headers,
     });
 
     const responseText = await res.text();
