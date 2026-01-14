@@ -20,6 +20,7 @@
 
 import type { IdentityKeyPair } from '@/lib/crypto';
 import type { PrekeySecrets } from './prekeys';
+import { getSecureRandomBytes } from '@/lib/runtime/secure-random';
 
 /**
  * SECURITY: Keystore version for migration tracking
@@ -259,8 +260,7 @@ class SecureKeystoreManager {
   ): Promise<EncryptedKeystoreRecord> {
     console.log('[SecureKeystore] Encrypting keystore with AES-256-GCM');
 
-    // Generate random salt and IV
-    const { getSecureRandomBytes } = await import('@/lib/runtime/secure-random');
+    // Generate random salt and IV (SYNCHRONOUS)
     const salt = getSecureRandomBytes(SALT_LENGTH);
     const iv = getSecureRandomBytes(AES_IV_LENGTH);
 

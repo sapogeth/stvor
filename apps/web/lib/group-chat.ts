@@ -7,6 +7,7 @@
 
 import type { GroupRatchetState, GroupParticipant, IdentityKeyPair, PrekeyBundle } from '@/lib/crypto';
 import * as crypto from '@/lib/crypto';
+import { getSecureRandomBytes } from '@/lib/runtime/secure-random';
 
 /**
  * Group chat state stored in IndexedDB
@@ -277,13 +278,19 @@ export function generateGroupId(groupName: string, participants: string[]): stri
 }
 
 /**
- * Mock: Generate random group ID (for testing)
+ * Generate random group ID (SYNCHRONOUS).
+ * Uses cryptographically secure random bytes from secure-random abstraction.
+ * 
+ * @returns 64-character hex string (32 bytes)
  */
 export function generateRandomGroupId(): string {
-  const bytes = new Uint8Array(32);
-  // Use secure random abstraction (handles browser/Node automatically)
-  const { getSecureRandomBytes } = await import('@/lib/runtime/secure-random');
-  const secureBytes = getSecureRandomBytes(32);
-  bytes.set(secureBytes);
-  return Buffer.from(bytes).toString('hex');
+  const bytes = getSecureRandomBytes(32);
+  
+  // Convert to hex string
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(bytes).toString('hex');
+  }
+  
+  // Browser fallback
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
 }

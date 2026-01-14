@@ -1,20 +1,24 @@
 /**
  * SECURITY-CRITICAL: Secure Random Bytes Abstraction
  * 
- * Provides cryptographically secure random number generation across:
+ * Provides SYNCHRONOUS cryptographically secure random number generation across:
  * - Browser (Web Crypto API via globalThis.crypto.getRandomValues)
  * - Node.js (crypto.randomBytes)
  * - SSR contexts (Next.js server components)
  * 
- * NEVER use Math.random() for security-sensitive operations.
- * NEVER leak Node crypto assumptions into browser bundles.
+ * ARCHITECTURE:
+ * - 100% synchronous (no async/await, no Promises, no dynamic imports)
+ * - Runtime detection (browser vs Node.js)
+ * - NEVER uses Math.random() for security operations
+ * - NEVER leaks Node crypto into browser bundles
+ * - Build-safe (no module-level side effects)
  * 
  * @see https://developer.mozilla.org/en-US/docs/Web/API/Crypto/getRandomValues
  * @see https://nodejs.org/api/crypto.html#cryptorandombytessize-callback
  */
 
 /**
- * Generate cryptographically secure random bytes.
+ * Generate cryptographically secure random bytes (SYNCHRONOUS).
  * 
  * @param length - Number of random bytes to generate (1-65536)
  * @returns Uint8Array containing secure random bytes
@@ -22,8 +26,14 @@
  * 
  * @security This function GUARANTEES CSPRNG usage:
  * - Browser: Uses Web Crypto API (getRandomValues)
- * - Node.js: Uses crypto.randomBytes
+ * - Node.js: Uses crypto.randomBytes (synchronous)
  * - NEVER falls back to Math.random()
+ * 
+ * @example
+ * ```ts
+ * const randomBytes = getSecureRandomBytes(32);
+ * const hexString = Buffer.from(randomBytes).toString('hex');
+ * ```
  */
 export function getSecureRandomBytes(length: number): Uint8Array {
   if (length <= 0 || length > 65536) {
@@ -38,9 +48,10 @@ export function getSecureRandomBytes(length: number): Uint8Array {
   }
 
   // Strategy 2: Node.js crypto module (SSR, API routes, middleware)
-  if (typeof require !== 'undefined') {
+  // Use direct require (not dynamic import) for synchronous operation
+  if (typeof process !== 'undefined' && process.versions?.node) {
     try {
-      // Dynamic require to avoid bundling Node crypto in browser
+      // This require is safe: webpack/turbo will externalize 'crypto' for Node
       const nodeCrypto = require('crypto');
       if (nodeCrypto && typeof nodeCrypto.randomBytes === 'function') {
         const buffer = nodeCrypto.randomBytes(length);
@@ -60,11 +71,17 @@ export function getSecureRandomBytes(length: number): Uint8Array {
 }
 
 /**
- * Generate a random 32-byte seed encoded as base64.
+ * Generate a random 32-byte seed encoded as base64 (SYNCHRONOUS).
  * 
  * Common use case: keystore seeds, session tokens, CSRF tokens.
  * 
  * @returns 43-character base64 string (32 bytes)
+ * 
+ * @example
+ * ```ts
+ * const seed = generateSecureSeed();
+ * localStorage.setItem('keystore_seed', seed);
+ * ```
  */
 export function generateSecureSeed(): string {
   const bytes = getSecureRandomBytes(32);
