@@ -285,9 +285,19 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
         logInfo('identity', 'Local identity verified against relay ✓');
         verificationSucceeded = true;
       } else if (response.status === 403) {
-        // Relay requires auth for directory; proceed with caution without verification
-        RELAY_VERIFICATION_FAILED = true;
-        logWarn('identity', 'Relay returned 403 for directory (auth required) - proceeding without verification');
+        // CRITICAL: 403 Forbidden means relay rejected our authentication
+        // This is a TERMINAL condition - we MUST NOT proceed
+        logError('identity', '❌ Relay returned 403 Forbidden - authentication failed');
+        logError('identity', 'Cannot verify identity. User must re-authenticate with relay.');
+        
+        // Import and use relay auth controller
+        const { relayAuthController } = await import('@/lib/relay-auth-controller');
+        relayAuthController.markFailed('Directory check returned 403 Forbidden', 403);
+        
+        throw new Error(
+          'Relay authentication failed (403 Forbidden). ' +
+          'Cannot verify identity. Please check your credentials and try again.'
+        );
       }
     } catch (err) {
       // Check if this is an identity mismatch error (non-recoverable)
@@ -358,8 +368,19 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
       // Throw special error that UI can catch and show re-enroll modal
       throw new IdentityReEnrollError(username, remoteEd25519);
     } else if (response.status === 403) {
-      // Expected when relay requires auth; treat as no identity available to avoid fatal flow
-      logWarn('identity', 'Relay directory returned 403 (auth required) - will generate new identity');
+      // CRITICAL: 403 Forbidden means relay rejected our authentication
+      // We MUST NOT generate a new identity in this case
+      logError('identity', '❌ Relay directory returned 403 Forbidden - authentication failed');
+      logError('identity', 'REFUSING to generate new identity without relay authentication');
+      
+      // Import and use relay auth controller
+      const { relayAuthController } = await import('@/lib/relay-auth-controller');
+      relayAuthController.markFailed('Directory check (new identity) returned 403 Forbidden', 403);
+      
+      throw new Error(
+        'Relay authentication failed (403 Forbidden). ' +
+        'Cannot create identity without relay access. Please check your credentials and try again.'
+      );
     }
 
     // 404 = relay doesn't have identity yet - this is expected for new users
