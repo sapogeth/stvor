@@ -1,9 +1,11 @@
 # Security Analysis: Stvor Messaging Protocol
 
-**Document Version:** 1.0  
+**Document Version:** 1.1 (Corrected Claims)  
 **Protocol Version:** Ilyazh-Web3E2E v0.8  
-**Date:** January 2025  
+**Date:** January 14, 2026  
 **Target Audience:** KAIST CS Admissions Committee, Security Researchers
+
+⚠️ **CRITICAL:** This security analysis assumes architectural constraints documented in [ARCHITECTURAL_ASSUMPTIONS.md](../../ARCHITECTURAL_ASSUMPTIONS.md) are enforced. Violations void security guarantees.
 
 ---
 
@@ -15,10 +17,13 @@ This document provides a **rigorous informal security analysis** of the Stvor me
 2. **Adversary Capabilities:** Network control, long-term storage, quantum cryptanalysis
 3. **Security Goals:** Confidentiality, authentication, forward secrecy, post-compromise security
 4. **Proof Sketch:** Game-based reduction to ML-KEM IND-CCA2 security and DDH assumption
-5. **Limitations:** Metadata leakage, side-channel attacks, standardization risks
+5. **Limitations:** Metadata leakage, side-channel attacks, standardization risks, localStorage seed extractability
 
 **Key Finding:**  
-Under standard cryptographic assumptions (ML-KEM-768 IND-CCA2, X25519 DDH), the Stvor protocol achieves **post-quantum forward secrecy across ratchet epochs**, with security degrading gracefully if either component is compromised.
+Under standard cryptographic assumptions (ML-KEM-768 IND-CCA2, X25519 DDH) and documented architectural constraints (Next.js API route mediation, TOFU relay trust), the Stvor protocol achieves **post-quantum forward secrecy across ratchet epochs**, with security degrading gracefully if either component is compromised.
+
+**Security Status:**  
+Production-capable research prototype (Grade: B+ 82/100) with documented residual risks. Suitable for academic evaluation and informed deployment contexts that accept: (1) localStorage keystore seed extractability, (2) relay metadata visibility, (3) trust-on-first-use relay identity model.
 
 ---
 
@@ -82,9 +87,10 @@ We assume the following primitives are secure:
 **Dual Security:** Protocol remains secure if **either** classical (X25519, Ed25519) **or** post-quantum (ML-KEM-768, ML-DSA-65) component is secure. Both must be broken simultaneously for complete compromise.
 
 #### Execution Environment
-- **Client-side security:** Browsers enforce same-origin policy, IndexedDB encryption, memory isolation
+- **Client-side security:** Browsers enforce same-origin policy, IndexedDB storage with Argon2id encryption, memory isolation (NOTE: localStorage keystore seed is extractable by XSS - see [ARCHITECTURAL_ASSUMPTIONS.md §A2](../../ARCHITECTURAL_ASSUMPTIONS.md#a2-localstorage-seed-extractability-acknowledged))
 - **No malware:** User devices are not compromised (keyloggers, screen capture, memory dumps)
 - **HTTPS/TLS:** Transport layer provides integrity and authenticity for relay communication
+- **Next.js API mediation:** All relay communication proxied through same-origin API routes (CRITICAL - see [ARCHITECTURAL_ASSUMPTIONS.md §A1](../../ARCHITECTURAL_ASSUMPTIONS.md#a1-nextjs-api-route-mediation-mandatory))
 
 #### Out-of-Band Verification
 - **Safety Numbers:** Users verify identity fingerprints via external channel (QR code, phone call, in-person)
@@ -117,7 +123,7 @@ We assume the following primitives are secure:
 - **Mitigation:** Message padding (constant-size blocks), typing indicator suppression, read receipt opt-out
 
 #### Metadata Collection
-- **Relay server logs:** IP addresses, connection times, chat participants, message counts
+- **Relay server logs:** IP addresses, connection times, chat participants, message counts (NOTE: Relay observes ALL metadata - sender ID, recipient ID, timestamps, message sizes. This is HIGH severity and CANNOT FIX in honest-but-curious model - see [ARCHITECTURAL_ASSUMPTIONS.md §A6](../../ARCHITECTURAL_ASSUMPTIONS.md#a6-metadata-leakage-cannot-fix))
 - **ISP-level monitoring:** TLS fingerprinting, encrypted traffic patterns
 - **Mitigation:** Tor/VPN integration (not implemented), relay trust minimization
 
@@ -126,7 +132,7 @@ We assume the following primitives are secure:
 #### Man-in-the-Middle (MITM) Attacks
 1. **Relay Impersonation:**  
    Attacker pretends to be legitimate relay server.  
-   **Defense:** Relay identity pinning (Ed25519 public key), challenge-response verification (EREBUS mitigation).
+   **Defense:** Relay identity pinning (Ed25519 public key), challenge-response verification (EREBUS mitigation). NOTE: Trust-on-first-use model - relay identity verified on first connection only (see [ARCHITECTURAL_ASSUMPTIONS.md §A3](../../ARCHITECTURAL_ASSUMPTIONS.md#a3-relay-identity-tofu-acknowledged)).
 
 2. **Prekey Substitution:**  
    Attacker replaces victim's prekey bundle with attacker-controlled keys.  
@@ -611,11 +617,12 @@ The Stvor messaging protocol demonstrates a **principled approach to post-quantu
 3. **Session ID binding:** Downgrade attack resistance via AAD
 
 **Security Analysis Summary:**
-- ✅ Confidentiality: IND-CCA2 secure under ML-KEM + DDH assumptions
+- ✅ Confidentiality: IND-CCA2 secure under ML-KEM + DDH assumptions (under documented architectural constraints - see [ARCHITECTURAL_ASSUMPTIONS.md](../../ARCHITECTURAL_ASSUMPTIONS.md))
 - ✅ Authentication: EUF-CMA secure under ML-DSA + Ed25519 assumptions
 - ✅ Forward secrecy: Ephemeral key deletion + ratchet rotation
 - ✅ Post-compromise security: Fresh entropy via re-encapsulation
-- ⚠️ Metadata privacy: Partial (message padding, no anonymity network)
+- ⚠️ Metadata privacy: Limited (message padding only, no anonymity network, relay observes all metadata - HIGH severity)
+- ⚠️ XSS resistance: httpOnly cookies protect JWT, but keystore seed extractable from localStorage (see [ARCHITECTURAL_ASSUMPTIONS.md §A2](../../ARCHITECTURAL_ASSUMPTIONS.md#a2-localstorage-seed-extractability-acknowledged))
 
 **Key Innovation:**  
 Unlike Signal PQXDH (single hybrid exchange), Stvor ensures **post-quantum key material persists throughout session lifecycle**, preventing long-term compromise even if classical components break.
@@ -626,14 +633,16 @@ Unlike Signal PQXDH (single hybrid exchange), Stvor ensures **post-quantum key m
 - Metadata leakage (relay observes communication patterns)
 
 **Appropriate Use Cases:**
-- Research prototype for academic evaluation (KAIST application)
+- Research prototype for academic evaluation (KAIST application) - demonstrating post-quantum cryptographic engineering
 - Threat modeling exploration (post-quantum messaging design)
 - Proof-of-concept for mandated re-encapsulation policies
+- Production-capable deployment with documented residual risks (see [ARCHITECTURAL_ASSUMPTIONS.md](../../ARCHITECTURAL_ASSUMPTIONS.md) for full constraints)
 
 **NOT Recommended For:**
-- Production deployment without professional audit
-- High-security contexts without side-channel verification
+- Production deployment without professional security audit and explicit acceptance of architectural assumptions
+- High-security contexts without side-channel verification of WASM implementations
 - Users requiring metadata privacy (no Tor/mixnet integration)
+- Environments where XSS mitigation is insufficient (localStorage seed remains extractable - requires strict CSP enforcement and regular security reviews)
 
 ---
 
@@ -660,5 +669,11 @@ Unlike Signal PQXDH (single hybrid exchange), Stvor ensures **post-quantum key m
 
 **Document Prepared By:** Ilaszajsenbaev  
 **Intended Audience:** KAIST Graduate Admissions Committee  
-**Last Updated:** January 2025  
-**Version:** 1.0
+**Last Updated:** January 14, 2025  
+**Version:** 1.1 (Security Alignment Pass - corrected overclaims, see [SECURITY_ALIGNMENT_CORRECTIONS.md](../../SECURITY_ALIGNMENT_CORRECTIONS.md))
+
+---
+
+**DISCLAIMER:**  
+This document describes a research prototype designed to explore post-quantum cryptographic messaging. Security analysis assumes architectural constraints documented in [ARCHITECTURAL_ASSUMPTIONS.md](../../ARCHITECTURAL_ASSUMPTIONS.md) are satisfied. Production deployment requires professional security audit, penetration testing, and explicit acceptance of residual risks (localStorage extractability, relay metadata visibility, TOFU trust model). Security grade: **B+ (82/100)** - see [SECURITY_ALIGNMENT_CORRECTIONS.md](../../SECURITY_ALIGNMENT_CORRECTIONS.md) for scoring methodology.
+

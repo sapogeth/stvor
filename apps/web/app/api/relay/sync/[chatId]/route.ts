@@ -1,5 +1,6 @@
 // apps/web/app/api/relay/sync/[chatId]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { extractJWTFromRequest } from '@/lib/auth-cookies';
 
 // Force Node.js runtime (not Edge)
 export const runtime = 'nodejs';
@@ -11,7 +12,7 @@ const RELAY_BASE = process.env.RELAY_URL || process.env.RELAY_BASE_URL || proces
 /**
  * GET /api/relay/sync/:chatId
  * Fetch sync messages for a chat
- * CRITICAL: Must forward Authorization header (JWT) for relay authentication
+ * SECURITY: JWT extracted from httpOnly cookie (XSS-resistant when accessed via Next.js API routes - see ARCHITECTURAL_ASSUMPTIONS.md §A1)
  */
 export async function GET(
   req: NextRequest,
@@ -21,30 +22,29 @@ export async function GET(
     const resolvedParams = await params;
     const chatId = resolvedParams.chatId;
 
-    // Extract JWT from request - try header first, then query param as fallback
-    const auth = req.headers.get('authorization') || '';
+    // SECURITY: Extract JWT from httpOnly cookie (NOT from JavaScript-accessible storage)
+    const jwt = await extractJWTFromRequest(req);
+    
     const searchParams = req.nextUrl.searchParams;
-    const jwtFromQuery = searchParams.get('jwt') || '';
     const since = searchParams.get('since') || '0';
     const limit = searchParams.get('limit') || '10';
-
-    // Use JWT from header or query param
-    const finalAuth = auth || (jwtFromQuery ? `Bearer ${jwtFromQuery}` : '');
 
     console.error(`[Proxy/sync] GET /sync/${chatId}`, { 
       since, 
       limit, 
-      hasAuthHeader: !!auth,
-      hasAuthQuery: !!jwtFromQuery,
-      authPreview: finalAuth ? finalAuth.substring(0, 30) + '...' : 'MISSING'
+      hasJWT: !!jwt,
     });
 
     // Build relay URL with query params
     const url = `${RELAY_BASE}/sync/${chatId}?since=${since}&limit=${limit}`;
+    
+    // SECURITY: Use JWT from cookie or fallback to API key
+    const authHeader = jwt ? `Bearer ${jwt}` : `Bearer ${RELAY_API_KEY}`;
+    
     const res = await fetch(url, {
       method: 'GET',
       headers: {
-        'Authorization': finalAuth || `Bearer ${RELAY_API_KEY}`,  // Forward JWT, fallback to API key
+        'Authorization': authHeader,
         'Content-Type': 'application/json',
       },
     });
@@ -52,7 +52,7 @@ export async function GET(
     console.error(`[Proxy/sync] Relay response:`, {
       status: res.status,
       statusText: res.statusText,
-      sentAuth: finalAuth ? 'JWT' : 'API_KEY'
+      sentAuth: jwt ? 'JWT' : 'API_KEY'
     });
 
     const responseText = await res.text();

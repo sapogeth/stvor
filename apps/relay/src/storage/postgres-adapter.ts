@@ -1,6 +1,6 @@
 /**
  * PostgreSQL Storage Adapter
- * Production-ready, horizontally scalable storage backend
+ * Production-capable, horizontally scalable storage backend (requires architectural assumptions - see ARCHITECTURAL_ASSUMPTIONS.md)
  * Supports multiple relay instances sharing the same database
  */
 
@@ -11,12 +11,14 @@ import type {
   IPrekeyRepository,
   IMessageRepository,
   ISyncRepository,
+  IChatParticipantRepository,
   IRateLimitRepository,
   IPostRepository,
   UserIdentity,
   PrekeyBundle,
   MessageBlob,
   SyncCursor,
+  ChatParticipant,
   Post,
 } from './interfaces.js';
 
@@ -485,12 +487,61 @@ class PostgresPostRepository implements IPostRepository {
   }
 }
 
+/**
+ * PostgreSQL Chat Participant Repository
+ * Manages chat membership for access control
+ */
+class PostgresChatParticipantRepository implements IChatParticipantRepository {
+  constructor(private pool: pg.Pool) {}
+
+  async addParticipant(chatId: string, userId: string): Promise<boolean> {
+    try {
+      await this.pool.query(
+        `INSERT INTO chat_participants (chat_id, user_id, joined_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (chat_id, user_id) DO NOTHING`,
+        [chatId, userId, Date.now()]
+      );
+      return true;
+    } catch (err) {
+      console.error('[PostgresChatParticipants] Failed to add participant:', err);
+      return false;
+    }
+  }
+
+  async isParticipant(chatId: string, userId: string): Promise<boolean> {
+    const result = await this.pool.query(
+      `SELECT 1 FROM chat_participants WHERE chat_id = $1 AND user_id = $2`,
+      [chatId, userId]
+    );
+    return result.rows.length > 0;
+  }
+
+  async listParticipants(chatId: string): Promise<string[]> {
+    const result = await this.pool.query(
+      `SELECT user_id FROM chat_participants WHERE chat_id = $1`,
+      [chatId]
+    );
+    return result.rows.map(row => row.user_id);
+  }
+
+  async removeParticipant(chatId: string, userId: string): Promise<boolean> {
+    const result = await this.pool.query(
+      `DELETE FROM chat_participants WHERE chat_id = $1 AND user_id = $2`,
+      [chatId, userId]
+    );
+    return (result.rowCount || 0) > 0;
+  }
+}
+
+
 export class PostgresStorageAdapter implements IStorageAdapter {
   private pool: pg.Pool;
   users: IUserRepository;
   prekeys: IPrekeyRepository;
   messages: IMessageRepository;
   sync: ISyncRepository;
+  chatParticipants: IChatParticipantRepository;
   rateLimit: IRateLimitRepository;
   posts: IPostRepository;
 
@@ -507,6 +558,7 @@ export class PostgresStorageAdapter implements IStorageAdapter {
     this.prekeys = new PostgresPrekeyRepository(this.pool);
     this.messages = new PostgresMessageRepository(this.pool);
     this.sync = new PostgresSyncRepository(this.pool);
+    this.chatParticipants = new PostgresChatParticipantRepository(this.pool);
     this.rateLimit = new PostgresRateLimitRepository(this.pool);
     this.posts = new PostgresPostRepository(this.pool);
   }
@@ -594,6 +646,15 @@ export class PostgresStorageAdapter implements IStorageAdapter {
 
       CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_posts_author_id ON posts(author_id);
+
+      CREATE TABLE IF NOT EXISTS chat_participants (
+        chat_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        joined_at BIGINT NOT NULL,
+        PRIMARY KEY (chat_id, user_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_chat_participants_user ON chat_participants(user_id);
     `);
 
     console.log('[PostgresStorageAdapter] Initialized (PostgreSQL storage)');

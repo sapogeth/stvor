@@ -4,6 +4,17 @@
 
 This repository contains a research prototype investigating **mandated re-encapsulation policies** for hybrid post-quantum key exchange in browser-based end-to-end encrypted messaging systems.
 
+> ⚠️ **CRITICAL ARCHITECTURAL ASSUMPTIONS:**  
+> This system's security depends on architectural constraints that are NOT cryptographically enforced. Production deployment requires explicit acceptance of documented residual risks. See [ARCHITECTURAL_ASSUMPTIONS.md](ARCHITECTURAL_ASSUMPTIONS.md) for full details.
+>
+> **Key Constraints:**
+> - **Next.js API Mediation Required:** httpOnly cookie protection only works when relay accessed via same-origin API routes
+> - **localStorage Seed Extractability:** XSS attacks can compromise keystore encryption key (IndexedDB encryption key stored in localStorage)
+> - **Relay Metadata Visibility:** Relay server observes ALL communication metadata (sender, receiver, timestamps, message sizes)
+> - **TOFU Trust Model:** Relay identity verified on first connection only (no external PKI)
+>
+> **Security Grade:** B+ (82/100) — See [SECURITY_ALIGNMENT_CORRECTIONS.md](SECURITY_ALIGNMENT_CORRECTIONS.md) for scoring methodology.
+
 ---
 
 ## Research Motivation
@@ -366,11 +377,14 @@ NEXT_PUBLIC_RELAY_URL=https://...       # Relay server endpoint
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=...   # Clerk auth (user management)
 ```
 
-**Note:** This is a **research prototype**. Do not deploy to production without:
-1. Professional security audit
+**Note:** This is a **research prototype**. Production deployment requires:
+1. Professional security audit (cryptographic implementation review, side-channel analysis)
 2. Threat model validation for your deployment context
-3. Implementation of metadata privacy measures (Tor, mixnets, etc.)
-4. User education on safety number verification
+3. Explicit acceptance of architectural assumptions (see [ARCHITECTURAL_ASSUMPTIONS.md](ARCHITECTURAL_ASSUMPTIONS.md))
+4. Verification of Next.js API route mediation (httpOnly cookie protection depends on this)
+5. Implementation of metadata privacy measures (Tor, mixnets) if required
+6. User education on safety number verification and TOFU trust model
+7. Strict Content Security Policy (CSP) to mitigate localStorage seed extraction risk
 
 ---
 
@@ -385,10 +399,13 @@ NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=...   # Clerk auth (user management)
 
 ### Known Limitations
 1. **Test Coverage:** 800 lines of tests vs. 42,572 lines of code (~1.9% coverage by lines, but focused on protocol invariants)
-2. **Side-Channel Resistance:** No constant-time guarantees for WASM cryptographic operations (depends on mlkem-wasm/mldsa-wasm implementations)
-3. **Metadata Leakage:** Relay server observes communication patterns (mitigated by message padding, but not fully anonymous)
-4. **Group Messaging:** Implemented but not optimized (sender keys protocol, but no efficient member updates)
-5. **Standardization:** ML-KEM-768 and ML-DSA-65 are new NIST standards (2024), require long-term cryptanalysis
+2. **Side-Channel Resistance:** No constant-time guarantees for WASM cryptographic operations (depends on mlkem-wasm/mldsa-wasm implementations - formal audit required)
+3. **Metadata Leakage:** Relay server observes ALL communication metadata - sender ID, recipient ID, timestamps, message sizes (HIGH severity, CANNOT FIX in honest-but-curious model - see [ARCHITECTURAL_ASSUMPTIONS.md §A6](ARCHITECTURAL_ASSUMPTIONS.md#a6-metadata-leakage-cannot-fix))
+4. **localStorage Seed Extractability:** Keystore encryption key stored in localStorage (XSS attacks can compromise - see [ARCHITECTURAL_ASSUMPTIONS.md §A2](ARCHITECTURAL_ASSUMPTIONS.md#a2-localstorage-seed-extractability-acknowledged))
+5. **httpOnly Cookie Dependency:** JWT protection requires Next.js API route mediation (architectural assumption, NOT cryptographically enforced - see [ARCHITECTURAL_ASSUMPTIONS.md §A1](ARCHITECTURAL_ASSUMPTIONS.md#a1-nextjs-api-route-mediation-mandatory))
+6. **TOFU Trust Model:** Relay identity verified on first connection only (no external PKI or key transparency log - see [ARCHITECTURAL_ASSUMPTIONS.md §A3](ARCHITECTURAL_ASSUMPTIONS.md#a3-relay-identity-tofu-acknowledged))
+7. **Group Messaging:** Implemented but not optimized (sender keys protocol, but no efficient member updates)
+8. **Standardization Risk:** ML-KEM-768 and ML-DSA-65 are new NIST standards (August 2024), require long-term cryptanalysis
 
 ### Future Work
 - **Formal Verification:** Complete ProVerif model for multi-epoch ratcheting
@@ -426,7 +443,14 @@ This project was developed as part of a research portfolio for **KAIST Computer 
 
 MIT License (see `LICENSE` file)
 
-**Note:** This is a **research prototype** for educational purposes. Use of this code in production systems is **strongly discouraged** without professional security audit and legal review.
+**Note:** This is a **research prototype** for educational purposes. Production deployment **strongly discouraged** without:
+1. Professional security audit (cryptographic implementation review, penetration testing, side-channel analysis)
+2. Legal review of data protection compliance
+3. Explicit acceptance of residual risks documented in [ARCHITECTURAL_ASSUMPTIONS.md](ARCHITECTURAL_ASSUMPTIONS.md) and [SECURITY_ALIGNMENT_CORRECTIONS.md](SECURITY_ALIGNMENT_CORRECTIONS.md)
+4. Implementation of strict Content Security Policy (CSP) to mitigate XSS risks
+5. User disclosure of localStorage seed extractability and metadata leakage constraints
+
+**Security Grade:** B+ (82/100) — Production-capable with documented residual risks, NOT enterprise-grade without additional hardening. See [SECURITY_ALIGNMENT_CORRECTIONS.md](SECURITY_ALIGNMENT_CORRECTIONS.md) for detailed risk assessment.
 
 ---
 

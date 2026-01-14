@@ -1,7 +1,7 @@
 /**
  * COMPLETE E2E BOOTSTRAP IMPLEMENTATION
  *
- * This file contains the full, production-ready implementation of:
+ * This file contains the full, production-capable implementation (with documented architectural constraints) of:
  * 1. Identity generation (Ed25519 + ML-DSA-65)
  * 2. Profile creation (Supabase + Clerk integration)
  * 3. Prekey bundle generation (X25519 + ML-KEM-768)

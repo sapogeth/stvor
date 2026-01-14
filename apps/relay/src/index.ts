@@ -1,5 +1,5 @@
 /**
- * Ilyazh Relay Server (Production-Ready)
+ * Ilyazh Relay Server (Production-Capable - See ARCHITECTURAL_ASSUMPTIONS.md)
  * Horizontally scalable, stateless relay with PostgreSQL backend
  * JWT authentication, rate limiting, structured observability
  * Railway Serverless compatible
@@ -253,28 +253,36 @@ console.log('[Security] ✅ JWT (HS256, 30d expiry)');
 // Without this key, clients cannot verify relay authenticity, enabling EREBUS/MITM attacks
 // This must be configured in ALL environments (dev, staging, production)
 console.log('[Startup] 🔐 Checking RELAY_IDENTITY_KEY configuration...');
-let RELAY_IDENTITY_KEY_PEM = process.env.RELAY_IDENTITY_KEY;
+const RELAY_IDENTITY_KEY_PEM = process.env.RELAY_IDENTITY_KEY;
 
-// DEVELOPMENT ONLY: Generate a temporary key for Fly.io preview if not set
-if (!RELAY_IDENTITY_KEY_PEM && process.env.NODE_ENV === 'production') {
-  // Production: Must be provided
-  console.error('❌ CRITICAL: RELAY_IDENTITY_KEY is not set');
-  console.error('   This is MANDATORY for all environments (dev, staging, production)');
-  console.error('   Without it, clients cannot verify relay authenticity');
-  console.error('   This enables EREBUS/MITM attacks where attackers impersonate the relay');
-  console.error('   Generate Ed25519 key pair with:');
+// SECURITY: Relay identity key is MANDATORY in all environments
+// No fallback. No temporary keys. No silent generation.
+if (!RELAY_IDENTITY_KEY_PEM) {
+  console.error('╔═══════════════════════════════════════════════════════╗');
+  console.error('║  ❌ CRITICAL SECURITY ERROR                          ║');
+  console.error('║  RELAY_IDENTITY_KEY is NOT SET                       ║');
+  console.error('╚═══════════════════════════════════════════════════════╝');
+  console.error('');
+  console.error('SECURITY IMPACT:');
+  console.error('  • Clients cannot verify relay authenticity');
+  console.error('  • Enables EREBUS/MITM attacks');
+  console.error('  • Attackers can impersonate this relay');
+  console.error('');
+  console.error('REQUIRED ACTION:');
+  console.error('  1. Generate Ed25519 key pair:');
   console.error('     openssl genpkey -algorithm Ed25519 -out relay_key.pem');
+  console.error('');
+  console.error('  2. Base64-encode for environment variable:');
   console.error('     cat relay_key.pem | base64 -w 0');
-  console.error('   Set RELAY_IDENTITY_KEY=<base64-encoded-pem>');
-  process.exit(1); // SECURITY: Fail-closed - refuse to start
-} else if (!RELAY_IDENTITY_KEY_PEM) {
-  // Development fallback: Generate a temporary key
-  console.warn('⚠️  WARNING: RELAY_IDENTITY_KEY not set. Generating temporary key for development...');
-  const { privateKeyPem } = crypto.generateKeyPairSync('ed25519', {
-    format: 'pem'
-  }) as any;
-  RELAY_IDENTITY_KEY_PEM = Buffer.from(privateKeyPem).toString('base64');
-  console.warn('⚠️  This key is temporary and will change on restart. For production, use environment variable.');
+  console.error('');
+  console.error('  3. Set environment variable:');
+  console.error('     export RELAY_IDENTITY_KEY="<base64-encoded-pem>"');
+  console.error('');
+  console.error('ENVIRONMENT: ' + (process.env.NODE_ENV || 'unknown'));
+  console.error('');
+  console.error('FAIL-CLOSED: Refusing to start without identity key.');
+  console.error('');
+  process.exit(1); // SECURITY: Fail-closed - no fallback, no temporary keys
 }
 
 if (typeof RELAY_IDENTITY_KEY_PEM !== 'string' || RELAY_IDENTITY_KEY_PEM.length === 0) {
@@ -399,36 +407,25 @@ function logSecurityEvent(event: string, details: Record<string, any>) {
 // ==================== Auth Middleware ====================
 
 // ==================== JWT Verification Helper ====================
-// Supports JWT from Authorization header OR query parameter (for proxy scenarios)
+// SECURITY: JWT MUST come from Authorization header only
+// Query parameter support REMOVED (security risk - URLs logged everywhere)
 async function verifyJWTFromRequest(request: any): Promise<any> {
-  // Try Authorization header first
+  // ONLY Authorization header is accepted
   try {
-    console.log(`[Auth] 🔐 Attempting JWT verification from Authorization header`);
+    console.log(`[Auth] 🔐 Verifying JWT from Authorization header`);
     const decoded = await request.jwtVerify();
-    console.log(`[Auth] ✅ JWT verified from header:`, { username: decoded.username, sub: decoded.sub });
+    console.log(`[Auth] ✅ JWT verified:`, { username: decoded.username, sub: decoded.sub });
     return decoded;
   } catch (headerErr) {
-    console.log(`[Auth] ⚠️  JWT from header failed:`, (headerErr as Error).message);
+    console.error(`[Auth] ❌ JWT verification failed:`, (headerErr as Error).message);
+    throw headerErr;
   }
-
-  // Fallback to query parameter
-  const jwtFromQuery = request.query?.jwt || (request as any).querystring?.jwt;
-  if (jwtFromQuery) {
-    try {
-      console.log(`[Auth] 🔐 Attempting JWT verification from query parameter`);
-      const decoded = fastify.jwt.verify(jwtFromQuery) as any;
-      console.log(`[Auth] ✅ JWT verified from query param:`, { username: decoded.username, sub: decoded.sub });
-      return decoded;
-    } catch (queryErr) {
-      console.error(`[Auth] ❌ JWT from query param also failed:`, (queryErr as Error).message);
-      throw queryErr;
-    }
-  }
-
-  // No JWT found anywhere
-  console.error(`[Auth] ❌ No JWT in header or query param`);
-  const error = new Error('No JWT provided');
-  throw error;
+  
+  // REMOVED: Query parameter fallback (SECURITY RISK)
+  // - URLs are logged by proxies, CDNs, browser history
+  // - Tokens in URLs leak via Referer headers
+  // - Copy-paste URLs expose tokens
+  // ALL authentication MUST use Authorization header or httpOnly cookies
 }
 
 async function authenticate(request: any, reply: any) {
@@ -1489,6 +1486,13 @@ fastify.post<{ Body: ChatInitBody }>(
       console.log(`[Chat] Init request for participants: ${actualParticipants.join(', ')}`);
       console.log(`[Chat] Generated deterministic chatId: ${chatId}`);
 
+      // CRITICAL SECURITY FIX: Register all participants in chat_participants table
+      // This enables proper access control on /sync/:chatId endpoint
+      for (const participantId of actualParticipants) {
+        await storage.chatParticipants.addParticipant(chatId, participantId);
+        console.log(`[Chat] Registered participant: ${participantId} in chat ${chatId}`);
+      }
+
       // Chat is implicitly created on first message, no need to pre-create
       // Just return the canonical ID
       return { chatId, status: 'ok', ok: true };
@@ -1632,6 +1636,23 @@ fastify.post<{ Params: { chatId: string }, Body: MessageBody }>(
     // CRITICAL FIX: Detect message type (handshake vs message)
     const messageType = detectMessageType(request.body);
 
+    // CRITICAL SECURITY FIX: Register chat participants on handshake
+    // Handshake messages establish the chat - both parties must be registered
+    if (messageType === 'handshake') {
+      // Parse chatId to extract participants (deterministic from sorted usernames)
+      const participants = await storage.chatParticipants.listParticipants(chatId);
+      
+      // If no participants yet, this is the first handshake - register sender
+      if (participants.length === 0) {
+        await storage.chatParticipants.addParticipant(chatId, senderId);
+        console.log(`[Message] ✅ Registered handshake sender: ${senderId} in chat ${chatId}`);
+      } else if (!participants.includes(senderId)) {
+        // Sender not yet registered - add them
+        await storage.chatParticipants.addParticipant(chatId, senderId);
+        console.log(`[Message] ✅ Registered additional participant: ${senderId} in chat ${chatId}`);
+      }
+    }
+
     // Skip authentication check in dev mode
     // if (request.authenticatedUserId !== senderId) {
     //   logSecurityEvent('AUTH_MISMATCH_MESSAGE', {
@@ -1671,6 +1692,26 @@ fastify.post<{ Params: { chatId: string }, Body: MessageBody }>(
 
     const blobBuffer = Buffer.from(encryptedBlob, 'base64');
     const blobRef = crypto.createHash('sha256').update(blobBuffer).digest('hex');
+
+    // CRITICAL SECURITY FIX: Replay protection - reject duplicate message blobs
+    // Hash the encrypted blob and check if we've seen it before (24h TTL)
+    // This prevents attackers from replaying captured messages
+    const existingBlob = await storage.messages.getBlob(blobRef);
+    if (existingBlob) {
+      logSecurityEvent('MESSAGE_REPLAY_DETECTED', {
+        chatId,
+        blobRef,
+        senderId,
+        ip: request.ip,
+        originalTimestamp: existingBlob.createdAt,
+      });
+      console.warn(`[Message] ❌ Replay attack detected: blob ${blobRef} already exists`);
+      return reply.code(409).send({ 
+        error: 'Message replay detected',
+        message: 'This encrypted blob has already been delivered',
+        blobRef,
+      });
+    }
 
     const latestSequence = await storage.messages.getLatestSequence(chatId);
     const sequence = latestSequence + 1;
@@ -1918,41 +1959,58 @@ interface SyncQuery {
 fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
   '/sync/:chatId',
   async (request, reply) => {
-    // CRITICAL: Verify JWT INSIDE handler, not in preHandler
-    // This avoids Fastify preHandler error handling issues
-    // Supports JWT from Authorization header OR query parameter
+    const { chatId } = request.params;
+    const since = parseInt(request.query.since || '0');
+    const limit = Math.min(parseInt(request.query.limit || '100'), 1000);
+    
+    // STEP 1: Authentication (JWT verification)
+    // SECURITY: This is the SAME authentication used for /message/:chatId
+    let userId: string;
     try {
       const decoded = await verifyJWTFromRequest(request);
       request.user = decoded;
       request.authenticatedUserId = decoded.username || decoded.sub;
+      userId = (request.user as any)?.username || (request.user as any)?.sub;
+      
+      if (!userId) {
+        throw new Error('No username in JWT payload');
+      }
+      
+      console.log(`[Sync] ✅ Authentication successful:`, { userId, chatId });
     } catch (err) {
-      console.error(`[Sync] ❌ JWT verification failed:`, (err as Error).message);
-      return reply.code(401).send({ error: 'Authentication required' });
-    }
-
-    const { chatId } = request.params;
-    const since = parseInt(request.query.since || '0');
-    const limit = Math.min(parseInt(request.query.limit || '100'), 1000);
-
-    console.log(`[Sync] 🔍 Received sync request:`, { 
-      chatId, 
-      since, 
-      hasUser: !!request.user,
-      user: request.user ? { username: (request.user as any).username, sub: (request.user as any).sub } : null,
-    });
-
-    if (!chatId) {
-      return reply.code(400).send({ error: 'Missing chatId' });
-    }
-
-    // Validate chatId format
-    if (!validateChatId(chatId)) {
-      return reply.code(400).send({
-        error: 'Invalid chatId format. Must be a valid SHA256 hash.',
+      // 401 Unauthorized: JWT invalid, expired, or missing
+      logSecurityEvent('SYNC_AUTH_FAILED', {
+        chatId,
+        ip: request.ip,
+        error: (err as Error).message,
+        reason: 'jwt_verification_failed',
+      });
+      console.error(`[Sync] ❌ 401 Unauthorized:`, { chatId, error: (err as Error).message });
+      return reply.code(401).send({ 
+        error: 'Unauthorized',
+        message: 'Authentication required. JWT token invalid or missing.',
+        code: 'AUTH_REQUIRED',
       });
     }
 
-    // Rate limit sync requests
+    // STEP 2: Input validation
+    if (!chatId) {
+      return reply.code(400).send({ 
+        error: 'Bad Request',
+        message: 'Missing chatId parameter',
+        code: 'MISSING_CHAT_ID',
+      });
+    }
+
+    if (!validateChatId(chatId)) {
+      return reply.code(400).send({
+        error: 'Bad Request',
+        message: 'Invalid chatId format. Must be a valid SHA256 hash.',
+        code: 'INVALID_CHAT_ID',
+      });
+    }
+
+    // STEP 3: Rate limiting
     const rateLimitPassed = await rateLimit(
       request,
       reply,
@@ -1960,19 +2018,34 @@ fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
       RATE_LIMITS.SYNC.limit,
       RATE_LIMITS.SYNC.windowMs
     );
-    if (!rateLimitPassed) return;
+    if (!rateLimitPassed) return; // 429 returned by rateLimit()
 
-    // Extract userId from JWT
-    const userId = (request.user as any)?.username || (request.user as any)?.sub;
-    
-    if (!userId) {
-      console.error(`[Sync] ❌ NO USER ID! JWT verification failed`);
-      return reply.code(401).send({ error: 'Authentication required' });
+    // STEP 4: Authorization (membership verification)
+    // SECURITY: Same authorization chain as /message/:chatId uses chat_participants
+    const isParticipant = await storage.chatParticipants.isParticipant(chatId, userId);
+    if (!isParticipant) {
+      // 403 Forbidden: Authenticated but not authorized (not a participant)
+      logSecurityEvent('SYNC_AUTHORIZATION_FAILED', {
+        chatId,
+        userId,
+        ip: request.ip,
+        reason: 'not_participant',
+      });
+      console.warn(`[Sync] ❌ 403 Forbidden:`, { userId, chatId, reason: 'not_participant' });
+      return reply.code(403).send({ 
+        error: 'Forbidden',
+        message: 'You are not a participant of this chat',
+        code: 'NOT_PARTICIPANT',
+        chatId,
+      });
     }
+    
+    console.log(`[Sync] ✅ Authorization successful:`, { userId, chatId, since, limit });
 
+    // STEP 5: Fetch messages
     const messages = await storage.messages.listBlobsSince(chatId, since, limit);
 
-    console.log(`[Sync] Chat ${chatId}: returning ${messages.length} messages since ${since}`);
+    console.log(`[Sync] Returning ${messages.length} messages:`, { chatId, since, limit });
 
     if (messages.length > 0) {
       const lastSequence = messages[messages.length - 1].sequence;

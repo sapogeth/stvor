@@ -1,5 +1,5 @@
 # Kubernetes Deployment for Stv0r Messenger
-# Production-ready horizontal scaling configuration
+# Production-capable horizontal scaling configuration (requires architectural assumptions - see ARCHITECTURAL_ASSUMPTIONS.md)
 
 ---
 # PostgreSQL StatefulSet

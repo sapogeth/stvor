@@ -10,12 +10,14 @@ import type {
   IPrekeyRepository,
   IMessageRepository,
   ISyncRepository,
+  IChatParticipantRepository,
   IRateLimitRepository,
   IPostRepository,
   UserIdentity,
   PrekeyBundle,
   MessageBlob,
   SyncCursor,
+  ChatParticipant,
   Post,
 } from './interfaces.js';
 
@@ -336,11 +338,45 @@ class MemoryPostRepository implements IPostRepository {
   }
 }
 
+/**
+ * Memory Chat Participant Repository
+ * Manages chat membership for access control
+ */
+class MemoryChatParticipantRepository implements IChatParticipantRepository {
+  private participants = new Map<string, Set<string>>(); // chatId -> Set<userId>
+
+  async addParticipant(chatId: string, userId: string): Promise<boolean> {
+    if (!this.participants.has(chatId)) {
+      this.participants.set(chatId, new Set());
+    }
+    this.participants.get(chatId)!.add(userId);
+    return true;
+  }
+
+  async isParticipant(chatId: string, userId: string): Promise<boolean> {
+    const chatParticipants = this.participants.get(chatId);
+    return chatParticipants ? chatParticipants.has(userId) : false;
+  }
+
+  async listParticipants(chatId: string): Promise<string[]> {
+    const chatParticipants = this.participants.get(chatId);
+    return chatParticipants ? Array.from(chatParticipants) : [];
+  }
+
+  async removeParticipant(chatId: string, userId: string): Promise<boolean> {
+    const chatParticipants = this.participants.get(chatId);
+    if (!chatParticipants) return false;
+    return chatParticipants.delete(userId);
+  }
+}
+
+
 export class MemoryStorageAdapter implements IStorageAdapter {
   users: IUserRepository;
   prekeys: IPrekeyRepository;
   messages: IMessageRepository;
   sync: ISyncRepository;
+  chatParticipants: IChatParticipantRepository;
   rateLimit: IRateLimitRepository;
   posts: IPostRepository;
 
@@ -349,6 +385,7 @@ export class MemoryStorageAdapter implements IStorageAdapter {
     this.prekeys = new MemoryPrekeyRepository();
     this.messages = new MemoryMessageRepository();
     this.sync = new MemorySyncRepository();
+    this.chatParticipants = new MemoryChatParticipantRepository();
     this.rateLimit = new MemoryRateLimitRepository();
     this.posts = new MemoryPostRepository();
   }

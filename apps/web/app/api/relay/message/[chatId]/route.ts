@@ -1,5 +1,6 @@
 // apps/web/app/api/relay/message/[chatId]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { extractJWTFromRequest } from '@/lib/auth-cookies';
 
 // Force Node.js runtime (not Edge)
 export const runtime = 'nodejs';
@@ -12,7 +13,7 @@ const RELAY_BASE = process.env.RELAY_URL || process.env.RELAY_BASE_URL || proces
 /**
  * POST /api/relay/message/:chatId
  * Forwards message (handshake or encrypted) to relay server
- * CRITICAL: Must forward Authorization header for relay authentication
+ * SECURITY: JWT extracted from httpOnly cookie (XSS-resistant when accessed via Next.js API routes - see ARCHITECTURAL_ASSUMPTIONS.md §A1)
  */
 export async function POST(
   req: NextRequest,
@@ -25,23 +26,22 @@ export async function POST(
     // Read body as text to forward raw JSON
     const body = await req.text();
 
-    // Extract headers - CRITICAL: Forward JWT from client
-    const auth = req.headers.get('authorization') || '';
+    // SECURITY: Extract JWT from httpOnly cookie
+    const jwt = await extractJWTFromRequest(req);
     const contentType = req.headers.get('content-type') || 'application/json';
     const origin = req.headers.get('origin') || '';
 
     console.error(`[Proxy/message] POST /message/${chatId}`, { 
-      hasAuth: !!auth,
-      authPreview: auth ? auth.substring(0, 30) + '...' : 'MISSING',
-      allHeaders: Array.from(req.headers.entries()).map(([k, v]) => `${k}: ${v.substring(0, 50)}`)
+      hasJWT: !!jwt,
     });
 
     // Forward to relay with authentication
     const url = `${RELAY_BASE}/message/${chatId}`;
+    const authHeader = jwt ? `Bearer ${jwt}` : `Bearer ${RELAY_API_KEY}`;
     const res = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': auth || `Bearer ${RELAY_API_KEY}`,  // Forward JWT, fallback to API key
+        'Authorization': authHeader,
         'Content-Type': contentType,
         'Origin': origin,
       },

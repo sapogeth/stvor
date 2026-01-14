@@ -133,40 +133,32 @@ async function ensureFreshKeystore(): Promise<void> {
 }
 
 /**
- * Get authentication token for a user
- * Returns JWT token from localStorage
+ * DEPRECATED: JWT tokens are now stored in httpOnly cookies
+ * This function is kept for backwards compatibility but will return null
+ * All authentication now happens server-side via cookies
  */
 export function getAuthToken(username: string): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(`jwt_token_${username}`);
+  console.warn('[DEPRECATED] getAuthToken() called - JWT tokens are now in httpOnly cookies');
+  return null; // JWT is no longer accessible to client JavaScript
 }
 
 /**
  * Create authenticated headers with JWT token
+ * SECURITY: JWT is now in httpOnly cookie - browser sends it automatically
+ * No need to manually add Authorization header from client-side
  */
 export function createAuthHeaders(username: string): HeadersInit {
-  const token = getAuthToken(username);
+  // SECURITY FIX: Do NOT send JWT from JavaScript
+  // Browser will automatically include httpOnly cookie with credentials: 'include'
+  console.log(`[createAuthHeaders] Using httpOnly cookie authentication for user: ${username}`);
   
-  // CRITICAL: Log whether JWT is found
-  console.log(`[createAuthHeaders] Username: "${username}", Has token: ${!!token}`);
-  
-  if (token) {
-    console.log(`[createAuthHeaders] ✅ Using JWT from localStorage (key: jwt_token_${username})`);
-    console.log(`[createAuthHeaders] Token preview: ${token.substring(0, 20)}...${token.substring(token.length - 20)}`);
-  } else {
-    console.error(`[createAuthHeaders] ❌ NO JWT TOKEN FOUND! Key tried: jwt_token_${username}`);
-    console.error(`[createAuthHeaders] localStorage keys:`, Object.keys(localStorage));
-  }
-
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
   };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-    console.log(`[createAuthHeaders] 📤 Setting Authorization header: Bearer ${token.substring(0, 20)}...`);
-  } else {
-    logWarn('auth', 'No JWT token found for user', { username });
-  }
+  
+  // REMOVED: Authorization header - JWT is in httpOnly cookie
+  // Browser will send it automatically when credentials: 'include' is set
+  
   return headers;
 }
 
@@ -223,11 +215,24 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
   // This prevents regeneration due to transient network errors
   logInfo('identity', 'Checking local keystore first');
 
-  // Set password for loading encrypted identity
-  // Use deterministic password based on username (no timestamp for recovery)
-  const password = `${canonical}:ilyazh:secure`;
+  // CRITICAL SECURITY FIX: Use seed-derived password instead of deterministic one
+  // Old code: const password = `${canonical}:ilyazh:secure`; (ATTACKER KNOWS THIS)
+  // New code: Derive from relay JWT or generate random password on first use
+  // For now, use a temporary seed from localStorage to maintain recoverable password
+  // TODO: Replace with user-chosen password with proper UI flow
+  let password = localStorage.getItem(`ilyazh_keystore_seed_${canonical}`);
+  if (!password) {
+    // First time for this user - generate random seed
+    const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+    password = Buffer.from(randomBytes).toString('base64');
+    localStorage.setItem(`ilyazh_keystore_seed_${canonical}`, password);
+    logInfo('identity', 'Generated new keystore seed for user (stored in localStorage)');
+  } else {
+    logDebug('identity', 'Using existing keystore seed from localStorage');
+  }
+  
   keystore.setPassword(password);
-  logDebug('identity', 'Password set for keystore (deterministic from username)');
+  logDebug('identity', 'Password set for keystore (seed-derived, not username-based)');
 
   const localIdentity = await keystore.loadIdentity(canonical);
 
@@ -388,11 +393,17 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
 
   // STEP 5: Save to IndexedDB only after relay confirms
   // SECURITY FIX: Set password for key protection (required after KDF hardening)
-  // Use deterministic password based on canonical username (must be recoverable)
-  // NOTE: This password is derived from username, not stored - it must be consistent
-  const newPassword = `${canonical}:ilyazh:secure`;
+  // Use seed-derived password (same as loading logic above)
+  let newPassword = localStorage.getItem(`ilyazh_keystore_seed_${canonical}`);
+  if (!newPassword) {
+    // First time for this user - generate random seed
+    const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+    newPassword = Buffer.from(randomBytes).toString('base64');
+    localStorage.setItem(`ilyazh_keystore_seed_${canonical}`, newPassword);
+    logInfo('identity', 'Generated new keystore seed for new user');
+  }
   keystore.setPassword(newPassword);
-  logDebug('identity', 'Password set for new identity (deterministic from username)');
+  logDebug('identity', 'Password set for new identity (seed-derived, not username-based)');
 
   await keystore.saveIdentity(username, identity);
   logInfo('identity', 'Saved identity to IndexedDB');
@@ -540,23 +551,23 @@ async function registerWithRelay(username: string, identity: IdentityKeyPair): P
     try {
       const data = await response.json();
       if (data.token) {
-        localStorage.setItem(`jwt_token_${username}`, data.token);
-        logInfo('identity', 'JWT token stored for existing user', { username });
+        // SECURITY FIX: Store JWT in httpOnly cookie (NOT accessible to JavaScript)
+        await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, token: data.token }),
+          credentials: 'include',
+        });
+        logInfo('identity', 'JWT token stored in httpOnly cookie for existing user', { username });
         return;
       }
     } catch (e) {
       // Response might not be JSON
     }
 
-    // If no token in response, try to get existing token from localStorage
-    const existingToken = localStorage.getItem(`jwt_token_${username}`);
-    if (existingToken) {
-      logInfo('identity', 'Using existing JWT token from localStorage');
-      return;
-    }
-
-    // Last resort: continue without token (dev mode should work anyway)
-    logWarn('identity', 'No token available, continuing without authentication');
+    // If no token in response, assume cookie already exists
+    // REMOVED: sessionStorage check (no longer storing JWT in browser storage)
+    logInfo('identity', 'No token in response, assuming httpOnly cookie exists');
     return;
   }
 
@@ -572,8 +583,14 @@ async function registerWithRelay(username: string, identity: IdentityKeyPair): P
   logInfo('identity', 'Registration response', { status: response.status, hasToken: !!data.token });
 
   if (data.token) {
-    localStorage.setItem(`jwt_token_${username}`, data.token);
-    logInfo('identity', 'JWT token stored for user', { username });
+    // SECURITY FIX: Store JWT in httpOnly cookie (NOT accessible to JavaScript)
+    await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, token: data.token }),
+      credentials: 'include',
+    });
+    logInfo('identity', 'JWT token stored in httpOnly cookie for user', { username });
   } else {
     logWarn('identity', 'No JWT token in registration response', data);
   }

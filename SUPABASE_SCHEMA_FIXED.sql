@@ -1,5 +1,5 @@
 -- ============================================================================
--- SUPABASE SCHEMA: Profiles & Identity (Production-Ready)
+-- SUPABASE SCHEMA: Profiles & Identity (Production-Capable - See ARCHITECTURAL_ASSUMPTIONS.md)
 -- ============================================================================
 
 -- Create profiles table with proper constraints and indexes

@@ -43,6 +43,16 @@ export interface SyncCursor {
   updatedAt: number;
 }
 
+/**
+ * Chat Participant
+ * Tracks which users are members of which chats
+ */
+export interface ChatParticipant {
+  chatId: string;
+  userId: string;
+  joinedAt: number;
+}
+
 export interface Post {
   postId: string; // UUID
   authorId: string; // userId
@@ -187,6 +197,32 @@ export interface ISyncRepository {
 }
 
 /**
+ * Chat Participant Repository
+ * Manages chat membership for access control
+ */
+export interface IChatParticipantRepository {
+  /**
+   * Add a user to a chat
+   */
+  addParticipant(chatId: string, userId: string): Promise<boolean>;
+
+  /**
+   * Check if user is a participant of a chat
+   */
+  isParticipant(chatId: string, userId: string): Promise<boolean>;
+
+  /**
+   * List all participants of a chat
+   */
+  listParticipants(chatId: string): Promise<string[]>;
+
+  /**
+   * Remove a participant from a chat
+   */
+  removeParticipant(chatId: string, userId: string): Promise<boolean>;
+}
+
+/**
  * Rate Limit Repository
  * Manages rate limiting state (sliding window)
  */
@@ -262,6 +298,7 @@ export interface IStorageAdapter {
   prekeys: IPrekeyRepository;
   messages: IMessageRepository;
   sync: ISyncRepository;
+  chatParticipants: IChatParticipantRepository;
   rateLimit: IRateLimitRepository;
   posts: IPostRepository;
 
