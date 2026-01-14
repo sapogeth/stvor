@@ -110,7 +110,7 @@ export async function generateAndUploadPrekeyBundle(
   console.log('[Prekey] Saved prekey secrets to IndexedDB');
 
   // NEW: Serialize bundle deterministically and sign with identity key
-  const canonicalBundle = crypto.serializePrekeyBundle({
+  const canonicalBundle = protocolCrypto.serializePrekeyBundle({
     x25519Pub: bundle.x25519Ephemeral,
     pqKemPub: bundle.mlkemPublicKey.length > 0 ? bundle.mlkemPublicKey : undefined,
     pqSigPub: undefined, // No PQ sig key in prekey bundle
@@ -147,14 +147,14 @@ export async function generateAndUploadPrekeyBundle(
     method: 'POST',
     headers,
     body: JSON.stringify({
-      identityEd25519: crypto.toBase64(identity.ed25519.publicKey),
-      identityMLDSA: crypto.toBase64(identity.mldsa.publicKey),
+      identityEd25519: protocolCrypto.toBase64(identity.ed25519.publicKey),
+      identityMLDSA: protocolCrypto.toBase64(identity.mldsa.publicKey),
       prekeyBundle: {
-        x25519Pub: crypto.toBase64(bundle.x25519Ephemeral),
-        pqKemPub: bundle.mlkemPublicKey.length > 0 ? crypto.toBase64(bundle.mlkemPublicKey) : '',
+        x25519Pub: protocolCrypto.toBase64(bundle.x25519Ephemeral),
+        pqKemPub: bundle.mlkemPublicKey.length > 0 ? protocolCrypto.toBase64(bundle.mlkemPublicKey) : '',
         pqSigPub: '', // No PQ sig key
       },
-      prekeySignature: crypto.toBase64(signature),
+      prekeySignature: protocolCrypto.toBase64(signature),
     }),
   });
 
