@@ -21,7 +21,7 @@ import type {
   HandshakeMessage as CryptoHandshakeMessage,
   PrivacySettings,
 } from '@ilyazh/crypto';
-import { getOrCreateIdentity, fetchPeerIdentity, createAuthHeaders } from '@/lib/identity';
+import { getOrCreateIdentity, fetchPeerIdentity, createAuthHeaders, getAuthToken } from '@/lib/identity';
 import {
   generateAndUploadPrekeyBundle,
   fetchPeerBundle,
@@ -419,7 +419,11 @@ export default function ChatPage() {
           timestamp: new Date().toISOString(),
         });
 
-        const syncRes = await fetch(getRelayUrlForBrowser(`sync/${chatId}?since=${cursor}`), {
+        // Add JWT to query param as fallback in case header gets stripped
+        const token = getAuthToken(username);
+        const jwtParam = token ? `&jwt=${encodeURIComponent(token)}` : '';
+        
+        const syncRes = await fetch(getRelayUrlForBrowser(`sync/${chatId}?since=${cursor}${jwtParam}`), {
           headers: createAuthHeaders(username),
         });
 
