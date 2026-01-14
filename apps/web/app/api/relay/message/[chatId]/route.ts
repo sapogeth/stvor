@@ -86,7 +86,7 @@ export async function POST(
 
 /**
  * GET /api/relay/message/:chatId
- * Fetch messages for a chat
+ * CRITICAL: Transparent proxy - forwards Authorization header from client
  */
 export async function GET(
   req: NextRequest,
@@ -96,17 +96,24 @@ export async function GET(
     const resolvedParams = await params;
     const chatId = resolvedParams.chatId;
 
-    const auth = req.headers.get('authorization') || '';
+    // Forward Authorization header from client
+    const authHeader = req.headers.get('authorization');
 
-    console.log(`[Proxy] GET /message/${chatId}`, { hasAuth: !!auth });
+    console.log(`[Proxy] GET /message/${chatId}`, { hasAuth: !!authHeader });
 
     const url = `${RELAY_BASE}/message/${chatId}`;
+    
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+    
     const res = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Authorization': auth || `Bearer ${RELAY_API_KEY}`,  // Forward JWT, fallback to API key
-        'Content-Type': 'application/json',
-      },
+      headers,
     });
 
     const text = await res.text();
