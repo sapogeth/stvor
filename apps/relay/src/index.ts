@@ -400,21 +400,30 @@ function logSecurityEvent(event: string, details: Record<string, any>) {
 
 async function authenticate(request: any, reply: any) {
   try {
+    console.log(`[Auth] 🔐 JWT verification starting for ${request.url}`);
+    console.log(`[Auth] Auth header present:`, !!request.headers.authorization);
+    console.log(`[Auth] Auth header value (first 50 chars):`, request.headers.authorization?.substring(0, 50));
+    
     const decoded = await request.jwtVerify();
+    
     console.log(`[Auth] ✅ JWT verified:`, { 
       sub: decoded.sub, 
       username: decoded.username,
+      iat: decoded.iat,
+      exp: decoded.exp,
       path: request.url 
     });
     // JWT payload contains: { sub: userId, username: normalizedUsername }
     request.authenticatedUserId = decoded.username || decoded.sub;
     // Also expose full decoded payload for flexible access
     request.user = decoded;
+    console.log(`[Auth] ✅ request.user set to:`, { username: request.user.username, sub: request.user.sub });
   } catch (err) {
     console.error(`[Auth] ❌ JWT verification failed:`, { 
       path: request.url,
       error: (err as Error).message,
-      authHeader: request.headers.authorization?.substring(0, 30)
+      authHeader: request.headers.authorization?.substring(0, 50),
+      fullError: err
     });
     metrics.authFailures++;
     logSecurityEvent('AUTH_FAILED', {
@@ -422,6 +431,7 @@ async function authenticate(request: any, reply: any) {
       path: request.url,
       error: (err as Error).message,
     });
+    console.log(`[Auth] 🚫 Sending 401 reply`);
     reply.code(401).send({ error: 'Authentication required' });
   }
 }
@@ -1854,6 +1864,14 @@ fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
     const since = parseInt(request.query.since || '0');
     const limit = Math.min(parseInt(request.query.limit || '100'), 1000);
 
+    console.log(`[Sync] 🔍 Received sync request:`, { 
+      chatId, 
+      since, 
+      hasUser: !!request.user,
+      user: request.user ? { username: (request.user as any).username, sub: (request.user as any).sub } : null,
+      authenticatedUserId: request.authenticatedUserId
+    });
+
     if (!chatId) {
       return reply.code(400).send({ error: 'Missing chatId' });
     }
@@ -1878,7 +1896,15 @@ fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
     // Extract userId from JWT (set by authenticate middleware)
     const userId = (request.user as any)?.username || (request.user as any)?.sub;
     
+    console.log(`[Sync] userId extraction:`, { 
+      rawRequestUser: request.user,
+      extractedUserId: userId,
+      username: (request.user as any)?.username,
+      sub: (request.user as any)?.sub
+    });
+    
     if (!userId) {
+      console.error(`[Sync] ❌ NO USER ID after middleware! This should not happen if middleware succeeded`);
       return reply.code(401).send({ error: 'Authentication required' });
     }
 
