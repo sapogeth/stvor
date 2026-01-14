@@ -13,7 +13,7 @@
  */
 
 import type { RelayIdentityConfig, PaddingConfig, PrivacySettings } from '@/lib/crypto';
-import * as crypto from '@/lib/crypto';
+import * as protocolCrypto from '@/lib/crypto';
 
 // ============================================================================
 // WebSocket Connection Manager (with Relay Pinning)

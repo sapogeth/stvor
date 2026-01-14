@@ -6,7 +6,7 @@
  */
 
 import type { GroupRatchetState, GroupParticipant, IdentityKeyPair, PrekeyBundle } from '@/lib/crypto';
-import * as crypto from '@/lib/crypto';
+import * as protocolCrypto from '@/lib/crypto';
 import { getSecureRandomBytes } from '@/lib/runtime/secure-random';
 
 /**
@@ -128,7 +128,7 @@ export async function createGroupChat(
   }));
 
   // Derive group session
-  const groupState = crypto.deriveGroupSession(groupId, groupName, myUsername, myIdentity, pairwiseHandshakes);
+  const groupState = protocolCrypto.deriveGroupSession(groupId, groupName, myUsername, myIdentity, pairwiseHandshakes);
 
   // Store as StoredGroupChat
   const storedGroup: StoredGroupChat = {
@@ -203,7 +203,7 @@ export async function encryptForGroup(
     })),
   };
 
-  const result = await crypto.encryptGroupMessage(groupState, plaintext);
+  const result = await protocolCrypto.encryptGroupMessage(groupState, plaintext);
 
   // Convert to base64 for transmission
   return {

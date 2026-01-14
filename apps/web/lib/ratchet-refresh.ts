@@ -14,7 +14,7 @@
  */
 
 import type { IdentityKeyPair, PrekeyBundle, HandshakeState } from '@/lib/crypto';
-import * as crypto from '@/lib/crypto';
+import * as protocolCrypto from '@/lib/crypto';
 import { keystore } from './keystore';
 import { createAuthHeaders } from './identity';
 import { getRelayUrl } from './relay-url';
@@ -493,7 +493,7 @@ export async function refreshSessionFromPeer({
     // STEP 4: Initiate new handshake
     logDebug('ratchet', 'Initiating new handshake...');
 
-    const { message: handshakeMessage, ephemeralX25519Secret, ephemeralMLKEMSecret } = await crypto.initiateHandshake(
+    const { message: handshakeMessage, ephemeralX25519Secret, ephemeralMLKEMSecret } = await protocolCrypto.initiateHandshake(
       ourIdentity,
       peerIdentity.identityEd25519,
       peerIdentity.identityMLDSA,
@@ -517,7 +517,7 @@ export async function refreshSessionFromPeer({
       mldsaSignature: peerBundle.mldsaSignature,
     };
 
-    const session = await crypto.finalizeHandshake(
+    const session = await protocolCrypto.finalizeHandshake(
       ephemeralX25519Secret,
       ephemeralMLKEMSecret || new Uint8Array(0),
       handshakeMessage,

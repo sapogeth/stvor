@@ -11,7 +11,7 @@
 import type { IdentityKeyPair, PrekeyBundle } from '@ilyazh/crypto';
 // Use local Ed25519 implementation to avoid pulling libsodium in the browser
 import { ed25519Sign as localEd25519Sign } from './crypto/local-ed25519';
-import * as crypto from '@/lib/crypto';
+import * as protocolCrypto from '@/lib/crypto';
 import { keystore } from './keystore';
 import { getCryptoOrThrow } from './runtime/crypto-safe';
 import { createAuthHeaders } from './identity';
@@ -91,7 +91,7 @@ export async function generateAndUploadPrekeyBundle(
   const bundleId = randomUUID();
 
   // Generate bundle with internal signatures (for old relay endpoints)
-  const bundle = await crypto.generatePrekeyBundle(identity, bundleId);
+  const bundle = await protocolCrypto.generatePrekeyBundle(identity, bundleId);
 
   console.log('[Prekey] Generated bundle:', bundleId);
   console.log('[Prekey] - X25519 ephemeral public:', Buffer.from(bundle.x25519Ephemeral).toString('hex').slice(0, 32) + '...');

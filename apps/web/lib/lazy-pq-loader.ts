@@ -60,11 +60,11 @@ class LazyPQLoader {
       const startTime = performance.now();
 
       // Use statically imported crypto module (already available)
-      const crypto = await import('@/lib/crypto');
+      const protocolCrypto = await import('@/lib/crypto');
 
       // Инициализируем PQ в браузере (WASM загружается и компилируется)
       // Это самая медленная операция, поэтому она находится в отдельном потоке
-      await crypto.initPQBrowser();
+      await protocolCrypto.initPQBrowser();
 
       const duration = performance.now() - startTime;
       console.log(`[LazyPQLoader] ✓ PQ ready in ${duration.toFixed(0)}ms`);

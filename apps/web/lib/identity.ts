@@ -11,7 +11,7 @@
  */
 
 import type { IdentityKeyPair } from '@/lib/crypto';
-import * as crypto from '@/lib/crypto';
+import * as protocolCrypto from '@/lib/crypto';
 import { keystore } from './keystore';
 import { getRelayUrl } from './relay-url';
 import { verifyRelaySignature, isRelayIdentityVerified } from './relay-identity';
@@ -185,7 +185,7 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
   // This prevents race conditions where generateIdentity() tries to use ML-KEM-768/ML-DSA-65
   // before they're loaded. Without this, we get "crypto not ready" errors masquerading as PQ_NOT_READY.
   try {
-    await crypto.waitForPQReady();
+    await protocolCrypto.waitForPQReady();
   } catch (err) {
     logError('identity', 'PQ crypto initialization timed out - cannot proceed with identity generation', { error: err });
     throw new Error('PQ crypto initialization failed. Please refresh the page and try again.');
@@ -376,7 +376,7 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
   logInfo('identity', 'No canonical identity on relay, generating new one');
 
   // Generate new identity keypair
-  const identity = await crypto.generateIdentity();
+  const identity = await protocolCrypto.generateIdentity();
 
   logInfo('identity', 'Generated new identity keypair', {
     ed25519Public: redactPublicKey(identity.ed25519.publicKey),
@@ -398,9 +398,8 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
   // Use seed-derived password (same as loading logic above)
   let newPassword = localStorage.getItem(`ilyazh_keystore_seed_${canonical}`);
   if (!newPassword) {
-    // First time for this user - generate random seed
-    const randomBytes = crypto.getRandomValues(new Uint8Array(32));
-    newPassword = Buffer.from(randomBytes).toString('base64');
+    // First time for this user - generate random seed (SECURE)
+    newPassword = generateSecureSeed();
     localStorage.setItem(`ilyazh_keystore_seed_${canonical}`, newPassword);
     logInfo('identity', 'Generated new keystore seed for new user');
   }
@@ -701,7 +700,7 @@ export async function reEnrollDevice(username: string): Promise<IdentityKeyPair>
   logInfo('identity', 'Old devices will no longer work after this operation');
 
   // Generate new identity keypair
-  const newIdentity = await crypto.generateIdentity();
+  const newIdentity = await protocolCrypto.generateIdentity();
 
   logInfo('identity', 'Generated new identity keypair for re-enrollment', {
     ed25519Public: redactPublicKey(newIdentity.ed25519.publicKey),
