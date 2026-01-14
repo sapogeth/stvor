@@ -146,23 +146,34 @@ export function getAuthToken(username: string): string | null {
 }
 
 /**
- * Create authenticated headers with JWT token
- * SECURITY: JWT is now in httpOnly cookie - browser sends it automatically
- * No need to manually add Authorization header from client-side
+ * Create authenticated headers with relay JWT
+ * 
+ * CRITICAL: This now uses relay-specific JWT, NOT Clerk JWT.
+ * 
+ * Flow:
+ * 1. Get relay JWT from memory cache (or fetch new one)
+ * 2. Return headers with: Authorization: Bearer <relay_jwt>
+ * 
+ * @see relay-jwt-manager.ts
+ * @see RELAY_AUTH_ROOT_CAUSE_ANALYSIS.md
  */
-export function createAuthHeaders(username: string): HeadersInit {
-  // SECURITY FIX: Do NOT send JWT from JavaScript
-  // Browser will automatically include httpOnly cookie with credentials: 'include'
-  console.log(`[createAuthHeaders] Using httpOnly cookie authentication for user: ${username}`);
+export async function createAuthHeaders(username: string): Promise<HeadersInit> {
+  console.log(`[createAuthHeaders] Creating relay auth headers for user: ${username}`);
   
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
+  // Import dynamically to avoid circular dependencies
+  const { getRelayAuthHeaders } = await import('@/lib/relay-jwt-manager');
   
-  // REMOVED: Authorization header - JWT is in httpOnly cookie
-  // Browser will send it automatically when credentials: 'include' is set
-  
-  return headers;
+  try {
+    const headers = await getRelayAuthHeaders();
+    console.log('[createAuthHeaders] Successfully obtained relay JWT headers');
+    return headers;
+  } catch (error) {
+    console.error('[createAuthHeaders] Failed to get relay JWT:', error);
+    throw new Error(
+      'Cannot create auth headers: Relay authentication failed. ' +
+      'Please refresh the page and sign in again.'
+    );
+  }
 }
 
 /**

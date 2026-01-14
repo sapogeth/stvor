@@ -558,21 +558,21 @@ export async function refreshSessionFromPeer({
     await pushSessionToRelay(chatId, session, relayUrl, participants);
 
     // STEP 7: Send handshake message to relay (so peer knows about session refresh)
-    // CRITICAL: Must include auth headers to avoid 403
+    // CRITICAL: Must use relay JWT for authentication
     logDebug('ratchet', '========== STEP 7: Sending handshake message to relay ==========');
     try {
       const wireData = protocolCrypto.encodeHandshakeMessage(handshakeMessage);
       const data = Buffer.from(wireData).toString('base64');
 
-      // Use our username for auth headers
-      const authHeaders = our ? createAuthHeaders(our) : {};
+      // Get relay auth headers (includes JWT)
+      const { getRelayAuthHeaders } = await import('@/lib/relay-jwt-manager');
+      const authHeaders = await getRelayAuthHeaders();
 
       const sendRes = await fetch(`${relayUrl}/message/${chatId}`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${RELAY_API_KEY}`,
-          ...authHeaders,
+          ...authHeaders, // Includes Authorization: Bearer <relay_jwt>
+          // DO NOT add RELAY_API_KEY - relay JWT is sufficient
         },
         body: JSON.stringify({
           type: 'handshake',
