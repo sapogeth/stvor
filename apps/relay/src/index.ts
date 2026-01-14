@@ -862,35 +862,34 @@ fastify.get<{ Params: { id: string } }>('/directory/:id', async (request, reply)
 
   console.log(`[Directory] GET /directory/${rawId} → canonical: ${id}`);
 
-  // ========== SECURITY: Require API key (server-only) ==========
-  // Browser cannot access this without going through Next.js API
-  const authHeader = request.headers.authorization || '';
-  const providedKey = authHeader.replace('Bearer ', '');
-  const expectedKey = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
-
-  if (!providedKey || providedKey !== expectedKey) {
-    console.warn('[Directory] 🔴 403: API key required or invalid', {
-      provided: providedKey ? providedKey.substring(0, 10) + '...' : 'none',
-      expected: expectedKey.substring(0, 10) + '...',
-    });
-    return reply.code(403).send({
-      error: 'api_key_required',
-      message: 'API key required. Browser clients must use server-side proxy.',
-    });
-  }
-
-  console.log('[relay] 🔐 API key verified ✅');
-
-  // ========== SECURITY: Check intent first ==========
-  // Client must have registered intent before accessing directory
+  // ========== SECURITY: Try JWT verification first (client auth) ==========
   let requestorUsername: string | null = null;
+  try {
+    const decoded = await request.jwtVerify() as any;
+    requestorUsername = decoded.username || decoded.sub;
+    console.log(`[Directory] JWT verified for: ${requestorUsername}`);
+  } catch (err) {
+    console.log(`[Directory] JWT verification failed (will try API key):`, (err as Error).message);
+    
+    // Fallback to API key for server-to-server
+    const authHeader = request.headers.authorization || '';
+    const providedKey = authHeader.replace('Bearer ', '');
+    const expectedKey = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
 
-  // Dev mode: X-Relay-User header
-  if (process.env.NODE_ENV === 'development' && request.headers['x-relay-user']) {
-    requestorUsername = (request.headers['x-relay-user'] as string).toLowerCase();
+    if (!providedKey || providedKey !== expectedKey) {
+      console.warn('[Directory] 🔴 403: JWT or API key required', {
+        provided: providedKey ? providedKey.substring(0, 10) + '...' : 'none',
+      });
+      return reply.code(403).send({
+        error: 'auth_required',
+        message: 'JWT or API key required',
+      });
+    }
+    
+    console.log('[Directory] 🔐 API key verified ✅');
   }
 
-  // If we have a requestor, verify they have intent
+  // ========== SECURITY: Check intent if client auth ==========
   if (requestorUsername) {
     const intentKey = `${requestorUsername}:${id}`;
     const intentMap = (global as any).INTENT_MAP || new Map();
@@ -904,7 +903,6 @@ fastify.get<{ Params: { id: string } }>('/directory/:id', async (request, reply)
       });
     }
 
-    // Check if intent expired
     if (intent.expiresAt < Date.now()) {
       console.warn(`[Directory] ❌ Intent expired for ${requestorUsername} → ${id}`);
       intentMap.delete(intentKey);
@@ -914,47 +912,36 @@ fastify.get<{ Params: { id: string } }>('/directory/:id', async (request, reply)
       });
     }
 
-    // Intent is valid ✅
-    console.log(`[relay] 🔐 Intent verified ✅ ${requestorUsername} → ${id}`);
-
     console.log(`[Directory] Intent verified: ${requestorUsername} → ${id}`);
-  } else {
-    // No authentication - for backward compatibility, allow but log
-    console.warn(`[Directory] GET /directory/${id} without auth context`);
   }
 
   // ========== Lookup user ==========
-  // Try lookup by username first, then by userId
   let user = await storage.users.getUserByUsername(id);
   if (!user) {
     user = await storage.users.getUserById(id);
   }
 
-  // DO NOT auto-create users on GET - let frontend create via POST
   if (!user) {
-    console.log(`[Directory] User not found: ${id} (must register via POST first)`);
+    console.log(`[Directory] User not found: ${id}`);
     return reply.code(404).send({ error: 'User not found' });
   }
 
-  console.log(`[Directory] Found user: ${user.username} (${user.userId})`);
+  console.log(`[Directory] Found user: ${user.username}`);
 
-  // Try to get signed prekey bundle from in-memory storage
+  // Try to get signed prekey bundle
   const signedBundle = SIGNED_PREKEYS.get(user.username);
 
   if (!signedBundle) {
-    console.warn(`[Directory] No signed prekey bundle for user: ${user.username}`);
-    return reply.code(404).send({ error: 'No prekey bundle available for this user' });
+    console.warn(`[Directory] No prekey bundle for: ${user.username}`);
+    return reply.code(404).send({ error: 'No prekey bundle available' });
   }
 
-  // Return deterministic directory response (no timestamps in transcript)
-  // Return EXACTLY what was posted - relay is just a forwarder
-  // CRITICAL FIX: Include BOTH field name variations for compatibility
   return {
     username: user.username,
     userId: user.userId,
-    identityPublicKey: user.identityEd25519, // New clients expect this
-    identityEd25519: user.identityEd25519,    // Old clients expect this
-    identityMLDSA: user.identityMLDSA || '',  // PQ signature key
+    identityPublicKey: user.identityEd25519,
+    identityEd25519: user.identityEd25519,
+    identityMLDSA: user.identityMLDSA || '',
     prekeyBundle: {
       x25519Pub: signedBundle.x25519Pub,
       pqKemPub: signedBundle.pqKemPub || '',
@@ -963,7 +950,7 @@ fastify.get<{ Params: { id: string } }>('/directory/:id', async (request, reply)
     prekeySignature: signedBundle.signature,
     serverInfo: {
       version: '1',
-      timestamp: 0,  // MUST be 0 or fixed - timestamps cause safety number divergence
+      timestamp: 0,
     },
   };
 });
