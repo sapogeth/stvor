@@ -33,23 +33,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pat
     // Forward all headers, especially Authorization from client
     const clientAuth = req.headers.get('authorization');
     
-    // CRITICAL: /sync and /message require JWT, not API key
+    // CRITICAL: Different routes require different auth methods:
+    // - directory/: RELAY_API_KEY (server-to-server)
+    // - sync/, message/: JWT (user authentication)
     const requiresJWT = path.startsWith('sync/') || path.startsWith('message/');
+    const requiresAPIKey = path.startsWith('directory/');
     
     const headers: Record<string, string> = {};
     
     if (requiresJWT) {
       // Routes requiring JWT authentication
       if (!clientAuth) {
-        console.error(`[Proxy] GET /${path}: Missing client JWT for authenticated route`);
+        console.error(`[Proxy] POST /${path}: Missing client JWT for authenticated route`);
         return NextResponse.json(
           { error: 'Authentication required', message: 'Client must provide JWT token' },
           { status: 401 }
         );
       }
       headers['Authorization'] = clientAuth; // Forward client JWT only
+    } else if (requiresAPIKey) {
+      // Server-to-server routes (directory/)
+      headers['Authorization'] = `Bearer ${RELAY_API_KEY}`; // Always use API key
     } else {
-      // Public routes or server-to-server routes
+      // Other routes: use client JWT if available, otherwise API key
       headers['Authorization'] = clientAuth || `Bearer ${RELAY_API_KEY}`;
     }
     
@@ -106,23 +112,29 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ path
     // Forward all headers, especially Authorization from client
     const clientAuth = req.headers.get('authorization');
     
-    // CRITICAL: /sync and /message require JWT, not API key
+    // CRITICAL: Different routes require different auth methods:
+    // - directory/: RELAY_API_KEY (server-to-server)
+    // - sync/, message/: JWT (user authentication)
     const requiresJWT = path.startsWith('sync/') || path.startsWith('message/');
+    const requiresAPIKey = path.startsWith('directory/');
     
     const headers: Record<string, string> = {};
     
     if (requiresJWT) {
       // Routes requiring JWT authentication
       if (!clientAuth) {
-        console.error(`[Proxy] POST /${path}: Missing client JWT for authenticated route`);
+        console.error(`[Proxy] GET /${path}: Missing client JWT for authenticated route`);
         return NextResponse.json(
           { error: 'Authentication required', message: 'Client must provide JWT token' },
           { status: 401 }
         );
       }
       headers['Authorization'] = clientAuth; // Forward client JWT only
+    } else if (requiresAPIKey) {
+      // Server-to-server routes (directory/)
+      headers['Authorization'] = `Bearer ${RELAY_API_KEY}`; // Always use API key
     } else {
-      // Public routes or server-to-server routes
+      // Other routes: use client JWT if available, otherwise API key
       headers['Authorization'] = clientAuth || `Bearer ${RELAY_API_KEY}`;
     }
     
@@ -178,8 +190,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ path
     // Forward all headers, especially Authorization from client
     const clientAuth = req.headers.get('authorization');
     
-    // CRITICAL: /sync and /message require JWT, not API key
+    // CRITICAL: Different routes require different auth methods:
+    // - directory/: RELAY_API_KEY (server-to-server)
+    // - sync/, message/: JWT (user authentication)
     const requiresJWT = path.startsWith('sync/') || path.startsWith('message/');
+    const requiresAPIKey = path.startsWith('directory/');
     
     const headers: Record<string, string> = {};
     
@@ -193,8 +208,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ path
         );
       }
       headers['Authorization'] = clientAuth; // Forward client JWT only
+    } else if (requiresAPIKey) {
+      // Server-to-server routes (directory/)
+      headers['Authorization'] = `Bearer ${RELAY_API_KEY}`; // Always use API key
     } else {
-      // Public routes or server-to-server routes
+      // Other routes: use client JWT if available, otherwise API key
       headers['Authorization'] = clientAuth || `Bearer ${RELAY_API_KEY}`;
     }
     
