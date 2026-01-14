@@ -311,7 +311,7 @@ export async function refreshSessionFromPeer({
               },
               body: JSON.stringify({
                 to: peer,
-                identityEd25519: crypto.toBase64(ourIdentity.ed25519.publicKey),
+                identityEd25519: protocolCrypto.toBase64(ourIdentity.ed25519.publicKey),
               }),
             });
 
@@ -461,13 +461,13 @@ export async function refreshSessionFromPeer({
       // CRITICAL FIX: Use the SAME serialization format that was used to CREATE the signature
       // The signature was created with serializePrekeyBundle() which uses length-prefixed format
       // NOT raw concatenation! See prekeys.ts:115-120
-      const signatureMessage = crypto.serializePrekeyBundle({
+      const signatureMessage = protocolCrypto.serializePrekeyBundle({
         x25519Pub: peerBundle.x25519Ephemeral,
         pqKemPub: peerBundle.mlkemPublicKey.length > 0 ? peerBundle.mlkemPublicKey : undefined,
         pqSigPub: undefined,
       });
 
-      const signatureValid = crypto.ed25519Verify(
+      const signatureValid = protocolCrypto.ed25519Verify(
         peerBundle.ed25519Signature,
         signatureMessage,
         peerIdentity.identityEd25519
@@ -561,7 +561,7 @@ export async function refreshSessionFromPeer({
     // CRITICAL: Must include auth headers to avoid 403
     logDebug('ratchet', '========== STEP 7: Sending handshake message to relay ==========');
     try {
-      const wireData = crypto.encodeHandshakeMessage(handshakeMessage);
+      const wireData = protocolCrypto.encodeHandshakeMessage(handshakeMessage);
       const data = Buffer.from(wireData).toString('base64');
 
       // Use our username for auth headers
