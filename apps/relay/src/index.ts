@@ -398,6 +398,39 @@ function logSecurityEvent(event: string, details: Record<string, any>) {
 
 // ==================== Auth Middleware ====================
 
+// ==================== JWT Verification Helper ====================
+// Supports JWT from Authorization header OR query parameter (for proxy scenarios)
+async function verifyJWTFromRequest(request: any): Promise<any> {
+  // Try Authorization header first
+  try {
+    console.log(`[Auth] 🔐 Attempting JWT verification from Authorization header`);
+    const decoded = await request.jwtVerify();
+    console.log(`[Auth] ✅ JWT verified from header:`, { username: decoded.username, sub: decoded.sub });
+    return decoded;
+  } catch (headerErr) {
+    console.log(`[Auth] ⚠️  JWT from header failed:`, (headerErr as Error).message);
+  }
+
+  // Fallback to query parameter
+  const jwtFromQuery = request.query?.jwt || (request as any).querystring?.jwt;
+  if (jwtFromQuery) {
+    try {
+      console.log(`[Auth] 🔐 Attempting JWT verification from query parameter`);
+      const decoded = fastify.jwt.verify(jwtFromQuery) as any;
+      console.log(`[Auth] ✅ JWT verified from query param:`, { username: decoded.username, sub: decoded.sub });
+      return decoded;
+    } catch (queryErr) {
+      console.error(`[Auth] ❌ JWT from query param also failed:`, (queryErr as Error).message);
+      throw queryErr;
+    }
+  }
+
+  // No JWT found anywhere
+  console.error(`[Auth] ❌ No JWT in header or query param`);
+  const error = new Error('No JWT provided');
+  throw error;
+}
+
 async function authenticate(request: any, reply: any) {
   try {
     console.log(`[Auth] 🔐 JWT verification starting for ${request.url}`);
@@ -865,7 +898,7 @@ fastify.get<{ Params: { id: string } }>('/directory/:id', async (request, reply)
   // ========== SECURITY: Try JWT verification first (client auth) ==========
   let requestorUsername: string | null = null;
   try {
-    const decoded = await request.jwtVerify() as any;
+    const decoded = await verifyJWTFromRequest(request);
     requestorUsername = decoded.username || decoded.sub;
     console.log(`[Directory] JWT verified for: ${requestorUsername}`);
   } catch (err) {
@@ -1518,12 +1551,11 @@ fastify.post<{ Params: { chatId: string }, Body: MessageBody }>(
   async (request, reply) => {
     // CRITICAL: Verify JWT INSIDE handler, not in preHandler
     // This avoids Fastify preHandler error handling issues
+    // Supports JWT from Authorization header OR query parameter
     try {
-      console.log(`[Message] 🔐 Verifying JWT for message request`);
-      const decoded = await request.jwtVerify() as any;
+      const decoded = await verifyJWTFromRequest(request);
       request.user = decoded;
       request.authenticatedUserId = decoded.username || decoded.sub;
-      console.log(`[Message] ✅ JWT verified:`, { username: decoded.username, sub: decoded.sub });
     } catch (err) {
       console.error(`[Message] ❌ JWT verification failed:`, (err as Error).message);
       return reply.code(401).send({ error: 'Authentication required' });
@@ -1717,8 +1749,9 @@ fastify.post<{ Params: { groupId: string }, Body: GroupMessageBody }>(
   '/group/:groupId/message',
   async (request, reply) => {
     // CRITICAL: Verify JWT INSIDE handler, not in preHandler
+    // Supports JWT from Authorization header OR query parameter
     try {
-      const decoded = await request.jwtVerify() as any;
+      const decoded = await verifyJWTFromRequest(request);
       request.user = decoded;
       request.authenticatedUserId = decoded.username || decoded.sub;
     } catch (err) {
@@ -1887,12 +1920,11 @@ fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
   async (request, reply) => {
     // CRITICAL: Verify JWT INSIDE handler, not in preHandler
     // This avoids Fastify preHandler error handling issues
+    // Supports JWT from Authorization header OR query parameter
     try {
-      console.log(`[Sync] 🔐 Verifying JWT for sync request`);
-      const decoded = await request.jwtVerify() as any;
+      const decoded = await verifyJWTFromRequest(request);
       request.user = decoded;
       request.authenticatedUserId = decoded.username || decoded.sub;
-      console.log(`[Sync] ✅ JWT verified:`, { username: decoded.username, sub: decoded.sub });
     } catch (err) {
       console.error(`[Sync] ❌ JWT verification failed:`, (err as Error).message);
       return reply.code(401).send({ error: 'Authentication required' });
@@ -2024,8 +2056,9 @@ fastify.get<{ Querystring: { chatId: string } }>(
   '/sync/cursor',
   async (request, reply) => {
     // CRITICAL: Verify JWT INSIDE handler, not in preHandler
+    // Supports JWT from Authorization header OR query parameter
     try {
-      const decoded = await request.jwtVerify() as any;
+      const decoded = await verifyJWTFromRequest(request);
       request.user = decoded;
       request.authenticatedUserId = decoded.username || decoded.sub;
     } catch (err) {
@@ -2202,8 +2235,9 @@ fastify.post<{ Body: CreatePostBody }>(
   '/posts',
   async (request, reply) => {
     // CRITICAL: Verify JWT INSIDE handler, not in preHandler
+    // Supports JWT from Authorization header OR query parameter
     try {
-      const decoded = await request.jwtVerify() as any;
+      const decoded = await verifyJWTFromRequest(request);
       request.user = decoded;
       request.authenticatedUserId = decoded.username || decoded.sub;
     } catch (err) {
@@ -2327,8 +2361,9 @@ fastify.post<{ Params: { postId: string } }>(
   '/posts/:postId/like',
   async (request, reply) => {
     // CRITICAL: Verify JWT INSIDE handler, not in preHandler
+    // Supports JWT from Authorization header OR query parameter
     try {
-      const decoded = await request.jwtVerify() as any;
+      const decoded = await verifyJWTFromRequest(request);
       request.user = decoded;
       request.authenticatedUserId = decoded.username || decoded.sub;
     } catch (err) {
@@ -2361,8 +2396,9 @@ fastify.delete<{ Params: { postId: string } }>(
   '/posts/:postId',
   async (request, reply) => {
     // CRITICAL: Verify JWT INSIDE handler, not in preHandler
+    // Supports JWT from Authorization header OR query parameter
     try {
-      const decoded = await request.jwtVerify() as any;
+      const decoded = await verifyJWTFromRequest(request);
       request.user = decoded;
       request.authenticatedUserId = decoded.username || decoded.sub;
     } catch (err) {
