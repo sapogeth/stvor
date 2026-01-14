@@ -12,8 +12,9 @@
  * @see packages/crypto/src/defense-in-depth.ts for implementation details
  */
 
-import type { RelayIdentityConfig, PaddingConfig, PrivacySettings } from '@/lib/crypto';
+import type { RelayIdentityConfig, PaddingConfig, PrivacySettings } from '@ilyazh/crypto';
 import * as protocolCrypto from '@/lib/crypto';
+import { RelayPinner } from '@/lib/relay-security';
 
 // ============================================================================
 // WebSocket Connection Manager (with Relay Pinning)
@@ -37,7 +38,7 @@ import * as protocolCrypto from '@/lib/crypto';
  * @see EREBUS (Kang et al., 2020): Network partitioning attacks
  */
 export class SecureWebSocketManager {
-  private relayPinner: any | null = null;
+  private relayPinner: RelayPinner | null = null;
   private relayConfig: RelayIdentityConfig;
   private ws: WebSocket | null = null;
   private isConnected: boolean = false;
@@ -66,7 +67,7 @@ export class SecureWebSocketManager {
 
           try {
             if (!this.relayPinner) {
-              this.relayPinner = new crypto.RelayPinner(this.relayConfig);
+              this.relayPinner = new RelayPinner(this.relayConfig);
             }
             // Verify relay identity
             const isVerified = await this.relayPinner.verifyRelayIdentity(this.ws!);

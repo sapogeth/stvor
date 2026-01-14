@@ -6,14 +6,19 @@
  * - Crypto is loaded SYNCHRONOUSLY in client bundle
  * - Yes, bundle is larger, but it's CORRECT and RELIABLE
  * - Worker has its own static import path
+ * 
+ * SECURITY NOTE:
+ * - This module re-exports @ilyazh/crypto (protocol crypto)
+ * - NEVER import this as "crypto" - use "protocolCrypto" alias
+ * - Identifier "crypto" is reserved for Web Crypto API
  */
 'use client';
 
 // STATIC import - no lazy loading, no dynamic imports
-import * as crypto from '@ilyazh/crypto';
+import * as protocolCryptoExports from '@ilyazh/crypto';
 
 // Re-export everything synchronously
 export * from '@ilyazh/crypto';
 
-// Ensure crypto is available for modules that need it
-export default crypto;
+// Default export for compatibility (import protocolCrypto from '@/lib/crypto')
+export default protocolCryptoExports;

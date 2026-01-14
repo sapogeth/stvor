@@ -12,7 +12,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import type { RelayIdentityConfig, PrivacySettings, RelayPinner, PrivacyConfigManager } from '@ilyazh/crypto';
+import type { RelayIdentityConfig, PrivacySettings, PrivacyConfigManager } from '@ilyazh/crypto';
+import type { RelayPinner } from '@/lib/relay-security';
 
 import {
   SecureWebSocketManager,
@@ -65,7 +66,7 @@ export function DefenseInDepthExample({
 
     // Dynamically load RelayPinner to avoid bundling crypto at build time
     const initRelay = async () => {
-      const { RelayPinner } = await import('@/lib/crypto');
+      const { RelayPinner } = await import('@/lib/relay-security');
       const pinner = new RelayPinner(relayConfig);
       setRelayPinner(pinner);
       console.log('[Defense] 🔐 RelayPinner initialized', {
