@@ -401,11 +401,21 @@ function logSecurityEvent(event: string, details: Record<string, any>) {
 async function authenticate(request: any, reply: any) {
   try {
     const decoded = await request.jwtVerify();
+    console.log(`[Auth] ✅ JWT verified:`, { 
+      sub: decoded.sub, 
+      username: decoded.username,
+      path: request.url 
+    });
     // JWT payload contains: { sub: userId, username: normalizedUsername }
     request.authenticatedUserId = decoded.username || decoded.sub;
     // Also expose full decoded payload for flexible access
     request.user = decoded;
   } catch (err) {
+    console.error(`[Auth] ❌ JWT verification failed:`, { 
+      path: request.url,
+      error: (err as Error).message,
+      authHeader: request.headers.authorization?.substring(0, 30)
+    });
     metrics.authFailures++;
     logSecurityEvent('AUTH_FAILED', {
       ip: request.ip,
