@@ -1512,8 +1512,20 @@ function detectMessageType(body: MessageBody): 'handshake' | 'message' {
 
 fastify.post<{ Params: { chatId: string }, Body: MessageBody }>(
   '/message/:chatId',
-  { preHandler: authenticate }, // CRITICAL SECURITY: Require authentication
   async (request, reply) => {
+    // CRITICAL: Verify JWT INSIDE handler, not in preHandler
+    // This avoids Fastify preHandler error handling issues
+    try {
+      console.log(`[Message] 🔐 Verifying JWT for message request`);
+      const decoded = await request.jwtVerify() as any;
+      request.user = decoded;
+      request.authenticatedUserId = decoded.username || decoded.sub;
+      console.log(`[Message] ✅ JWT verified:`, { username: decoded.username, sub: decoded.sub });
+    } catch (err) {
+      console.error(`[Message] ❌ JWT verification failed:`, (err as Error).message);
+      return reply.code(401).send({ error: 'Authentication required' });
+    }
+
     const { chatId } = request.params;
 
     // Support both new and legacy body formats
@@ -1861,8 +1873,20 @@ interface SyncQuery {
 
 fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
   '/sync/:chatId',
-  { preHandler: authenticate }, // CRITICAL SECURITY: Require authentication
   async (request, reply) => {
+    // CRITICAL: Verify JWT INSIDE handler, not in preHandler
+    // This avoids Fastify preHandler error handling issues
+    try {
+      console.log(`[Sync] 🔐 Verifying JWT for sync request`);
+      const decoded = await request.jwtVerify() as any;
+      request.user = decoded;
+      request.authenticatedUserId = decoded.username || decoded.sub;
+      console.log(`[Sync] ✅ JWT verified:`, { username: decoded.username, sub: decoded.sub });
+    } catch (err) {
+      console.error(`[Sync] ❌ JWT verification failed:`, (err as Error).message);
+      return reply.code(401).send({ error: 'Authentication required' });
+    }
+
     const { chatId } = request.params;
     const since = parseInt(request.query.since || '0');
     const limit = Math.min(parseInt(request.query.limit || '100'), 1000);
@@ -1872,7 +1896,6 @@ fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
       since, 
       hasUser: !!request.user,
       user: request.user ? { username: (request.user as any).username, sub: (request.user as any).sub } : null,
-      authenticatedUserId: request.authenticatedUserId
     });
 
     if (!chatId) {
@@ -1896,18 +1919,11 @@ fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
     );
     if (!rateLimitPassed) return;
 
-    // Extract userId from JWT (set by authenticate middleware)
+    // Extract userId from JWT
     const userId = (request.user as any)?.username || (request.user as any)?.sub;
     
-    console.log(`[Sync] userId extraction:`, { 
-      rawRequestUser: request.user,
-      extractedUserId: userId,
-      username: (request.user as any)?.username,
-      sub: (request.user as any)?.sub
-    });
-    
     if (!userId) {
-      console.error(`[Sync] ❌ NO USER ID after middleware! This should not happen if middleware succeeded`);
+      console.error(`[Sync] ❌ NO USER ID! JWT verification failed`);
       return reply.code(401).send({ error: 'Authentication required' });
     }
 
