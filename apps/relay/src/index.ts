@@ -662,8 +662,16 @@ interface PrekeyBundleBody {
 
 fastify.post<{ Body: PrekeyBundleBody }>(
   '/prekey-bundle',
-  { preHandler: authenticate },
   async (request, reply) => {
+    // CRITICAL: Verify JWT INSIDE handler, not in preHandler
+    try {
+      const decoded = await request.jwtVerify() as any;
+      request.user = decoded;
+      request.authenticatedUserId = decoded.username || decoded.sub;
+    } catch (err) {
+      return reply.code(401).send({ error: 'Authentication required' });
+    }
+
     const { userId, bundleId, x25519Ephemeral, mlkemPublicKey, ed25519Signature, mldsaSignature, timestamp, isOneTime } =
       request.body;
 
@@ -720,8 +728,16 @@ interface BatchPrekeyBody {
 
 fastify.post<{ Body: BatchPrekeyBody }>(
   '/prekey-batch',
-  { preHandler: authenticate },
   async (request, reply) => {
+    // CRITICAL: Verify JWT INSIDE handler, not in preHandler
+    try {
+      const decoded = await request.jwtVerify() as any;
+      request.user = decoded;
+      request.authenticatedUserId = decoded.username || decoded.sub;
+    } catch (err) {
+      return reply.code(401).send({ error: 'Authentication required' });
+    }
+
     const { userId, bundles } = request.body;
 
     if (!userId || !bundles || bundles.length === 0 || bundles.length > 100) {
@@ -1712,8 +1728,16 @@ interface GroupMessageBody {
 
 fastify.post<{ Params: { groupId: string }, Body: GroupMessageBody }>(
   '/group/:groupId/message',
-  { preHandler: authenticate },
   async (request, reply) => {
+    // CRITICAL: Verify JWT INSIDE handler, not in preHandler
+    try {
+      const decoded = await request.jwtVerify() as any;
+      request.user = decoded;
+      request.authenticatedUserId = decoded.username || decoded.sub;
+    } catch (err) {
+      return reply.code(401).send({ error: 'Authentication required' });
+    }
+
     const { groupId } = request.params;
     const { sender, message: groupMessage } = request.body;
 
@@ -2011,8 +2035,16 @@ fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
 
 fastify.get<{ Querystring: { chatId: string } }>(
   '/sync/cursor',
-  { preHandler: authenticate },
   async (request, reply) => {
+    // CRITICAL: Verify JWT INSIDE handler, not in preHandler
+    try {
+      const decoded = await request.jwtVerify() as any;
+      request.user = decoded;
+      request.authenticatedUserId = decoded.username || decoded.sub;
+    } catch (err) {
+      return reply.code(401).send({ error: 'Authentication required' });
+    }
+
     const chatId = request.query.chatId;
 
     if (!chatId) {
@@ -2181,8 +2213,16 @@ interface CreatePostBody {
  */
 fastify.post<{ Body: CreatePostBody }>(
   '/posts',
-  { preHandler: authenticate }, // CRITICAL SECURITY: Require authentication
   async (request, reply) => {
+    // CRITICAL: Verify JWT INSIDE handler, not in preHandler
+    try {
+      const decoded = await request.jwtVerify() as any;
+      request.user = decoded;
+      request.authenticatedUserId = decoded.username || decoded.sub;
+    } catch (err) {
+      return reply.code(401).send({ error: 'Authentication required' });
+    }
+
     const { content, imageUrl } = request.body;
     const username = request.headers['x-username'] as string;
 
@@ -2298,8 +2338,16 @@ fastify.get<{ Params: { username: string }, Querystring: { limit?: string } }>(
  */
 fastify.post<{ Params: { postId: string } }>(
   '/posts/:postId/like',
-  { preHandler: authenticate }, // CRITICAL SECURITY: Require authentication
   async (request, reply) => {
+    // CRITICAL: Verify JWT INSIDE handler, not in preHandler
+    try {
+      const decoded = await request.jwtVerify() as any;
+      request.user = decoded;
+      request.authenticatedUserId = decoded.username || decoded.sub;
+    } catch (err) {
+      return reply.code(401).send({ error: 'Authentication required' });
+    }
+
     const { postId } = request.params;
 
     // Rate limit likes
@@ -2324,8 +2372,16 @@ fastify.post<{ Params: { postId: string } }>(
  */
 fastify.delete<{ Params: { postId: string } }>(
   '/posts/:postId',
-  { preHandler: authenticate }, // CRITICAL SECURITY: Require authentication
   async (request, reply) => {
+    // CRITICAL: Verify JWT INSIDE handler, not in preHandler
+    try {
+      const decoded = await request.jwtVerify() as any;
+      request.user = decoded;
+      request.authenticatedUserId = decoded.username || decoded.sub;
+    } catch (err) {
+      return reply.code(401).send({ error: 'Authentication required' });
+    }
+
     const { postId } = request.params;
     const username = request.headers['x-username'] as string;
 
