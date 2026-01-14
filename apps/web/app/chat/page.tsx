@@ -1690,10 +1690,10 @@ export default function ChatPage() {
 
       console.log('[Handshake] Sending handshake message to relay...');
 
-      const headers = await createAuthHeaders(usernameCanonical);
+      const handshakeHeaders = await createAuthHeaders(usernameCanonical);
       const sendRes = await fetch(getRelayUrlForBrowser(`message/${canonicalChatId}`), {
         method: 'POST',
-        headers,
+        headers: handshakeHeaders,
         body: JSON.stringify({
           type: 'handshake',
           from: usernameCanonical,
