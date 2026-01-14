@@ -158,6 +158,9 @@ export class SecureWebSocketManager {
    * Update relay identity key (e.g., after key rotation)
    */
   updateRelayKey(newKeyHash: string): void {
+    if (!this.relayPinner) {
+      throw new Error('[SecureWSManager] RelayPinner not initialized. Call connect() first.');
+    }
     this.relayPinner.updateIdentityKey(newKeyHash);
   }
 }
