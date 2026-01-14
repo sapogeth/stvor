@@ -120,7 +120,7 @@ export function detectRandomSource(): {
   secure: boolean;
 } {
   // Check Web Crypto API
-  if (typeof globalThis !== 'undefined' && globalThis.crypto?.getRandomValues) {
+  if (typeof globalThis !== 'undefined' && typeof globalThis.crypto?.getRandomValues === 'function') {
     return {
       source: 'web-crypto',
       available: true,
