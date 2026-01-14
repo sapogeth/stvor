@@ -34,6 +34,7 @@ export const runtime = 'nodejs';
 /**
  * GET /api/profiles?username=foo
  * Search for a profile by username
+ * Falls back to relay directory if not found in local DB
  */
 export async function GET(req: NextRequest) {
   try {
@@ -53,10 +54,53 @@ export async function GET(req: NextRequest) {
     const profile = await getProfileByUsername(normalizedUsername);
 
     if (!profile) {
-      return NextResponse.json(
-        { error: 'Profile not found' },
-        { status: 404 }
-      );
+      // FALLBACK: Check relay directory for users who have registered prekeys
+      // This allows finding old users who haven't explicitly created a profile yet
+      console.log(`[profiles] User ${normalizedUsername} not in local DB, checking relay directory...`);
+      
+      try {
+        const relayUrl = process.env.NEXT_PUBLIC_RELAY_URL || process.env.RELAY_URL || 'http://localhost:3001';
+        const directoryResponse = await fetch(`${relayUrl}/directory/${normalizedUsername}`, {
+          headers: {
+            // No authorization needed for directory lookups (public)
+            'Accept': 'application/json',
+          },
+        });
+
+        if (directoryResponse.ok) {
+          const relayData = await directoryResponse.json();
+          // User found in relay - create a minimal profile response
+          console.log(`[profiles] User ${normalizedUsername} found in relay directory, returning minimal profile`);
+          return NextResponse.json({
+            username: normalizedUsername,
+            userId: relayData.userId || normalizedUsername, // Fallback to username if no userId
+            displayName: relayData.displayName || normalizedUsername,
+            createdAt: relayData.createdAt || new Date().toISOString(),
+            fromRelay: true, // Flag that this came from relay, not local DB
+          });
+        } else if (directoryResponse.status === 404) {
+          // Not found anywhere
+          console.log(`[profiles] User ${normalizedUsername} not found in relay or local DB`);
+          return NextResponse.json(
+            { error: 'Profile not found' },
+            { status: 404 }
+          );
+        } else {
+          // Relay error but user exists locally - should not reach here, but handle gracefully
+          console.warn(`[profiles] Relay directory returned ${directoryResponse.status}, using local DB result`);
+          return NextResponse.json(
+            { error: 'Profile not found' },
+            { status: 404 }
+          );
+        }
+      } catch (relayErr) {
+        console.warn(`[profiles] Failed to check relay directory:`, relayErr);
+        // Fallback: return 404 if both local DB and relay fail
+        return NextResponse.json(
+          { error: 'Profile not found' },
+          { status: 404 }
+        );
+      }
     }
 
     return NextResponse.json({
