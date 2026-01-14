@@ -1835,7 +1835,7 @@ interface SyncQuery {
 
 fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
   '/sync/:chatId',
-  // No authentication required in dev mode - relay accepts all requests
+  { preHandler: authenticate }, // CRITICAL SECURITY: Require authentication
   async (request, reply) => {
     const { chatId } = request.params;
     const since = parseInt(request.query.since || '0');
@@ -1862,9 +1862,12 @@ fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
     );
     if (!rateLimitPassed) return;
 
-    // Skip authentication and rate limiting in dev mode
-    const userId = 'dev-user';
-    // await rateLimit(request, reply, `sync:${userId}`, 60, 60 * 1000);
+    // Extract userId from JWT (set by authenticate middleware)
+    const userId = (request.user as any)?.username || (request.user as any)?.sub;
+    
+    if (!userId) {
+      return reply.code(401).send({ error: 'Authentication required' });
+    }
 
     const messages = await storage.messages.listBlobsSince(chatId, since, limit);
 
