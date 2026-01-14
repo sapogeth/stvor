@@ -223,7 +223,7 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
   let password = localStorage.getItem(`ilyazh_keystore_seed_${canonical}`);
   if (!password) {
     // First time for this user - generate random seed
-    const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+    const randomBytes = globalThis.crypto.getRandomValues(new Uint8Array(32));
     password = Buffer.from(randomBytes).toString('base64');
     localStorage.setItem(`ilyazh_keystore_seed_${canonical}`, password);
     logInfo('identity', 'Generated new keystore seed for user (stored in localStorage)');
