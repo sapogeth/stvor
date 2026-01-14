@@ -18,9 +18,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'invalid_username' }, { status: 400 });
     }
 
-    const secret = process.env.RELAY_JWT_SECRET || process.env.JWT_SECRET;
+    const secret = process.env.JWT_SECRET || process.env.RELAY_JWT_SECRET;
     if (!secret) {
-      console.error('[RelayToken] Missing RELAY_JWT_SECRET/JWT_SECRET env');
+      console.error('[RelayToken] Missing JWT_SECRET/RELAY_JWT_SECRET env');
       return NextResponse.json({ error: 'server_misconfigured' }, { status: 500 });
     }
 
