@@ -69,11 +69,13 @@ class RelayAuthController {
 
   /**
    * Mark relay as authenticated (called after successful 200 response)
+   * CRITICAL: FAILED state is TERMINAL - cannot transition to VERIFIED
    */
   markAuthenticated(): void {
     if (this.state === RelayAuthState.FAILED) {
-      console.warn('[RelayAuth] Cannot transition from FAILED to VERIFIED. User must re-authenticate.');
-      return;
+      const errorMsg = `[RelayAuth] TERMINAL STATE: Cannot transition from FAILED to VERIFIED. Reason: ${this.failureReason}`;
+      console.error(errorMsg);
+      throw new Error('Relay auth failed. Re-authentication required. Cannot proceed.');
     }
 
     this.state = RelayAuthState.VERIFIED;

@@ -878,75 +878,19 @@ console.log('[Session] ✅ Session storage initialized (in-memory)');
  * Returns canonical identity and prekey bundle for a user
  * 
  * CRITICAL SECURITY:
- * - Browser clients: Blocked (403 without API key)
- * - Server clients: Required API key in Authorization header
- * 
- * Architecture:
- * Browser → Next.js API (with API key) → Relay
+ * - PUBLIC endpoint (no auth required)
+ * - Bootstrap endpoint - used to check if user exists BEFORE authentication
+ * - NO JWT, NO API key, NO intent checks
  * 
  * Returns:
- * - 200: Prekey bundle (API key verified)
- * - 403: API key required / Intent not registered
+ * - 200: User identity + prekey bundle
  * - 404: User not found
  */
 fastify.get<{ Params: { id: string } }>('/directory/:id', async (request, reply) => {
   const rawId = request.params.id;
   const id = normalizeUsername(rawId);
 
-  console.log(`[Directory] GET /directory/${rawId} → canonical: ${id}`);
-
-  // ========== SECURITY: Try JWT verification first (client auth) ==========
-  let requestorUsername: string | null = null;
-  try {
-    const decoded = await verifyJWTFromRequest(request);
-    requestorUsername = decoded.username || decoded.sub;
-    console.log(`[Directory] JWT verified for: ${requestorUsername}`);
-  } catch (err) {
-    console.log(`[Directory] JWT verification failed (will try API key):`, (err as Error).message);
-    
-    // Fallback to API key for server-to-server
-    const authHeader = request.headers.authorization || '';
-    const providedKey = authHeader.replace('Bearer ', '');
-    const expectedKey = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
-
-    if (!providedKey || providedKey !== expectedKey) {
-      console.warn('[Directory] 🔴 403: JWT or API key required', {
-        provided: providedKey ? providedKey.substring(0, 10) + '...' : 'none',
-      });
-      return reply.code(403).send({
-        error: 'auth_required',
-        message: 'JWT or API key required',
-      });
-    }
-    
-    console.log('[Directory] 🔐 API key verified ✅');
-  }
-
-  // ========== SECURITY: Check intent if client auth ==========
-  if (requestorUsername) {
-    const intentKey = `${requestorUsername}:${id}`;
-    const intentMap = (global as any).INTENT_MAP || new Map();
-    const intent = intentMap.get(intentKey);
-
-    if (!intent) {
-      console.warn(`[Directory] ❌ Access denied: no intent from ${requestorUsername} to ${id}`);
-      return reply.code(403).send({
-        error: 'intent_not_found',
-        message: 'Must register intent first (POST /intent)',
-      });
-    }
-
-    if (intent.expiresAt < Date.now()) {
-      console.warn(`[Directory] ❌ Intent expired for ${requestorUsername} → ${id}`);
-      intentMap.delete(intentKey);
-      return reply.code(403).send({
-        error: 'intent_expired',
-        message: 'Intent has expired. Register again.',
-      });
-    }
-
-    console.log(`[Directory] Intent verified: ${requestorUsername} → ${id}`);
-  }
+  console.log(`[Directory] GET /directory/${rawId} → canonical: ${id} (PUBLIC)`);
 
   // ========== Lookup user ==========
   let user = await storage.users.getUserByUsername(id);
@@ -1006,9 +950,25 @@ interface DirectoryRegisterBody {
 
 fastify.post<{ Params: { username: string }, Body: DirectoryRegisterBody }>(
   '/directory/:username',
-  // No auth in dev mode
   async (request, reply) => {
     try {
+      // CRITICAL SECURITY: Verify API key (backend-to-backend auth)
+      const authHeader = request.headers.authorization || '';
+      const providedKey = authHeader.replace('Bearer ', '');
+      const expectedKey = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
+
+      if (!providedKey || providedKey !== expectedKey) {
+        console.warn('[Directory] 🔴 POST 401: API key required', {
+          provided: providedKey ? providedKey.substring(0, 10) + '...' : 'none',
+        });
+        return reply.code(401).send({
+          error: 'unauthorized',
+          message: 'API key required for directory registration',
+        });
+      }
+
+      console.log('[Directory] 🔐 API key verified ✅');
+
       const rawUsername = request.params.username;
       const username = normalizeUsername(rawUsername);
       const { identityEd25519, identityMLDSA, prekeyBundle, prekeySignature } = request.body;

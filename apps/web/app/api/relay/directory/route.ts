@@ -29,18 +29,6 @@ export async function GET(
   { params }: { params: { username: string } }
 ) {
   try {
-    // Verify user is authenticated
-    const user = await currentUser();
-
-    if (!user) {
-      console.warn('[api/relay/directory] 🔴 401: No authenticated user');
-      return NextResponse.json(
-        { error: 'unauthorized', message: 'Authentication required' },
-        { status: 401 }
-      );
-    }
-
-    const username = user.username || user.id;
     const peerUsername = (params.username ?? "").toLowerCase().trim();
 
     if (!peerUsername) {
@@ -50,49 +38,22 @@ export async function GET(
       );
     }
 
-    console.log('[api/relay/directory] GET', {
-      from: username,
+    console.log('[api/relay/directory] GET (PUBLIC)', {
       to: peerUsername,
     });
 
-    // CRITICAL: Check if intent is registered
-    const intent = getIntent(username, peerUsername);
-
-    if (!intent) {
-      console.warn('[api/relay/directory] 🔴 403: No valid intent', {
-        from: username,
-        to: peerUsername,
-      });
-      return NextResponse.json(
-        {
-          error: 'intent_not_found',
-          message: 'Must register intent first (POST /api/relay/intent)',
-        },
-        { status: 403 }
-      );
-    }
-
-    console.log('[relay] 🔐 Intent verified ✅', {
-      from: username,
-      to: peerUsername,
-    });
-
-    // Forward request to relay to get peer's prekey bundle
+    // Forward request to relay (PUBLIC endpoint - no auth required)
     const relayUrl = getRelayUrl();
     const relayDirectoryUrl = `${relayUrl}/directory/${encodeURIComponent(peerUsername)}`;
 
     console.log('[api/relay/directory] Forwarding to relay', {
       relayUrl: relayDirectoryUrl,
-      from: username,
     });
 
     const relayRes = await fetch(relayDirectoryUrl, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'Authorization': `Bearer ${RELAY_API_KEY}`,
-        // Pass username to relay for logging
-        'X-Relay-User': username,
       },
     });
 
@@ -113,7 +74,6 @@ export async function GET(
     const peerData = await relayRes.json();
 
     console.log('[api/relay/directory] ✅ Got peer data', {
-      from: username,
       to: peerUsername,
       bundleId: peerData.prekey?.bundleId || 'dev',
     });
@@ -133,14 +93,30 @@ export async function GET(
 
 export async function POST(req: Request) {
   try {
+    // CRITICAL: Verify Clerk authentication (backend-to-backend trust)
+    const user = await currentUser();
+
+    if (!user) {
+      console.warn('[api/relay/directory] 🔴 401: POST requires Clerk auth');
+      return NextResponse.json(
+        { error: 'unauthorized', message: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    const username = (user.username || user.id).toLowerCase();
     const body = await req.json();
-    const username = (body.username || body.user || '').toLowerCase();
+    
+    console.log('[api/relay/directory] POST (Clerk verified)', {
+      from: username,
+    });
 
     const relayUrl = getRelayUrl();
     const res = await fetch(`${relayUrl}/directory/${username}`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
+        // CRITICAL: Use API key for backend-to-backend auth (NOT relay JWT)
         'Authorization': `Bearer ${RELAY_API_KEY}`,
       },
       body: JSON.stringify(body),

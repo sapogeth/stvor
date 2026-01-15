@@ -454,13 +454,10 @@ export async function refreshSessionFromPeer({
     }
 
     // STEP 3: Verify bundle signatures (CRITICAL - prevent MITM)
-    // Skip ONLY in dev mode or if explicitly requested
     if (!skipSignatureVerification) {
       logDebug('ratchet', 'Verifying prekey bundle Ed25519 signature...');
 
-      // CRITICAL FIX: Use the SAME serialization format that was used to CREATE the signature
-      // The signature was created with serializePrekeyBundle() which uses length-prefixed format
-      // NOT raw concatenation! See prekeys.ts:115-120
+      // CRITICAL: Use the SAME serialization format that was used to CREATE the signature
       const signatureMessage = protocolCrypto.serializePrekeyBundle({
         x25519Pub: peerBundle.x25519Ephemeral,
         pqKemPub: peerBundle.mlkemPublicKey.length > 0 ? peerBundle.mlkemPublicKey : undefined,
@@ -474,20 +471,14 @@ export async function refreshSessionFromPeer({
       );
 
       if (!signatureValid) {
-        // CRITICAL FIX: Relax signature verification in dev mode (PQ stubs may break signatures)
-        if (process.env.NODE_ENV === 'development') {
-          logWarn('ratchet', 'Signature verification FAILED but allowing in DEV MODE');
-          logWarn('ratchet', 'This is expected when using PQ stub fallbacks');
-        } else {
-          logError('ratchet', 'CRITICAL: Prekey bundle signature verification FAILED');
-          logError('ratchet', 'This indicates MITM attack or bundle corruption');
-          throw new Error('Prekey bundle signature verification failed - possible MITM attack');
-        }
-      } else {
-        logDebug('ratchet', 'Prekey bundle signature verified');
+        logError('ratchet', 'CRITICAL: Prekey bundle signature verification FAILED');
+        logError('ratchet', 'This indicates MITM attack or bundle corruption');
+        throw new Error('Prekey bundle signature verification failed - possible MITM attack');
       }
+      
+      logDebug('ratchet', 'Prekey bundle signature verified');
     } else {
-      logWarn('ratchet', 'Skipping signature verification (dev mode)');
+      logWarn('ratchet', '⚠️ Signature verification skipped (dangerous)');
     }
 
     // STEP 4: Initiate new handshake

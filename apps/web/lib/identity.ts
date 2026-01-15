@@ -350,19 +350,11 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
   // Use proxy in browser, direct relay on server
   const directoryUrl = typeof window !== 'undefined'
     ? `/api/relay/directory/${username}` // Browser: use Next.js API proxy
-    : `${getRelayUrl()}/directory/${username}`; // Server: direct relay with API key
+    : `${getRelayUrl()}/directory/${username}`; // Server: direct relay
 
   try {
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-    
-    // Only add API key on server-side
-    if (typeof window === 'undefined') {
-      headers['Authorization'] = `Bearer ${RELAY_API_KEY}`;
-    }
-    
-    const response = await fetch(directoryUrl, { headers });
+    // CRITICAL: NO AUTH HEADERS for directory GET (public endpoint)
+    const response = await fetch(directoryUrl);
 
     if (response.ok) {
       const data = await response.json();
@@ -655,18 +647,10 @@ export async function fetchPeerIdentity(username: string): Promise<{
   // Use proxy in browser, direct relay on server
   const directoryUrl = typeof window !== 'undefined'
     ? `/api/relay/directory/${canonicalUsername}` // Browser: use Next.js API proxy
-    : `${getRelayUrl()}/directory/${canonicalUsername}`; // Server: direct relay with API key
+    : `${getRelayUrl()}/directory/${canonicalUsername}`; // Server: direct relay
   
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-  
-  // Only add API key on server-side
-  if (typeof window === 'undefined') {
-    headers['Authorization'] = `Bearer ${RELAY_API_KEY}`;
-  }
-
-  const response = await fetch(directoryUrl, { headers });
+  // CRITICAL: NO AUTH HEADERS for directory GET (public endpoint)
+  const response = await fetch(directoryUrl);
 
   if (!response.ok) {
     logWarn('identity', 'Peer not found in directory', { username: canonicalUsername, status: response.status });

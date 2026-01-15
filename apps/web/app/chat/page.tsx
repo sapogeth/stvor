@@ -779,33 +779,8 @@ export default function ChatPage() {
 
           // Check if cipher is available
           if (!msg.cipher) {
-            console.warn('[Message] No blob data available in entry:', msg.raw);
-
-            // Fallback: check if there's plaintext for dev/debug
-            if (msg.raw?.text) {
-              console.log('[Message] Found plaintext fallback');
-              const newMessage: Message = {
-                id: msg.id,
-                sender: msg.from,
-                text: msg.raw.text,
-                timestamp: msg.ts,
-                encrypted: false,
-              };
-              setMessages((prev) => {
-                if (prev.find((m) => m.id === newMessage.id)) return prev;
-                return [...prev, newMessage];
-              });
-
-              // CRITICAL: Mark as successfully processed ONLY after message is rendered
-              seenEntries.add(dedupeKey);
-              console.log(`[Sync] ✅ Marked plaintext entry as seen: ${dedupeKey}`);
-
-              // Track as successfully processed
-              const entryIndex = typeof entry.index !== 'undefined' ? entry.index : -1;
-              if (entryIndex >= 0) {
-                processedIndices.push(entryIndex);
-              }
-            }
+            console.warn('[Message] ❌ No cipher data - message delivery failed');
+            console.error('[Message] Message rejected: no encryption');
             continue;
           }
 
