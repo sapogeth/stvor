@@ -166,6 +166,7 @@ export async function requireWebAuth(
       error: 'Unauthorized',
       message: err instanceof Error ? err.message : 'JWT verification failed',
     });
+    return; // CRITICAL: Stop execution after sending error
   }
 }
 
@@ -206,6 +207,7 @@ export async function optionalWebAuth(
       error: 'Unauthorized',
       message: 'Invalid JWT token',
     });
+    return; // CRITICAL: Stop execution after sending error
   }
 }
 
