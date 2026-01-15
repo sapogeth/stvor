@@ -61,12 +61,13 @@ export interface WebRelayJWTPayload {
 
 /**
  * Augment FastifyRequest with authenticated user
+ * Note: Commented out to avoid conflict with @fastify/jwt types
  */
-declare module 'fastify' {
-  interface FastifyRequest {
-    user?: WebRelayJWTPayload;
-  }
-}
+// declare module 'fastify' {
+//   interface FastifyRequest {
+//     user?: WebRelayJWTPayload;
+//   }
+// }
 
 /**
  * Extract JWT from Authorization header
@@ -157,14 +158,9 @@ export async function requireWebAuth(
     // Attach authenticated user to request
     request.user = payload;
     
-    request.log.info('[WebJWTAuth] Authenticated user', {
-      username: payload.username,
-      userId: payload.userId,
-    });
+    console.log('[WebJWTAuth] Authenticated user', payload.username, payload.userId);
   } catch (err) {
-    request.log.warn('[WebJWTAuth] JWT verification failed', {
-      error: err instanceof Error ? err.message : 'Unknown error',
-    });
+    console.warn('[WebJWTAuth] JWT verification failed:', err instanceof Error ? err.message : 'Unknown error');
     
     reply.code(401).send({
       error: 'Unauthorized',
@@ -201,14 +197,10 @@ export async function optionalWebAuth(
     const payload = verifyWebRelayJWT(token);
     request.user = payload;
     
-    request.log.info('[WebJWTAuth] Optional auth: User authenticated', {
-      username: payload.username,
-    });
+    console.log('[WebJWTAuth] Optional auth: User authenticated', payload.username);
   } catch (err) {
     // Invalid token - reject (if token is provided, it MUST be valid)
-    request.log.warn('[WebJWTAuth] Optional auth: Invalid JWT', {
-      error: err instanceof Error ? err.message : 'Unknown error',
-    });
+    console.warn('[WebJWTAuth] Optional auth: Invalid JWT:', err instanceof Error ? err.message : 'Unknown error');
     
     reply.code(401).send({
       error: 'Unauthorized',
@@ -234,7 +226,7 @@ export async function isParticipant(
     return false;
   }
   
-  const username = request.user.username;
+  const username = (request.user as any).username;
   
   try {
     const chat = await storage.chats.getChat(chatId);
@@ -245,11 +237,7 @@ export async function isParticipant(
     
     return chat.participants.includes(username);
   } catch (err) {
-    request.log.error('[WebJWTAuth] Error checking chat membership', {
-      chatId,
-      username,
-      error: err,
-    });
+    console.error('[WebJWTAuth] Error checking chat membership:', chatId, username, err);
     return false;
   }
 }
@@ -304,10 +292,7 @@ export async function requireParticipant(
   const isMember = await isParticipant(request, storage, chatId);
   
   if (!isMember) {
-    request.log.warn('[WebJWTAuth] User not a participant', {
-      username: request.user.username,
-      chatId,
-    });
+    console.warn('[WebJWTAuth] User not a participant:', (request.user as any)?.username, chatId);
     
     reply.code(403).send({
       error: 'Forbidden',

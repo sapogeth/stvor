@@ -21,9 +21,11 @@
     "cbor-x": "^1.6.0",
     "fastify": "^5.2.0",
     "glob": "^11.0.0",
+    "jsonwebtoken": "^9.0.2",
     "pg": "^8.16.3"
   },
   "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.10.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"

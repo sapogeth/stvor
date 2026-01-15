@@ -24,7 +24,7 @@
  */
 
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import type { IStorageAdapter } from '../storage/interfaces';
+import { type IStorageAdapter } from './storage/index.js';
 
 /**
  * JWT Payload Structure (signed by relay)
@@ -130,7 +130,7 @@ export async function checkReplayAttack(
   claimedSequence: number
 ): Promise<{ valid: boolean; reason?: string }> {
   // Fetch last known sequence for this chat
-  const lastSequence = await storage.messages.getLastSequence(chatId);
+  const lastSequence = await storage.messages.getLatestSequence(chatId);
   
   if (claimedSequence <= lastSequence) {
     return {

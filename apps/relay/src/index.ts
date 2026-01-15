@@ -1522,7 +1522,7 @@ fastify.post<{ Params: { chatId: string }, Body: MessageBody }>(
     const { chatId } = request.params;
     
     // CRITICAL: Username is guaranteed by requireWebAuth middleware
-    const senderId = request.user!.username;
+    const senderId = (request.user as any)!.username;
 
     // Support both new and legacy body formats
     const encryptedBlob = request.body.encryptedBlob || request.body.blob;
@@ -1942,7 +1942,7 @@ fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
     const messages = await storage.messages.listBlobsSince(chatId, since, limit);
     
     // STEP 4: Fetch participant identities
-    const participants = await storage.chatParticipants.getParticipants(chatId);
+    const participants = await storage.chatParticipants.listParticipants(chatId);
     const participantIdentities = [];
 
     for (const senderId of participants) {
