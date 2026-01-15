@@ -1914,18 +1914,13 @@ fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
         message: 'Authentication required. JWT token invalid or missing.',
         code: 'AUTH_REQUIRED',
       });
-  {
-    preHandler: [requireWebAuth, requireParticipant], // CRITICAL: Enforce auth + authorization
-  },
-  async (request, reply) => {
-    const { chatId } = request.params;
-    const since = parseInt(request.query.since || '0');
-    const limit = Math.min(parseInt(request.query.limit || '100'), 1000);
+    }
+
+    // STEP 2: Authorization (check if user is a participant)
+    const isParticipant = await storage.chatParticipants.isParticipant(chatId, userId);
     
-    // CRITICAL: Username is guaranteed by requireWebAuth middleware
-    const userId = request.user!.username;
-    
-    console.log(`[Sync] ✅ Authentication successful:`, { userId, chatId }); // 403 Forbidden: Authenticated but not authorized (not a participant)
+    if (!isParticipant) {
+      // 403 Forbidden: Authenticated but not authorized (not a participant)
       logSecurityEvent('SYNC_AUTHORIZATION_FAILED', {
         chatId,
         userId,
@@ -1943,8 +1938,20 @@ fastify.get<{ Params: { chatId: string }, Querystring: SyncQuery }>(
     
     console.log(`[Sync] ✅ Authorization successful:`, { userId, chatId, since, limit });
 
-    // STEP 5: Fetch messages (authorization already done by requireParticipant middleware)d as string, // Canonical username
-            canonicalUsername: (senderId as string).toLowerCase().trim(), // CRITICAL FIX: Explicit canonical form
+    // STEP 3: Fetch messages (authorization already done)
+    const messages = await storage.messages.listBlobsSince(chatId, since, limit);
+    
+    // STEP 4: Fetch participant identities
+    const participants = await storage.chatParticipants.getParticipants(chatId);
+    const participantIdentities = [];
+
+    for (const senderId of participants) {
+      try {
+        const user = await storage.users.getUserByUsername(senderId);
+        if (user) {
+          participantIdentities.push({
+            username: senderId, // Canonical username
+            canonicalUsername: senderId.toLowerCase().trim(), // CRITICAL FIX: Explicit canonical form
             identityEd25519: user.identityEd25519,
             identityMLDSA: user.identityMLDSA,
           });
