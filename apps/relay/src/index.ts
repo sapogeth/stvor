@@ -165,6 +165,14 @@ fastify.addHook('onRequest', async (request, reply) => {
   if (publicHealthPaths.has(path)) {
     return; // do not enforce API key on health endpoints
   }
+  
+  // CRITICAL: GET /directory is PUBLIC (bootstrap endpoint)
+  // Allow no-origin requests for directory lookup (server-to-server, mobile apps)
+  if (request.method === 'GET' && path.startsWith('/directory/')) {
+    console.log('[CORS] ✅ Allowing no-origin GET /directory (PUBLIC bootstrap endpoint)');
+    return;
+  }
+  
   if (!origin) {
     const apiKeyHeader = request.headers['x-api-key'] as string | undefined;
     const authHeader = request.headers.authorization;
