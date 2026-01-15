@@ -54,6 +54,9 @@ export async function GET(
       method: 'GET',
       headers: {
         'Accept': 'application/json',
+        // CRITICAL: Next.js proxy is server-side (no Origin header)
+        // Relay blocks no-origin requests without API key (CSRF protection)
+        'X-API-Key': RELAY_API_KEY,
       },
     });
 
