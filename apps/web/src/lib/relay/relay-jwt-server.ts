@@ -58,18 +58,11 @@ export async function createRelaySession(
     .setExpirationTime(RELAY_JWT_EXPIRY)
     .sign(RELAY_JWT_SECRET);
 
-  console.log('[RELAY_JWT] Session created:', {
-    sessionId: sessionId.slice(0, 8) + '...',
-    clerkUserId,
-    username,
-  });
-
   return { token, session };
 }
 
 export async function verifyRelayJwt(token: string): Promise<RelayJwtPayload | null> {
   if (!RELAY_JWT_SECRET) {
-    console.error('[RELAY_JWT] RELAY_JWT_SECRET not configured');
     return null;
   }
 
@@ -82,19 +75,12 @@ export async function verifyRelayJwt(token: string): Promise<RelayJwtPayload | n
     const sessionId = payload.sid as string;
     const session = sessionStore.get(sessionId);
 
-    if (!session) {
-      console.error('[RELAY_JWT] Session not found:', sessionId?.slice(0, 8));
-      return null;
-    }
-
-    if (new Date() > session.expiresAt) {
-      console.error('[RELAY_JWT] Session expired:', sessionId.slice(0, 8));
-      sessionStore.delete(sessionId);
+    if (!session || new Date() > session.expiresAt) {
+      if (session) sessionStore.delete(sessionId);
       return null;
     }
 
     if (session.clerkUserId !== payload.sub) {
-      console.error('[RELAY_JWT] Session userId mismatch');
       return null;
     }
 
@@ -105,8 +91,7 @@ export async function verifyRelayJwt(token: string): Promise<RelayJwtPayload | n
       iat: payload.iat as number,
       exp: payload.exp as number,
     };
-  } catch (error) {
-    console.error('[RELAY_JWT] Verification failed:', error);
+  } catch {
     return null;
   }
 }
