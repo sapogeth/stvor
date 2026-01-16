@@ -19,8 +19,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth, clerkClient } from '@clerk/nextjs/server';
+import { auth } from '@clerk/nextjs/server';
 import jwt from 'jsonwebtoken';
+import { getUsernameByUserId } from '../../profiles/storage';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -48,23 +49,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Get user details from Clerk
-    const clerk = await clerkClient();
-    const user = await clerk.users.getUser(userId);
-    
-    // Extract username (prefer username, fallback to primary email)
-    const username = user.username || user.primaryEmailAddress?.emailAddress;
+    // 2. Get username from profiles table (NOT from Clerk email!)
+    // CRITICAL: The username in JWT MUST match the username used in chats
+    // Chat participants are stored as usernames (e.g., 'edf', 'fde')
+    // If we use email ('izhaisenbaev@gmail.com') the participant check will fail
+    const username = await getUsernameByUserId(userId);
     
     if (!username) {
-      console.error('[RelaySession] User has no username or email', { userId });
+      console.error('[RelaySession] User has no registered profile', { userId });
+      console.error('[RelaySession] User must complete profile setup before using relay');
       return NextResponse.json(
-        { error: 'Invalid user', detail: 'No username or email address found' },
+        { error: 'Profile not found', detail: 'Please complete profile setup first' },
         { status: 400 }
       );
     }
 
     // Canonicalize username (lowercase, trim)
     const canonicalUsername = username.toLowerCase().trim();
+
+    console.log('[RelaySession] Resolved username from profiles', {
+      userId,
+      username: canonicalUsername,
+    });
 
     // 3. Sign relay JWT
     if (!RELAY_JWT_SECRET) {
