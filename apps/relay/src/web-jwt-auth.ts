@@ -241,13 +241,16 @@ export async function isParticipant(
   const username = (request.user as any).username;
   
   try {
-    const chat = await storage.chats.getChat(chatId);
-    
-    if (!chat) {
+    // CRITICAL FIX: Use chatParticipants API, not chats.getChat()
+    // storage.chats does not exist - only storage.chatParticipants
+    if (!storage.chatParticipants) {
+      console.error('[WebJWTAuth] CRITICAL: storage.chatParticipants not available');
       return false;
     }
     
-    return chat.participants.includes(username);
+    const isMember = await storage.chatParticipants.isParticipant(chatId, username);
+    console.log(`[WebJWTAuth] Participant check: user=${username}, chatId=${chatId.slice(0,16)}..., isMember=${isMember}`);
+    return isMember;
   } catch (err) {
     console.error('[WebJWTAuth] Error checking chat membership:', chatId, username, err);
     return false;

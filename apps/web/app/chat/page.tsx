@@ -1632,32 +1632,42 @@ export default function ChatPage() {
       console.log('[Security] Signature length:', peerBundle.ed25519Signature.length);
       console.log('[Security] Public key length:', peerIdentity.ed25519.publicKey.length);
 
-      // Verify Ed25519 signature (skip for dev mode or classical-only mode)
-      // Classical-only mode: no ML-DSA keys means we're in dev/testing
-      const isClassicalOnly = !mldsaBase64 || mldsaBase64 === '';
-      const isRelayBundle = peerBundle.bundleId === 'relay-bundle' || peerBundle.bundleId === 'dev-bundle';
-      const shouldVerify = !peerData.dev && !isClassicalOnly && !isRelayBundle;
-
-      if (shouldVerify) {
-        const ed25519Valid = ed25519Verify(
-          peerBundle.ed25519Signature,
-          bundleData,
-          peerIdentity.ed25519.publicKey
+      // CRITICAL SECURITY: ALWAYS verify prekey bundle signatures
+      // This protects against MITM attacks where attacker substitutes their own prekey
+      // NO DEV MODE BYPASS - signatures MUST be verified in ALL environments
+      
+      // Check if we have valid signature data
+      const hasSignature = peerBundle.ed25519Signature && peerBundle.ed25519Signature.length === 64;
+      const hasPublicKey = peerIdentity.ed25519.publicKey && peerIdentity.ed25519.publicKey.length === 32;
+      
+      if (!hasSignature || !hasPublicKey) {
+        console.error('[Security] ❌ Missing signature or public key for verification');
+        console.error('[Security]   - Has signature:', hasSignature, '(length:', peerBundle.ed25519Signature?.length || 0, ')');
+        console.error('[Security]   - Has public key:', hasPublicKey, '(length:', peerIdentity.ed25519.publicKey?.length || 0, ')');
+        throw new Error(
+          '⚠️ SECURITY ALERT: Cannot verify peer prekey bundle - missing cryptographic material. ' +
+          'This may indicate an incomplete identity registration or corrupted data. ' +
+          'Cannot proceed with handshake for your safety.'
         );
-
-        if (!ed25519Valid) {
-          console.error('[Security] ⚠️ Prekey bundle Ed25519 signature verification FAILED!');
-          throw new Error(
-            '⚠️ SECURITY ALERT: Prekey bundle signature verification failed. ' +
-            'This may indicate a man-in-the-middle attack or corrupted data. ' +
-            'Cannot proceed with handshake for your safety.'
-          );
-        }
-
-        console.log('[Security] ✅ Prekey bundle signatures verified successfully');
-      } else {
-        console.log('[Security] ⚠️ Skipping signature verification (dev mode or classical-only)');
       }
+
+      // MANDATORY signature verification
+      const ed25519Valid = ed25519Verify(
+        peerBundle.ed25519Signature,
+        bundleData,
+        peerIdentity.ed25519.publicKey
+      );
+
+      if (!ed25519Valid) {
+        console.error('[Security] ❌ Prekey bundle Ed25519 signature verification FAILED!');
+        throw new Error(
+          '⚠️ SECURITY ALERT: Prekey bundle signature verification failed. ' +
+          'This may indicate a man-in-the-middle attack or corrupted data. ' +
+          'Cannot proceed with handshake for your safety.'
+        );
+      }
+
+      console.log('[Security] ✅ Prekey bundle signature verified successfully');
 
       console.log('[Handshake] Initiating handshake with verified peer bundle...');
 

@@ -2448,12 +2448,16 @@ async function start() {
         connectionString: DB_URL,
       });
       storageReady = true;
-      console.log(`[Storage] ✅ ${effectiveStorageType} initialized`);
+      // CRITICAL: Decorate fastify with storage so middleware (web-jwt-auth.ts) can access it
+      fastify.decorate('storage', storage);
+      console.log(`[Storage] ✅ ${effectiveStorageType} initialized and decorated on fastify`);
     } catch (storageErr) {
       console.error('[Storage] Failed to initialize, falling back to memory:', storageErr);
       storage = await createStorageAdapter({ type: 'memory' });
       storageReady = true;
-      console.log('[Storage] ✅ memory (fallback) initialized');
+      // CRITICAL: Decorate fastify with storage so middleware (web-jwt-auth.ts) can access it
+      fastify.decorate('storage', storage);
+      console.log('[Storage] ✅ memory (fallback) initialized and decorated on fastify');
     }
 
     console.log(`🔐 Ilyazh Relay FULLY STARTED`);

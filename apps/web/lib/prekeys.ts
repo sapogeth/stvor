@@ -58,7 +58,7 @@ function normalizePeerDirectory(raw: any) {
       mldsaSignature: pk.mldsaSignature || pk.mldsaSig || "",
       timestamp: pk.timestamp || Date.now(),
     },
-    dev: raw.dev === true,
+    // REMOVED: dev flag - signature verification is MANDATORY in all environments
   };
 }
 
