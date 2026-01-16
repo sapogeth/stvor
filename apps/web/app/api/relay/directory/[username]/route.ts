@@ -123,24 +123,50 @@ export async function GET(
 }
 
 // PUBLISH / UPDATE prekey bundle
+// CRITICAL: This endpoint requires Clerk authentication
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ username: string }> }
 ) {
   try {
+    // CRITICAL: Import and verify Clerk authentication
+    const { currentUser } = await import('@clerk/nextjs/server');
+    const user = await currentUser();
+
+    if (!user) {
+      console.error('[Proxy/directory] POST requires Clerk authentication');
+      return NextResponse.json(
+        { error: 'unauthorized', message: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const resolvedParams = await params;
     const raw = resolvedParams.username || '';
     const username = raw.toLowerCase().trim();
+    
+    // SECURITY: Ensure user can only register their own identity
+    const clerkUsername = (user.username || user.id).toLowerCase().trim();
+    if (username !== clerkUsername) {
+      console.error('[Proxy/directory] Username mismatch:', { requested: username, clerk: clerkUsername });
+      return NextResponse.json(
+        { error: 'forbidden', message: 'Cannot register identity for another user' },
+        { status: 403 }
+      );
+    }
+    
     const body = await req.json();
 
     const url = `${RELAY_URL}/directory/${username}`;
 
-    console.error(`[Proxy/directory] POST /directory/${username} -> ${url}`);
+    console.error(`[Proxy/directory] POST /directory/${username} -> ${url} (Clerk verified: ${clerkUsername})`);
 
     const res = await fetch(url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
+        // CRITICAL: Use API key for backend-to-backend auth
+        'Authorization': `Bearer ${RELAY_API_KEY}`,
       },
       body: JSON.stringify({
         // normalize username to prevent case mismatches
@@ -183,24 +209,50 @@ export async function POST(
 }
 
 // some relays use PUT for updates
+// CRITICAL: This endpoint requires Clerk authentication
 export async function PUT(
   req: Request,
   { params }: { params: Promise<{ username: string }> }
 ) {
   try {
+    // CRITICAL: Import and verify Clerk authentication
+    const { currentUser } = await import('@clerk/nextjs/server');
+    const user = await currentUser();
+
+    if (!user) {
+      console.error('[Proxy/directory] PUT requires Clerk authentication');
+      return NextResponse.json(
+        { error: 'unauthorized', message: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
     const resolvedParams = await params;
     const raw = resolvedParams.username || '';
     const username = raw.toLowerCase().trim();
+    
+    // SECURITY: Ensure user can only update their own identity
+    const clerkUsername = (user.username || user.id).toLowerCase().trim();
+    if (username !== clerkUsername) {
+      console.error('[Proxy/directory] PUT username mismatch:', { requested: username, clerk: clerkUsername });
+      return NextResponse.json(
+        { error: 'forbidden', message: 'Cannot update identity for another user' },
+        { status: 403 }
+      );
+    }
+    
     const body = await req.json();
 
     const url = `${RELAY_URL}/directory/${username}`;
 
-    console.error(`[Proxy/directory] PUT /directory/${username} -> ${url}`);
+    console.error(`[Proxy/directory] PUT /directory/${username} -> ${url} (Clerk verified: ${clerkUsername})`);
 
     const res = await fetch(url, {
       method: 'PUT',
       headers: {
         'content-type': 'application/json',
+        // CRITICAL: Use API key for backend-to-backend auth
+        'Authorization': `Bearer ${RELAY_API_KEY}`,
       },
       body: JSON.stringify({
         username,

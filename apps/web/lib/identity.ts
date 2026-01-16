@@ -316,30 +316,32 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
         throw err; // Re-throw mismatch errors immediately
       }
 
-      // Network timeout: recoverable but security-degraded
+      // CRITICAL SECURITY: 403 errors must NOT be ignored
+      if (err instanceof Error && err.message.includes('403')) {
+        throw err; // Re-throw 403 errors immediately
+      }
+
+      // Network timeout: CRITICAL SECURITY - we MUST NOT silently continue
+      // Previous behavior was to set RELAY_VERIFICATION_FAILED=true and continue.
+      // This is a SECURITY VULNERABILITY - attacker can force timeout and use fake identity.
       if (err instanceof Error && err.name === 'AbortError') {
+        logError('identity', '❌ CRITICAL: Relay verification TIMEOUT (10s)');
+        logError('identity', 'SECURITY: Cannot verify identity without relay confirmation');
+        logError('identity', 'User must retry when network is available');
+        
+        // Mark auth as failed so UI can show appropriate message
         RELAY_VERIFICATION_FAILED = true;
-        logWarn('identity', '⚠️  Relay verification TIMEOUT (10s) - identity not verified');
-        logWarn('identity', '⚠️  Possible causes: slow network, relay overloaded, relay offline');
-        logWarn('identity', '⚠️  Using local identity WITHOUT relay confirmation');
-        logWarn('identity', '⚠️  Risk: Client is vulnerable to impersonation if relay is compromised');
-      } else {
-        // Other network error: recoverable but security-degraded
-        RELAY_VERIFICATION_FAILED = true;
-        logWarn('identity', '⚠️  Relay verification FAILED (network error) - identity not verified');
-        logWarn('identity', '⚠️  Error details:', { error: err });
-        logWarn('identity', '⚠️  Using local identity WITHOUT relay confirmation');
-        logWarn('identity', '⚠️  Risk: Client is vulnerable to impersonation if relay is compromised');
+        const { relayAuthController } = await import('@/lib/relay-auth-controller');
+        relayAuthController.markFailed('Relay verification timeout - network issue', 403);
+        
+        throw new Error(
+          'Cannot verify identity: relay not reachable (timeout). ' +
+          'Please check your network connection and try again.'
+        );
       }
     }
 
-    if (!verificationSucceeded) {
-      logWarn('identity', 'IMPORTANT: Relay verification did not complete. Application should:');
-      logWarn('identity', '1. Call isRelayVerificationFailed() to detect this condition');
-      logWarn('identity', '2. Show user warning: "Could not verify identity with relay"');
-      logWarn('identity', '3. Consider requiring explicit user confirmation before proceeding');
-      logWarn('identity', '4. Track this in telemetry for network debugging');
-    }
+    // If we reach here, verification succeeded - local identity is valid
 
     return localIdentity;
   }
@@ -448,17 +450,38 @@ export async function getOrCreateIdentity(username: string): Promise<IdentityKey
 /**
  * Register canonical identity with relay /directory endpoint
  * This makes the identity the source of truth
+ * 
+ * CRITICAL: In browser, MUST use Next.js proxy to avoid CORS and provide auth
+ * Direct relay calls from browser are blocked (no-origin without API key)
  */
 async function registerCanonicalIdentity(username: string, identity: IdentityKeyPair): Promise<void> {
-  const relayUrl = getRelayUrl();
-  const endpoint = `${relayUrl}/directory/${username}`;
-  logInfo('identity', 'Registering canonical identity on directory', { endpoint });
+  // CRITICAL: Always use proxy in browser, direct relay only on server
+  const isServer = typeof window === 'undefined';
+  const endpoint = isServer
+    ? `${getRelayUrl()}/directory/${username}`
+    : `/api/relay/directory/${encodeURIComponent(username)}`;
+  
+  logInfo('identity', 'Registering canonical identity on directory', { 
+    endpoint, 
+    isServer,
+    username 
+  });
 
   // STEP 0: Check if directory entry already exists
   // This solves the cascade failure where 404 caused registration to fail
   try {
+    const checkHeaders: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    // Server-side needs API key
+    if (isServer) {
+      checkHeaders['Authorization'] = `Bearer ${RELAY_API_KEY}`;
+    }
+    
     const checkResponse = await fetch(endpoint, {
-      signal: AbortSignal.timeout(5000) // 5s timeout for existence check
+      signal: AbortSignal.timeout(5000), // 5s timeout for existence check
+      headers: checkHeaders,
     });
 
     if (checkResponse.ok) {
@@ -475,11 +498,21 @@ async function registerCanonicalIdentity(username: string, identity: IdentityKey
     logWarn('identity', 'Could not check directory existence, will attempt registration', { error: err });
   }
 
-  // STEP 1: Register the identity
+  // STEP 1: Register the identity via proxy
   try {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    // Server-side needs API key
+    if (isServer) {
+      headers['Authorization'] = `Bearer ${RELAY_API_KEY}`;
+    }
+    
     const response = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
+      credentials: 'include', // Include Clerk cookies for auth
       body: JSON.stringify({
         identityEd25519: Buffer.from(identity.ed25519.publicKey).toString('base64'),
         identityMLDSA: Buffer.from(identity.mldsa.publicKey).toString('base64'),
@@ -497,20 +530,23 @@ async function registerCanonicalIdentity(username: string, identity: IdentityKey
         errorDetails = await response.text().catch(() => 'Unable to read response');
       }
 
-      // Log detailed CORS error info
       logError('identity', 'Failed to register canonical identity', {
         status: response.status,
         statusText: response.statusText,
         endpoint,
-        origin: window.location.origin
+        errorDetails,
       });
 
-      // Specific error for CORS issues
-      if (response.status === 500 && errorDetails.includes('Not allowed by CORS')) {
+      // CRITICAL: 401/403 means auth failed - do NOT proceed with local-only identity
+      if (response.status === 401 || response.status === 403) {
+        const { relayAuthController } = await import('@/lib/relay-auth-controller');
+        relayAuthController.markFailed(
+          `Identity registration failed: ${response.status} - ${errorDetails}`,
+          response.status as 401 | 403
+        );
         throw new Error(
-          `CORS ERROR: Relay at ${relayUrl} blocked request from origin ${window.location.origin}. ` +
-          `This is a relay misconfiguration, not a client error. ` +
-          `The relay must add ${window.location.origin} to ALLOWED_ORIGINS.`
+          `Authentication failed during identity registration (${response.status}). ` +
+          `Please sign out and sign in again.`
         );
       }
 
@@ -520,15 +556,14 @@ async function registerCanonicalIdentity(username: string, identity: IdentityKey
     const data = await response.json();
     logInfo('identity', 'Canonical identity registered', data);
   } catch (error) {
-    // If it's a fetch error (network, CORS preflight failure), provide helpful context
+    // If it's a fetch error (network), provide helpful context
     if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-      logError('identity', 'Network/CORS error - likely CORS preflight failure', {
-        origin: window.location.origin,
-        relayUrl
+      logError('identity', 'Network error during identity registration', {
+        endpoint,
       });
       throw new Error(
-        `Failed to connect to relay at ${relayUrl}. ` +
-        `Check: (1) Relay is running, (2) CORS allows ${window.location.origin}, (3) Network connectivity.`
+        `Failed to connect to relay. ` +
+        `Check: (1) Network connectivity, (2) Relay is running.`
       );
     }
     throw error;

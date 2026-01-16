@@ -178,6 +178,9 @@ export default function ChatPage() {
   const [recipient, setRecipient] = useState('');
   const [chatActive, setChatActive] = useState(false);
   const [showingChatList, setShowingChatList] = useState(true); // Show chat list by default
+  
+  // CRITICAL: Auth failure state - stops polling on 401/403
+  const [syncAuthFailed, setSyncAuthFailed] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [sessionInfo, setSessionInfo] = useState<any>(null);
@@ -406,9 +409,21 @@ export default function ChatPage() {
 
   // Poll for incoming messages
   useEffect(() => {
-    if (!chatActive || !chatId || !identity) return;
+    // CRITICAL: Do not poll if auth has failed
+    if (!chatActive || !chatId || !identity || syncAuthFailed) {
+      if (syncAuthFailed) {
+        console.warn('[Sync] Polling disabled - authentication failed');
+      }
+      return;
+    }
 
     const pollMessages = async () => {
+      // Double-check auth status before each poll
+      if (syncAuthFailed) {
+        console.warn('[Sync] Skipping poll - authentication failed');
+        return;
+      }
+      
       try {
         // PART 3: Use cursor from ref for this specific chat
         const cursor = cursorsRef.current[chatId] || 0;
@@ -434,6 +449,21 @@ export default function ChatPage() {
             statusText: syncRes.statusText,
             chatId,
           });
+          
+          // CRITICAL SECURITY: Stop polling on 401/403
+          // These errors indicate authentication failure - polling will never succeed
+          if (syncRes.status === 401 || syncRes.status === 403) {
+            console.error('[Sync] ❌ CRITICAL: Authentication failed (401/403) - stopping polling');
+            console.error('[Sync] User must re-authenticate to continue');
+            setSyncAuthFailed(true);
+            
+            // Mark relay auth as failed
+            const { relayAuthController } = await import('@/lib/relay-auth-controller');
+            relayAuthController.markFailed(
+              `Sync request failed: ${syncRes.status} ${syncRes.statusText}`,
+              syncRes.status as 401 | 403
+            );
+          }
           return;
         }
 
@@ -1410,7 +1440,7 @@ export default function ChatPage() {
     pollMessages();
 
     return () => clearInterval(intervalId);
-  }, [chatActive, chatId, lastSyncIndex, username, identity, ratchetState, recipient]);
+  }, [chatActive, chatId, lastSyncIndex, username, identity, ratchetState, recipient, syncAuthFailed]);
 
   const startChat = async () => {
     // Canonicalize recipient username
