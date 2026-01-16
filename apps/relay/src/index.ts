@@ -161,7 +161,7 @@ fastify.addHook('onRequest', async (request, reply) => {
   // Allow unauthenticated access to public liveness/readiness endpoints
   // This is required for platform health checks (Railway/Render/etc.)
   const path = (request.url || '').split('?')[0];
-  const publicHealthPaths = new Set(['/healthz', '/health', '/ready', '/metrics']);
+  const publicHealthPaths = new Set(['/healthz', '/health', '/ready', '/metrics', '/debug/jwt-config']);
   if (publicHealthPaths.has(path)) {
     return; // do not enforce API key on health endpoints
   }
