@@ -53,11 +53,16 @@ export async function POST(req: NextRequest) {
     // CRITICAL: The username in JWT MUST match the username used in chats
     // Chat participants are stored as usernames (e.g., 'edf', 'fde')
     // If we use email ('izhaisenbaev@gmail.com') the participant check will fail
+    console.log('[RelaySession] Looking up username for userId:', userId);
     const username = await getUsernameByUserId(userId);
     
     if (!username) {
-      console.error('[RelaySession] User has no registered profile', { userId });
+      console.error('[RelaySession] ❌ User has no registered profile', { userId });
       console.error('[RelaySession] User must complete profile setup before using relay');
+      console.error('[RelaySession] This may indicate:');
+      console.error('[RelaySession]   1. Profile was not created yet');
+      console.error('[RelaySession]   2. Supabase replication delay');
+      console.error('[RelaySession]   3. Profile creation failed silently');
       return NextResponse.json(
         { error: 'Profile not found', detail: 'Please complete profile setup first' },
         { status: 400 }
