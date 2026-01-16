@@ -114,6 +114,21 @@ let storage: IStorageAdapter | null = null;
 let storageReady = false;
 let wsManager: any = null; // WebSocket manager reference
 
+/**
+ * Get the storage adapter (for use by middleware modules)
+ * Returns null if storage is not yet initialized
+ */
+export function getStorage(): IStorageAdapter | null {
+  return storage;
+}
+
+/**
+ * Check if storage is ready
+ */
+export function isStorageReady(): boolean {
+  return storageReady;
+}
+
 // Register plugins and routes (will be called by start())
 const initializeServer = async () => {
   console.log('[Startup] 📋 Registering Fastify plugins...');
@@ -2448,16 +2463,12 @@ async function start() {
         connectionString: DB_URL,
       });
       storageReady = true;
-      // CRITICAL: Decorate fastify with storage so middleware (web-jwt-auth.ts) can access it
-      fastify.decorate('storage', storage);
-      console.log(`[Storage] ✅ ${effectiveStorageType} initialized and decorated on fastify`);
+      console.log(`[Storage] ✅ ${effectiveStorageType} initialized`);
     } catch (storageErr) {
       console.error('[Storage] Failed to initialize, falling back to memory:', storageErr);
       storage = await createStorageAdapter({ type: 'memory' });
       storageReady = true;
-      // CRITICAL: Decorate fastify with storage so middleware (web-jwt-auth.ts) can access it
-      fastify.decorate('storage', storage);
-      console.log('[Storage] ✅ memory (fallback) initialized and decorated on fastify');
+      console.log('[Storage] ✅ memory (fallback) initialized');
     }
 
     console.log(`🔐 Ilyazh Relay FULLY STARTED`);

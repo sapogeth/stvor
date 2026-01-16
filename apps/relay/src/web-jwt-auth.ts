@@ -25,6 +25,7 @@
 
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import jwt from 'jsonwebtoken';
+import { getStorage, isStorageReady } from './index.js';
 
 const RELAY_JWT_SECRET = process.env.RELAY_JWT_SECRET;
 
@@ -292,14 +293,14 @@ export async function requireParticipant(
     return;
   }
   
-  // Get storage from request.server
-  const storage = (request.server as any).storage;
+  // Get storage from exported function (not fastify decoration)
+  const storage = getStorage();
   
-  if (!storage) {
-    request.log.error('[WebJWTAuth] Storage not available on server instance');
-    reply.code(500).send({
-      error: 'Internal Server Error',
-      message: 'Storage not configured',
+  if (!storage || !isStorageReady()) {
+    request.log.error('[WebJWTAuth] Storage not available or not ready');
+    reply.code(503).send({
+      error: 'Service Unavailable',
+      message: 'Storage not ready, please retry',
     });
     return;
   }
