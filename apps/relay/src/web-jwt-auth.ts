@@ -141,9 +141,15 @@ export async function requireWebAuth(
   request: FastifyRequest,
   reply: FastifyReply
 ): Promise<void> {
+  console.log('[WebJWTAuth] 🔐 requireWebAuth called for:', request.url);
+  console.log('[WebJWTAuth] Auth header present:', !!request.headers.authorization);
+  console.log('[WebJWTAuth] RELAY_JWT_SECRET configured:', !!RELAY_JWT_SECRET);
+  
   const token = extractWebJWT(request);
   
   if (!token) {
+    console.error('[WebJWTAuth] ❌ No JWT token in Authorization header');
+    console.error('[WebJWTAuth] Headers:', JSON.stringify(Object.keys(request.headers)));
     request.log.warn('[WebJWTAuth] No JWT token in Authorization header');
     reply.code(401).send({
       error: 'Unauthorized',
@@ -152,15 +158,19 @@ export async function requireWebAuth(
     return;
   }
   
+  console.log('[WebJWTAuth] JWT token extracted (first 20 chars):', token.substring(0, 20));
+  
   try {
     const payload = verifyWebRelayJWT(token);
     
     // Attach authenticated user to request
     request.user = payload;
     
-    console.log('[WebJWTAuth] Authenticated user', payload.username, payload.userId);
+    console.log('[WebJWTAuth] ✅ Authenticated user:', payload.username, payload.userId);
   } catch (err) {
-    console.warn('[WebJWTAuth] JWT verification failed:', err instanceof Error ? err.message : 'Unknown error');
+    console.error('[WebJWTAuth] ❌ JWT verification failed:', err instanceof Error ? err.message : 'Unknown error');
+    console.error('[WebJWTAuth] Error stack:', err instanceof Error ? err.stack : 'No stack');
+    console.error('[WebJWTAuth] Token (first 50 chars):', token.substring(0, 50));
     
     reply.code(401).send({
       error: 'Unauthorized',

@@ -609,6 +609,22 @@ fastify.get('/ready', async () => {
   return { ready: true, storage: STORAGE_TYPE, version: '0.8.0' };
 });
 
+// DEBUG endpoint for JWT configuration
+fastify.get('/debug/jwt-config', async (request, reply) => {
+  const RELAY_JWT_SECRET = process.env.RELAY_JWT_SECRET;
+  
+  return {
+    relay_jwt_secret_configured: !!RELAY_JWT_SECRET,
+    relay_jwt_secret_length: RELAY_JWT_SECRET?.length || 0,
+    relay_jwt_secret_first_10: RELAY_JWT_SECRET?.substring(0, 10) || 'NOT_SET',
+    env_vars_present: {
+      RELAY_JWT_SECRET: !!process.env.RELAY_JWT_SECRET,
+      RELAY_URL: !!process.env.RELAY_URL,
+      RELAY_API_KEY: !!process.env.RELAY_API_KEY,
+    }
+  };
+});
+
 fastify.get('/metrics', async () => {
   const uptime = Date.now() - metrics.startTime;
   const endpoints: Record<string, number> = {};
