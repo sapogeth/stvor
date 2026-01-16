@@ -169,3 +169,48 @@ export function requireRelayAuth(operation: string): void {
     );
   }
 }
+
+/**
+ * CRITICAL: Full reset when auth has FAILED
+ * 
+ * This clears ALL crypto state and forces full re-authentication.
+ * Call this when user clicks "Re-authenticate" or "Reset Session".
+ * 
+ * NEVER call this automatically - user must explicitly request it.
+ */
+export async function performFullAuthReset(): Promise<void> {
+  console.warn('[RelayAuth] ⚠️ Performing FULL authentication reset...');
+  
+  try {
+    // 1. Clear identity from IndexedDB
+    const { keystore } = await import('@/lib/keystore');
+    await keystore.init();
+    await keystore.deleteDatabase();
+    console.log('[RelayAuth] ✅ Deleted keystore database (identity, sessions, prekeys)');
+  } catch (err) {
+    console.error('[RelayAuth] Failed to clear keystore:', err);
+  }
+  
+  try {
+    // 2. Clear relay JWT from memory cache
+    const { clearRelayJWT } = await import('@/lib/relay-jwt-manager');
+    clearRelayJWT();
+    console.log('[RelayAuth] ✅ Cleared relay JWT cache');
+  } catch (err) {
+    console.error('[RelayAuth] Failed to clear JWT cache:', err);
+  }
+  
+  try {
+    // 3. Clear session storage
+    sessionStorage.clear();
+    console.log('[RelayAuth] ✅ Cleared session storage');
+  } catch (err) {
+    console.error('[RelayAuth] Failed to clear session storage:', err);
+  }
+  
+  // 4. Reset the auth controller state (now safe to re-auth)
+  relayAuthController.reset();
+  console.log('[RelayAuth] ✅ Reset auth controller state');
+  
+  console.log('[RelayAuth] 🔄 Full reset complete. User must re-authenticate.');
+}

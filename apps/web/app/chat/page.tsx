@@ -1779,6 +1779,32 @@ export default function ChatPage() {
   const sendMessage = async () => {
     if (!inputText.trim() || !chatId) return;
 
+    // CRITICAL SECURITY: Block send if session not established
+    // This prevents:
+    // 1. Plaintext fallback (security risk)
+    // 2. Message replay errors (409)
+    // 3. Sending with stale ratchet state
+    if (!ratchetState) {
+      console.error('[Send] ❌ BLOCKED: Cannot send message - no ratchet state');
+      alert('Cannot send message: Secure session not established. Please wait for handshake to complete.');
+      return;
+    }
+
+    // CRITICAL: Check relay auth state before sending
+    const { relayAuthController } = await import('@/lib/relay-auth-controller');
+    if (relayAuthController.hasAuthFailed()) {
+      console.error('[Send] ❌ BLOCKED: Relay authentication has failed');
+      alert('Cannot send message: Authentication failed. Please refresh the page and re-authenticate.');
+      return;
+    }
+
+    // CRITICAL: Check if sync auth has failed (terminal state)
+    if (syncAuthFailed) {
+      console.error('[Send] ❌ BLOCKED: Sync authentication has failed');
+      alert('Cannot send message: Session authentication failed. Please refresh the page.');
+      return;
+    }
+
     const messageText = inputText;
     const messageId = `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setInputText('');
@@ -1798,68 +1824,63 @@ export default function ChatPage() {
     });
 
     try {
-      let data: string;
       let inlineSession: any = undefined;
 
-      if (ratchetState) {
-        console.log('[Send] 📝 Encrypting message with ratchet state...');
-        console.log('[Send] - Session ID:', Buffer.from(ratchetState.sessionId).toString('hex').slice(0, 16) + '...');
-        console.log('[Send] - Send counter before encryption:', ratchetState.sendCounter);
-        console.log('[Send] - Recv counter before encryption:', ratchetState.recvCounter);
+      // ratchetState is GUARANTEED at this point (early return above if missing)
+      console.log('[Send] 📝 Encrypting message with ratchet state...');
+      console.log('[Send] - Session ID:', Buffer.from(ratchetState.sessionId).toString('hex').slice(0, 16) + '...');
+      console.log('[Send] - Send counter before encryption:', ratchetState.sendCounter);
+      console.log('[Send] - Recv counter before encryption:', ratchetState.recvCounter);
 
-        // CRITICAL FIX: Serialize session BEFORE encryption
-        // The inline session must contain the state that will be used for encryption
-        // NOT the state after encryption (which has advanced chain keys)
-        const { serializeSession } = await import('@/lib/session-serializer');
-        inlineSession = serializeSession(ratchetState);
-        console.log('[Send] ✅ Serialized session BEFORE encryption (state that will be used)');
-        console.log('[Send] - Session version:', inlineSession.version);
-        console.log('[Send] - sendCounter:', inlineSession.sendCounter);
+      // CRITICAL FIX: Serialize session BEFORE encryption
+      // The inline session must contain the state that will be used for encryption
+      // NOT the state after encryption (which has advanced chain keys)
+      const { serializeSession } = await import('@/lib/session-serializer');
+      inlineSession = serializeSession(ratchetState);
+      console.log('[Send] ✅ Serialized session BEFORE encryption (state that will be used)');
+      console.log('[Send] - Session version:', inlineSession.version);
+      console.log('[Send] - sendCounter:', inlineSession.sendCounter);
 
-        // DEFENSE-IN-DEPTH: Apply message padding (traffic analysis resistance)
-        let plaintextToEncrypt: Uint8Array = new TextEncoder().encode(messageText);
-        const originalLength = plaintextToEncrypt.length;
+      // DEFENSE-IN-DEPTH: Apply message padding (traffic analysis resistance)
+      let plaintextToEncrypt: Uint8Array = new TextEncoder().encode(messageText);
+      const originalLength = plaintextToEncrypt.length;
 
-        if (paddingConfigRef.current?.enabled) {
-          const { padMessage } = await import('@/lib/crypto');
-          plaintextToEncrypt = padMessage(plaintextToEncrypt, paddingConfigRef.current) as Uint8Array;
-          console.log('[Send] 📦 Message padding applied:', {
-            originalLength,
-            paddedLength: plaintextToEncrypt.length,
-            overhead: plaintextToEncrypt.length - originalLength,
-            blockSize: paddingConfigRef.current.blockSize,
-          });
-        }
-
-        // Encrypt message using ratchet
-        const encryptStartTime = Date.now();
-        const { encryptMessage } = await import('@/lib/crypto');
-        const { record, newState } = await encryptMessage(ratchetState, plaintextToEncrypt);
-        const encryptDuration = Date.now() - encryptStartTime;
-
-        console.log('[Send] ✅ Message encrypted successfully');
-        console.log('[Send] - Encryption took:', encryptDuration, 'ms');
-        console.log('[Send] - Nonce (first 16 bytes):', Buffer.from(record.nonce).toString('hex').slice(0, 32));
-        console.log('[Send] - Ciphertext length:', record.ciphertext.length);
-        console.log('[Send] - New send counter:', newState.sendCounter);
-
-        setRatchetState(newState);
-
-        // Save updated session state to IndexedDB after encryption
-        console.log('[Send] 💾 Saving updated session to IndexedDB...');
-        await keystore.init();
-        await keystore.saveSession(newState.sessionId, recipientCanonical, newState);
-        console.log('[Send] ✅ Session saved to IndexedDB');
-
-        // Encode as wire format
-        const { encodeEncryptedMessage } = await import('@/lib/crypto');
-        const wireData = encodeEncryptedMessage(record);
-        data = Buffer.from(wireData).toString('base64');
-        console.log('[Send] ✅ Message encoded to base64, length:', data.length);
-      } else {
-        console.log('[Send] ⚠️  No ratchet state - using plaintext fallback (DEV MODE ONLY)');
-        data = Buffer.from(messageText, 'utf-8').toString('base64');
+      if (paddingConfigRef.current?.enabled) {
+        const { padMessage } = await import('@/lib/crypto');
+        plaintextToEncrypt = padMessage(plaintextToEncrypt, paddingConfigRef.current) as Uint8Array;
+        console.log('[Send] 📦 Message padding applied:', {
+          originalLength,
+          paddedLength: plaintextToEncrypt.length,
+          overhead: plaintextToEncrypt.length - originalLength,
+          blockSize: paddingConfigRef.current.blockSize,
+        });
       }
+
+      // Encrypt message using ratchet
+      const encryptStartTime = Date.now();
+      const { encryptMessage } = await import('@/lib/crypto');
+      const { record, newState } = await encryptMessage(ratchetState, plaintextToEncrypt);
+      const encryptDuration = Date.now() - encryptStartTime;
+
+      console.log('[Send] ✅ Message encrypted successfully');
+      console.log('[Send] - Encryption took:', encryptDuration, 'ms');
+      console.log('[Send] - Nonce (first 16 bytes):', Buffer.from(record.nonce).toString('hex').slice(0, 32));
+      console.log('[Send] - Ciphertext length:', record.ciphertext.length);
+      console.log('[Send] - New send counter:', newState.sendCounter);
+
+      setRatchetState(newState);
+
+      // Save updated session state to IndexedDB after encryption
+      console.log('[Send] 💾 Saving updated session to IndexedDB...');
+      await keystore.init();
+      await keystore.saveSession(newState.sessionId, recipientCanonical, newState);
+      console.log('[Send] ✅ Session saved to IndexedDB');
+
+      // Encode as wire format
+      const { encodeEncryptedMessage } = await import('@/lib/crypto');
+      const wireData = encodeEncryptedMessage(record);
+      const data = Buffer.from(wireData).toString('base64');
+      console.log('[Send] ✅ Message encoded to base64, length:', data.length);
 
       console.log('[Send] 🌐 Sending to relay...');
       const sendStartTime = Date.now();
@@ -1868,7 +1889,6 @@ export default function ChatPage() {
         type: 'message',
         from: usernameCanonical,
         blob: data,
-        text: ratchetState ? undefined : messageText,  // dev fallback for classical-only
         ts: Date.now(),
         version: 'ilyazh/0.8',
         session: inlineSession,  // CRITICAL: Send session atomically with message
@@ -1915,6 +1935,43 @@ export default function ChatPage() {
           from: usernameCanonical,
           to: recipientCanonical,
         });
+
+        // CRITICAL: Handle 409 Message Replay
+        // 409 means the message was already delivered - treat as success
+        // This can happen if:
+        // 1. Network retry sent duplicate
+        // 2. Session state wasn't properly advanced
+        if (response.status === 409) {
+          console.warn('[Send] ⚠️ 409 Message replay detected - treating as delivered');
+          console.warn('[Send] The message was already accepted by relay');
+          
+          // Message is already delivered - add to UI as sent
+          const deliveredMessage: Message = {
+            id: `delivered-${Date.now()}`,
+            sender: username,
+            text: messageText,
+            timestamp: Date.now(),
+            encrypted: true,
+          };
+          setMessages((prev) => [...prev, deliveredMessage]);
+          
+          // Session state was already advanced when we encrypted - no action needed
+          return;
+        }
+
+        // CRITICAL: Handle 401/403 auth failures
+        if (response.status === 401 || response.status === 403) {
+          console.error('[Send] ❌ CRITICAL: Authentication failed - marking relay as failed');
+          const { relayAuthController } = await import('@/lib/relay-auth-controller');
+          relayAuthController.markFailed(
+            `Message send failed: ${response.status}`,
+            response.status as 401 | 403
+          );
+          setSyncAuthFailed(true);
+          alert('Authentication failed. Please refresh the page and re-authenticate.');
+          return;
+        }
+
         throw new Error(`Failed to send message: ${response.status} - ${errorText}`);
       }
 
