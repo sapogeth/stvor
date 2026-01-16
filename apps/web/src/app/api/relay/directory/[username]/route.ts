@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyRelayJwt, getSession, updateSessionIdentity } from '@/lib/relay/relay-jwt-server';
-import type { DirectoryEntry } from '@/lib/relay/types';
+import { verifyRelayJwt, updateSessionIdentity } from '@/lib/relay/relay-jwt-server';
+import type { DirectoryEntry, AuthErrorCode } from '@/lib/relay/types';
 
-// In-memory directory (production: database)
 const identityDirectory = new Map<string, DirectoryEntry>();
 
-// Rate limiting
 const rateLimiter = new Map<string, { count: number; resetAt: Date }>();
 const RATE_LIMIT = 100;
 const RATE_WINDOW = 60 * 1000;
@@ -13,27 +11,23 @@ const RATE_WINDOW = 60 * 1000;
 function checkRateLimit(ip: string): boolean {
   const now = new Date();
   const entry = rateLimiter.get(ip);
-  
+
   if (!entry || now > entry.resetAt) {
     rateLimiter.set(ip, { count: 1, resetAt: new Date(now.getTime() + RATE_WINDOW) });
     return true;
   }
-  
+
   if (entry.count >= RATE_LIMIT) return false;
   entry.count++;
   return true;
 }
 
-/**
- * GET: Public lookup (rate-limited)
- * Любой может найти public keys по username
- */
 export async function GET(
   request: NextRequest,
   { params }: { params: { username: string } }
 ) {
   const ip = request.headers.get('x-forwarded-for') || 'unknown';
-  
+
   if (!checkRateLimit(ip)) {
     return NextResponse.json(
       { error: 'RATE_LIMITED', message: 'Too many requests' },
@@ -51,7 +45,6 @@ export async function GET(
     );
   }
 
-  // Return ONLY public data
   return NextResponse.json({
     username,
     publicKeys: identity.publicKeys,
@@ -59,12 +52,6 @@ export async function GET(
   });
 }
 
-/**
- * POST: Register new identity
- * 
- * КРИТИЧНО: проверяем что payload.username === params.username
- * НЕ payload.sub === username (это было бы неверно)
- */
 export async function POST(
   request: NextRequest,
   { params }: { params: { username: string } }
@@ -90,9 +77,6 @@ export async function POST(
 
     const { username } = params;
 
-    // КРИТИЧНО: username из JWT должен совпадать с запрашиваемым username
-    // payload.sub = clerkUserId (user_xxx)
-    // payload.username = username (rabbit)
     if (payload.username !== username) {
       console.error('[DIRECTORY] Username mismatch:', {
         jwtUsername: payload.username,
@@ -105,19 +89,13 @@ export async function POST(
       );
     }
 
-    // Check if identity already exists
     const existing = identityDirectory.get(username);
-    if (existing) {
-      // Allow re-registration only by same owner
-      if (existing.clerkUserId !== payload.sub) {
-        console.error('[DIRECTORY] Username taken by another user');
-        return NextResponse.json(
-          { error: 'USERNAME_TAKEN', message: 'Username already registered' },
-          { status: 409 }
-        );
-      }
-      // Same user re-registering - allow (key rotation)
-      console.log('[DIRECTORY] Re-registration by owner:', username);
+    if (existing && existing.clerkUserId !== payload.sub) {
+      console.error('[DIRECTORY] Username taken by another user');
+      return NextResponse.json(
+        { error: 'USERNAME_TAKEN', message: 'Username already registered' },
+        { status: 409 }
+      );
     }
 
     const body = await request.json();
@@ -140,14 +118,13 @@ export async function POST(
     const now = new Date();
     identityDirectory.set(username, {
       username,
-      clerkUserId: payload.sub,  // OWNER = clerkUserId
+      clerkUserId: payload.sub,
       publicKeys,
       signature,
       registeredAt: existing?.registeredAt || now,
       updatedAt: now,
     });
 
-    // Update session
     updateSessionIdentity(payload.sid, publicKeys.identity);
 
     console.log('[DIRECTORY] Identity registered:', {
@@ -169,9 +146,6 @@ export async function POST(
   }
 }
 
-/**
- * PUT: Update existing identity (key rotation)
- */
 export async function PUT(
   request: NextRequest,
   { params }: { params: { username: string } }
@@ -205,14 +179,13 @@ export async function PUT(
       );
     }
 
-    // КРИТИЧНО: проверяем ownership по clerkUserId
     if (existing.clerkUserId !== payload.sub) {
       console.error('[DIRECTORY] Unauthorized update:', {
         existingOwner: existing.clerkUserId,
         requestor: payload.sub,
       });
       return NextResponse.json(
-        { error: 'FORBIDDEN', message: 'Cannot update another user\'s identity' },
+        { error: 'FORBIDDEN', message: "Cannot update another user's identity" },
         { status: 403 }
       );
     }

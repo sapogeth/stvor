@@ -1,7 +1,7 @@
 export interface RelaySession {
   sessionId: string;
-  clerkUserId: string;      // Clerk user_xxx
-  username: string;         // Human-readable alias
+  clerkUserId: string;
+  username: string;
   createdAt: Date;
   expiresAt: Date;
   identityRegistered: boolean;
@@ -9,16 +9,16 @@ export interface RelaySession {
 }
 
 export interface RelayJwtPayload {
-  sub: string;              // clerkUserId
-  sid: string;              // sessionId
-  username: string;         // username claim
+  sub: string;
+  sid: string;
+  username: string;
   iat: number;
   exp: number;
 }
 
 export interface DirectoryEntry {
   username: string;
-  clerkUserId: string;      // Owner
+  clerkUserId: string;
   publicKeys: {
     identity: string;
     signedPreKey: string;
@@ -29,7 +29,7 @@ export interface DirectoryEntry {
   updatedAt: Date;
 }
 
-export type AuthErrorCode = 
+export type AuthErrorCode =
   | 'MISSING_AUTH'
   | 'INVALID_CLERK_TOKEN'
   | 'INVALID_RELAY_TOKEN'

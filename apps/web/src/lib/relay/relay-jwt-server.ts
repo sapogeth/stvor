@@ -1,29 +1,41 @@
 import { SignJWT, jwtVerify } from 'jose';
-import { randomBytes } from 'crypto';
 import type { RelaySession, RelayJwtPayload } from './types';
 
-const RELAY_JWT_SECRET = new TextEncoder().encode(
-  process.env.RELAY_JWT_SECRET!
-);
-
-if (!process.env.RELAY_JWT_SECRET) {
-  throw new Error('[FATAL] RELAY_JWT_SECRET not configured');
-}
+const RELAY_JWT_SECRET = process.env.RELAY_JWT_SECRET
+  ? new TextEncoder().encode(process.env.RELAY_JWT_SECRET)
+  : null;
 
 const RELAY_JWT_ISSUER = 'stvor-relay';
 const RELAY_JWT_AUDIENCE = 'stvor-client';
 const RELAY_JWT_EXPIRY = '1h';
 
-// In-memory store (production: Redis/PostgreSQL)
+// In-memory session store (production: use Redis/PostgreSQL)
 const sessionStore = new Map<string, RelaySession>();
+
+function generateSessionId(): string {
+  const array = new Uint8Array(32);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(array);
+  } else {
+    // Fallback for environments without Web Crypto
+    for (let i = 0; i < array.length; i++) {
+      array[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 export async function createRelaySession(
   clerkUserId: string,
   username: string
 ): Promise<{ token: string; session: RelaySession }> {
-  const sessionId = randomBytes(32).toString('hex');
+  if (!RELAY_JWT_SECRET) {
+    throw new Error('RELAY_JWT_SECRET not configured');
+  }
+
+  const sessionId = generateSessionId();
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
+  const expiresAt = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour
 
   const session: RelaySession = {
     sessionId,
@@ -36,13 +48,12 @@ export async function createRelaySession(
 
   sessionStore.set(sessionId, session);
 
-  // JWT содержит clerkUserId в sub, username отдельным claim
-  const token = await new SignJWT({ 
+  const token = await new SignJWT({
     sid: sessionId,
     username: username,
   })
     .setProtectedHeader({ alg: 'HS256' })
-    .setSubject(clerkUserId)  // sub = clerkUserId, НЕ username
+    .setSubject(clerkUserId)
     .setIssuer(RELAY_JWT_ISSUER)
     .setAudience(RELAY_JWT_AUDIENCE)
     .setIssuedAt()
@@ -59,6 +70,11 @@ export async function createRelaySession(
 }
 
 export async function verifyRelayJwt(token: string): Promise<RelayJwtPayload | null> {
+  if (!RELAY_JWT_SECRET) {
+    console.error('[RELAY_JWT] RELAY_JWT_SECRET not configured');
+    return null;
+  }
+
   try {
     const { payload } = await jwtVerify(token, RELAY_JWT_SECRET, {
       issuer: RELAY_JWT_ISSUER,
@@ -79,7 +95,6 @@ export async function verifyRelayJwt(token: string): Promise<RelayJwtPayload | n
       return null;
     }
 
-    // Verify session userId matches token
     if (session.clerkUserId !== payload.sub) {
       console.error('[RELAY_JWT] Session userId mismatch');
       return null;
@@ -118,16 +133,4 @@ export function updateSessionIdentity(sessionId: string, publicKey: string): boo
 
 export function invalidateSession(sessionId: string): void {
   sessionStore.delete(sessionId);
-}
-
-// Cleanup expired sessions
-if (typeof setInterval !== 'undefined') {
-  setInterval(() => {
-    const now = new Date();
-    for (const [id, session] of sessionStore.entries()) {
-      if (now > session.expiresAt) {
-        sessionStore.delete(id);
-      }
-    }
-  }, 60 * 1000);
 }
