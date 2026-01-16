@@ -9,7 +9,6 @@ const RELAY_JWT_ISSUER = 'stvor-relay';
 const RELAY_JWT_AUDIENCE = 'stvor-client';
 const RELAY_JWT_EXPIRY = '1h';
 
-// In-memory session store (production: use Redis/PostgreSQL)
 const sessionStore = new Map<string, RelaySession>();
 
 function generateSessionId(): string {
@@ -17,7 +16,6 @@ function generateSessionId(): string {
   if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
     crypto.getRandomValues(array);
   } else {
-    // Fallback for environments without Web Crypto
     for (let i = 0; i < array.length; i++) {
       array[i] = Math.floor(Math.random() * 256);
     }
@@ -35,7 +33,7 @@ export async function createRelaySession(
 
   const sessionId = generateSessionId();
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour
+  const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
 
   const session: RelaySession = {
     sessionId,

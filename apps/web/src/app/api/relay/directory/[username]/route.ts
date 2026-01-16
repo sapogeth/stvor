@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyRelayJwt, updateSessionIdentity } from '@/lib/relay/relay-jwt-server';
-import type { DirectoryEntry, AuthErrorCode } from '@/lib/relay/types';
+import type { DirectoryEntry } from '@/lib/relay/types';
 
 const identityDirectory = new Map<string, DirectoryEntry>();
 
