@@ -2260,6 +2260,9 @@ export default function ChatPage() {
               🔐 Safety Number
             </button>
           )}
+          <Link href="/subscription" className="px-3 py-1 text-xs bg-gray-800 border border-gray-700 rounded hover:bg-gray-700 hover:border-green-500 transition" title="Manage subscription and API keys">
+            Subscription
+          </Link>
         </div>
       </div>
 
