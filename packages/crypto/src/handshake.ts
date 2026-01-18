@@ -678,6 +678,17 @@ export async function completeHandshake(
   // Create fresh Uint8Array for crypto operations
   const partialTranscript = new Uint8Array(partialTranscriptBuffer);
 
+  // DEBUG: Log transcript structure for signature verification debugging
+  console.log('[Handshake] Transcript verification data:', {
+    transcriptLength: partialTranscript.length,
+    hasResponderIdentityFromMsg: !!initiatorMsg.responderIdentityEd25519,
+    hasResponderPrekeyX25519FromMsg: !!initiatorMsg.responderPrekeyX25519,
+    hasResponderPrekeyMLKEMFromMsg: !!initiatorMsg.responderPrekeyMLKEM,
+    effectiveIdentityEdFirst8: Array.from(effectiveResponderIdentityEd.slice(0, 8)),
+    effectivePrekeyXFirst8: Array.from(effectivePrekeyX25519.slice(0, 8)),
+    initiatorIdentityEdFirst8: Array.from(initiatorMsg.identityPublicEd25519.slice(0, 8)),
+  });
+
   // CRITICAL: Check for dev mode keys and REJECT
   const devModeKey = isDevModeKey(initiatorMsg.identityPublicEd25519);
   if (devModeKey) {
@@ -713,8 +724,17 @@ export async function completeHandshake(
 
   // Dual-signature mode: both must pass
   if (!ed25519Valid || !mldsaValid) {
+    console.error('[Handshake] ❌ Signature verification FAILED:', {
+      ed25519Valid,
+      mldsaValid,
+      signatureEd25519Length: initiatorMsg.ed25519Signature.length,
+      signatureMLDSALength: initiatorMsg.mldsaSignature.length,
+      transcriptLength: partialTranscript.length,
+    });
     throw new Error('Handshake signature verification failed');
   }
+
+  console.log('[Handshake] ✅ Signatures verified successfully');
 
   // Perform X25519 DH
   const dhSecret = prim.x25519(responderPrekeyX25519Secret, initiatorMsg.ephemeralX25519);
