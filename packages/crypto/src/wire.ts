@@ -19,6 +19,8 @@ export interface WireHandshakeMessage {
   mldsaSig: string;
   // CRITICAL: Responder's prekey ML-KEM for transcript verification
   responderPrekeyMLKEM?: string; // base64, initiator includes for responder
+  // CRITICAL: Responder's X25519 prekey for transcript verification
+  responderPrekeyX25519?: string; // base64, initiator includes for responder
   // CRITICAL: Responder's identity keys as seen by initiator (from directory)
   responderIdentityEd25519?: string; // base64, for transcript reconstruction
   responderIdentityMLDSA?: string;   // base64, for transcript reconstruction
@@ -62,6 +64,10 @@ export function encodeHandshakeMessage(msg: HandshakeMessage): Uint8Array {
     responderPrekeyMLKEM: msg.responderPrekeyMLKEM
       ? Buffer.from(msg.responderPrekeyMLKEM).toString('base64')
       : undefined,
+    // CRITICAL: Include responder's X25519 prekey for transcript verification
+    responderPrekeyX25519: msg.responderPrekeyX25519
+      ? Buffer.from(msg.responderPrekeyX25519).toString('base64')
+      : undefined,
     // CRITICAL: Include responder's identity keys for transcript reconstruction
     responderIdentityEd25519: msg.responderIdentityEd25519
       ? Buffer.from(msg.responderIdentityEd25519).toString('base64')
@@ -100,6 +106,10 @@ export function decodeHandshakeMessage(data: Uint8Array): HandshakeMessage {
     // CRITICAL: Extract responder's prekey ML-KEM for transcript verification
     responderPrekeyMLKEM: wire.responderPrekeyMLKEM
       ? Buffer.from(wire.responderPrekeyMLKEM, 'base64')
+      : undefined,
+    // CRITICAL: Extract responder's X25519 prekey for transcript verification
+    responderPrekeyX25519: wire.responderPrekeyX25519
+      ? Buffer.from(wire.responderPrekeyX25519, 'base64')
       : undefined,
     // CRITICAL: Extract responder's identity keys for transcript reconstruction
     responderIdentityEd25519: wire.responderIdentityEd25519

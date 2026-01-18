@@ -146,6 +146,9 @@ export interface HandshakeMessage {
   // CRITICAL: Responder's prekey ML-KEM public key used in transcript
   // Needed for signature verification when responder's local keys have been regenerated
   responderPrekeyMLKEM?: Uint8Array; // initiator includes responder's prekey for transcript
+  // CRITICAL: Responder's X25519 prekey used in transcript
+  // Needed for signature verification when responder's prekeys have been regenerated
+  responderPrekeyX25519?: Uint8Array; // initiator includes responder's X25519 prekey for transcript
   // CRITICAL: Responder's identity keys as seen by initiator (from directory)
   // Needed for transcript reconstruction when responder's identity differs
   responderIdentityEd25519?: Uint8Array; // initiator includes for transcript verification
@@ -421,6 +424,8 @@ export async function initiateHandshake(
     // CRITICAL: Include responder's prekey ML-KEM for transcript verification
     // This allows responder to verify signature even if local keys were regenerated
     responderPrekeyMLKEM: hasPQKeys ? responderPrekey.mlkemPublicKey : undefined,
+    // CRITICAL: Include responder's X25519 prekey for transcript verification
+    responderPrekeyX25519: responderPrekey.x25519Ephemeral,
     // CRITICAL: Include responder's identity keys as seen from directory
     // This allows responder to reconstruct the exact transcript initiator signed
     responderIdentityEd25519: responderIdentityPubEd25519,
@@ -611,6 +616,10 @@ export async function completeHandshake(
   // Priority: 1) From initiator message, 2) From local secrets, 3) None
   const effectivePrekeyMLKEM = initiatorMsg.responderPrekeyMLKEM || responderPrekeyMLKEMPublic;
 
+  // CRITICAL FIX: Use X25519 prekey from initiator's message for transcript reconstruction
+  // Priority: 1) From initiator message, 2) Derive from local secret key
+  const effectivePrekeyX25519 = initiatorMsg.responderPrekeyX25519 || responderPrekeyX25519Pub;
+
   // CRITICAL FIX: Use responder identity from initiator message for transcript reconstruction
   // This handles the case where responder's identity differs from what initiator fetched from directory
   // The initiator signed the transcript using responder identity from directory - we must use same values
@@ -627,6 +636,16 @@ export async function completeHandshake(
     }
   }
 
+  // SECURITY: Warn if X25519 prekey mismatch detected (indicates stale prekey bundle)
+  if (initiatorMsg.responderPrekeyX25519) {
+    const localPrekeyX = responderPrekeyX25519Pub;
+    const msgPrekeyX = initiatorMsg.responderPrekeyX25519;
+    if (localPrekeyX.length !== msgPrekeyX.length || !localPrekeyX.every((b, i) => b === msgPrekeyX[i])) {
+      console.warn('[Handshake] ⚠️  X25519 prekey mismatch: initiator has stale prekey from directory');
+      console.warn('[Handshake] Using X25519 prekey from initiator message for transcript verification');
+    }
+  }
+
   const transcriptObj: any = {
     suite: constants.SUITE_ID,
     initiator: {
@@ -637,7 +656,7 @@ export async function completeHandshake(
     responder: {
       identityEd: effectiveResponderIdentityEd,
       identityML: effectiveResponderIdentityML,
-      prekeyX: responderPrekeyX25519Pub,
+      prekeyX: effectivePrekeyX25519,
     },
   };
 
