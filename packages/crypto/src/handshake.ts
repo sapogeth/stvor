@@ -284,6 +284,17 @@ function toHex(bytes: Uint8Array): string {
 }
 
 /**
+ * Compare two Uint8Arrays for equality
+ */
+function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+/**
  * Build deterministic handshake transcript
  * CRITICAL: Must produce bit-identical output on both initiator and responder
  * - No timestamps
@@ -620,49 +631,78 @@ export async function completeHandshake(
     }
   }
 
-  // Match the transcript structure from initiateHandshake
-  // NOTE: Both sides must encode the exact same data for signature verification
+  // ============================================================================
+  // TRANSCRIPT RECONSTRUCTION - CRITICAL SECURITY INVARIANT
+  // ============================================================================
+  // 
+  // The transcript MUST be 100% derived from the HandshakeInit message.
+  // 
+  // INITIATOR signed a transcript containing:
+  // 1. His own identity and ephemeral keys (in message)
+  // 2. RESPONDER's identity and prekey as seen from directory (in message)
+  // 
+  // RESPONDER must reconstruct THE EXACT SAME transcript to verify signature.
+  // 
+  // ❌ FORBIDDEN:
+  //    - Using local keys if they differ from message
+  //    - "Falling back" to directory data
+  //    - "Correcting" stale data
+  // 
+  // ✅ REQUIRED:
+  //    - All transcript data comes from HandshakeInit message
+  //    - If data is missing from message, REJECT handshake
+  //    - Directory is for DISCOVERY only, not for cryptography
+  // 
+  // ============================================================================
+
+  // SECURITY: Validate that initiator included ALL required responder data
+  // Without this data, we cannot reconstruct the transcript that was signed
+  if (!initiatorMsg.responderIdentityEd25519) {
+    throw new Error(
+      '[Handshake] CRITICAL: HandshakeInit missing responderIdentityEd25519. ' +
+      'Cannot verify signature without knowing what responder identity was signed. ' +
+      'This is a protocol error - initiator must include responder data from directory.'
+    );
+  }
   
-  // CRITICAL FIX: Check if initiator included ML-KEM prekey in message
-  // This tells us what was in the transcript that initiator signed
-  // We MUST NOT use local secret key presence to determine transcript structure
+  if (!initiatorMsg.responderPrekeyX25519) {
+    throw new Error(
+      '[Handshake] CRITICAL: HandshakeInit missing responderPrekeyX25519. ' +
+      'Cannot verify signature without knowing what responder prekey was signed. ' +
+      'This is a protocol error - initiator must include responder data from directory.'
+    );
+  }
+
+  // Check if initiator included ML-KEM prekey (determines transcript structure)
   const initiatorIncludedPrekeyMLKEM = initiatorMsg.responderPrekeyMLKEM && initiatorMsg.responderPrekeyMLKEM.length > 0;
 
-  // CRITICAL FIX: Use ML-KEM prekey from initiator's message if available
-  // This handles the case where responder's local keys were regenerated
-  // Priority: 1) From initiator message (what was signed), 2) From local secrets, 3) None
-  const effectivePrekeyMLKEM = initiatorMsg.responderPrekeyMLKEM || responderPrekeyMLKEMPublic;
+  // TRANSCRIPT DATA - 100% FROM MESSAGE, NO FALLBACK
+  // These are the values INITIATOR used when signing - we MUST use the same
+  const transcriptResponderIdentityEd = initiatorMsg.responderIdentityEd25519;
+  const transcriptResponderIdentityML = initiatorMsg.responderIdentityMLDSA || new Uint8Array(0);
+  const transcriptResponderPrekeyX = initiatorMsg.responderPrekeyX25519;
+  const transcriptResponderPrekeyML = initiatorMsg.responderPrekeyMLKEM; // may be undefined
 
-  // CRITICAL FIX: Use X25519 prekey from initiator's message for transcript reconstruction
-  // Priority: 1) From initiator message, 2) Derive from local secret key
-  const effectivePrekeyX25519 = initiatorMsg.responderPrekeyX25519 || responderPrekeyX25519Pub;
-
-  // CRITICAL FIX: Use responder identity from initiator message for transcript reconstruction
-  // This handles the case where responder's identity differs from what initiator fetched from directory
-  // The initiator signed the transcript using responder identity from directory - we must use same values
-  const effectiveResponderIdentityEd = initiatorMsg.responderIdentityEd25519 || responderIdentity.ed25519.publicKey;
-  const effectiveResponderIdentityML = initiatorMsg.responderIdentityMLDSA || responderIdentity.mldsa.publicKey;
-
-  // SECURITY: Warn if identity mismatch detected (indicates stale directory data)
-  if (initiatorMsg.responderIdentityEd25519) {
-    const localIdentityEd = responderIdentity.ed25519.publicKey;
-    const msgIdentityEd = initiatorMsg.responderIdentityEd25519;
-    if (localIdentityEd.length !== msgIdentityEd.length || !localIdentityEd.every((b, i) => b === msgIdentityEd[i])) {
-      console.warn('[Handshake] ⚠️  Identity mismatch: initiator has stale responder identity from directory');
-      console.warn('[Handshake] Using identity from initiator message for transcript verification');
-    }
+  // SECURITY LOGGING: Detect stale directory data (informational only)
+  // This does NOT affect transcript - we always use message data
+  const localIdentityEd = responderIdentity.ed25519.publicKey;
+  if (!arraysEqual(localIdentityEd, transcriptResponderIdentityEd)) {
+    console.warn('[Handshake] ⚠️  STALE DIRECTORY: Initiator has old responder identity');
+    console.warn('[Handshake]    Local identity (first 8):', toHex(localIdentityEd.slice(0, 8)));
+    console.warn('[Handshake]    Message identity (first 8):', toHex(transcriptResponderIdentityEd.slice(0, 8)));
+    console.warn('[Handshake]    Using MESSAGE data for transcript (correct behavior)');
   }
 
-  // SECURITY: Warn if X25519 prekey mismatch detected (indicates stale prekey bundle)
-  if (initiatorMsg.responderPrekeyX25519) {
-    const localPrekeyX = responderPrekeyX25519Pub;
-    const msgPrekeyX = initiatorMsg.responderPrekeyX25519;
-    if (localPrekeyX.length !== msgPrekeyX.length || !localPrekeyX.every((b, i) => b === msgPrekeyX[i])) {
-      console.warn('[Handshake] ⚠️  X25519 prekey mismatch: initiator has stale prekey from directory');
-      console.warn('[Handshake] Using X25519 prekey from initiator message for transcript verification');
-    }
+  const localPrekeyX = responderPrekeyX25519Pub;
+  if (!arraysEqual(localPrekeyX, transcriptResponderPrekeyX)) {
+    console.warn('[Handshake] ⚠️  STALE DIRECTORY: Initiator has old responder prekey');
+    console.warn('[Handshake]    Local prekey (first 8):', toHex(localPrekeyX.slice(0, 8)));
+    console.warn('[Handshake]    Message prekey (first 8):', toHex(transcriptResponderPrekeyX.slice(0, 8)));
+    console.warn('[Handshake]    Using MESSAGE data for transcript (correct behavior)');
   }
 
+  // Build transcript object - EXACTLY matching what INITIATOR signed
+  // ALL responder data comes from the message, NOT from local state
   const transcriptObj: any = {
     suite: constants.SUITE_ID,
     initiator: {
@@ -671,27 +711,22 @@ export async function completeHandshake(
       ephX: initiatorMsg.ephemeralX25519,
     },
     responder: {
-      identityEd: effectiveResponderIdentityEd,
-      identityML: effectiveResponderIdentityML,
-      prekeyX: effectivePrekeyX25519,
+      identityEd: transcriptResponderIdentityEd,  // FROM MESSAGE
+      identityML: transcriptResponderIdentityML,  // FROM MESSAGE
+      prekeyX: transcriptResponderPrekeyX,        // FROM MESSAGE
     },
   };
 
-  // Only include ephML if available
+  // Only include ephML if initiator included it
   if (initiatorMsg.ephemeralMLKEM && initiatorMsg.ephemeralMLKEM.length > 0) {
     transcriptObj.initiator.ephML = initiatorMsg.ephemeralMLKEM;
   }
   
-  // CRITICAL FIX: Include ML-KEM prekey public key in transcript ONLY IF initiator included it
-  // We MUST replicate the exact transcript structure that initiator signed
-  // If initiator included responderPrekeyMLKEM in message, they included it in transcript
-  if (initiatorIncludedPrekeyMLKEM && effectivePrekeyMLKEM && effectivePrekeyMLKEM.length > 0) {
-    transcriptObj.responder.prekeyML = effectivePrekeyMLKEM;
-    console.log('[Handshake] Including ML-KEM prekey in transcript (from initiator message)');
-  } else if (effectivePrekeyMLKEM && effectivePrekeyMLKEM.length > 0) {
-    // Fallback: initiator didn't include it in message but we have it locally
-    // This means initiator didn't have our ML-KEM prekey, so it wasn't in their transcript
-    console.log('[Handshake] ML-KEM prekey available locally but NOT including in transcript (initiator did not have it)');
+  // Include ML-KEM prekey ONLY IF initiator included it in message
+  // This means it was in the transcript they signed
+  if (initiatorIncludedPrekeyMLKEM) {
+    transcriptObj.responder.prekeyML = transcriptResponderPrekeyML; // FROM MESSAGE
+    console.log('[Handshake] Including ML-KEM prekey in transcript (from message)');
   }
 
   const partialTranscriptBuffer = encode(transcriptObj);
@@ -699,16 +734,15 @@ export async function completeHandshake(
   const partialTranscript = new Uint8Array(partialTranscriptBuffer);
 
   // DEBUG: Log transcript structure for signature verification debugging
-  console.log('[Handshake] Transcript verification data:', {
+  // All data should be FROM MESSAGE, not local
+  console.log('[Handshake] RESPONDER transcript for verification:', {
     transcriptLength: partialTranscript.length,
     transcriptHashFirst16: toHex(partialTranscript.slice(0, 16)),
-    hasResponderIdentityFromMsg: !!initiatorMsg.responderIdentityEd25519,
-    hasResponderPrekeyX25519FromMsg: !!initiatorMsg.responderPrekeyX25519,
-    hasResponderPrekeyMLKEMFromMsg: !!initiatorMsg.responderPrekeyMLKEM,
+    allDataFromMessage: true, // This is now guaranteed
     initiatorIncludedPrekeyMLKEM,
-    effectiveIdentityEdFirst8: toHex(effectiveResponderIdentityEd.slice(0, 8)),
-    effectivePrekeyXFirst8: toHex(effectivePrekeyX25519.slice(0, 8)),
-    effectivePrekeyMLFirst8: effectivePrekeyMLKEM ? toHex(effectivePrekeyMLKEM.slice(0, 8)) : 'none',
+    responderIdentityEdFirst8: toHex(transcriptResponderIdentityEd.slice(0, 8)),
+    responderPrekeyXFirst8: toHex(transcriptResponderPrekeyX.slice(0, 8)),
+    responderPrekeyMLFirst8: transcriptResponderPrekeyML ? toHex(transcriptResponderPrekeyML.slice(0, 8)) : 'none',
     initiatorIdentityEdFirst8: toHex(initiatorMsg.identityPublicEd25519.slice(0, 8)),
     initiatorEphXFirst8: toHex(initiatorMsg.ephemeralX25519.slice(0, 8)),
     initiatorEphMLFirst8: initiatorMsg.ephemeralMLKEM ? toHex(initiatorMsg.ephemeralMLKEM.slice(0, 8)) : 'none',
@@ -761,7 +795,39 @@ export async function completeHandshake(
 
   console.log('[Handshake] ✅ Signatures verified successfully');
 
-  // Perform X25519 DH
+  // ============================================================================
+  // KEY VALIDATION FOR DH/KEM
+  // ============================================================================
+  // 
+  // CRITICAL: We verified the signature using data from the message.
+  // But for DH and KEM, we need LOCAL SECRET KEYS that correspond to
+  // the PUBLIC KEYS that initiator used.
+  // 
+  // If our local secret key doesn't match the public key in the message,
+  // the DH/KEM will produce different shared secrets on each side.
+  // 
+  // This can happen if:
+  // 1. Prekeys were regenerated after initiator fetched them from directory
+  // 2. Race condition with stale directory cache
+  // 
+  // SOLUTION: Verify that our derived public key matches what initiator used
+  // ============================================================================
+
+  // Verify X25519 prekey matches
+  if (!arraysEqual(responderPrekeyX25519Pub, transcriptResponderPrekeyX)) {
+    console.error('[Handshake] ❌ CRITICAL: X25519 prekey mismatch!');
+    console.error('[Handshake]    Local public key (first 8):', toHex(responderPrekeyX25519Pub.slice(0, 8)));
+    console.error('[Handshake]    Message prekey (first 8):', toHex(transcriptResponderPrekeyX.slice(0, 8)));
+    console.error('[Handshake]    This means our local secret key does NOT correspond to the public key initiator used.');
+    console.error('[Handshake]    DH will produce different shared secrets on each side.');
+    throw new Error(
+      '[Handshake] CRITICAL: Prekey mismatch. Local X25519 secret key does not match the public key ' +
+      'initiator used from directory. This indicates stale directory data and regenerated local keys. ' +
+      'Initiator should fetch fresh prekey bundle and retry handshake.'
+    );
+  }
+
+  // Perform X25519 DH (now safe - keys match)
   const dhSecret = prim.x25519(responderPrekeyX25519Secret, initiatorMsg.ephemeralX25519);
 
   // CRITICAL SECURITY: MANDATORY POST-QUANTUM CRYPTOGRAPHY
