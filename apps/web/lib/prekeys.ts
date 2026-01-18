@@ -535,6 +535,9 @@ async function savePrekeySecrets(username: string, secrets: PrekeySecrets): Prom
     bundleId: secrets.bundleId,
     x25519SecretKey: Array.from(secrets.x25519SecretKey),
     mlkemSecretKey: Array.from(secrets.mlkemSecretKey),
+    // CRITICAL: Include public keys for transcript verification during handshake
+    x25519PublicKey: secrets.x25519PublicKey ? Array.from(secrets.x25519PublicKey) : undefined,
+    mlkemPublicKey: secrets.mlkemPublicKey ? Array.from(secrets.mlkemPublicKey) : undefined,
     timestamp: secrets.timestamp,
   };
 
