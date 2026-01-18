@@ -20,6 +20,9 @@
         "RELAY_API_KEY",
         "RELAY_JWT_SECRET",
         "CLERK_SECRET_KEY",
+        "CLERK_JWT_ISSUER",
+        "CLERK_DOMAIN",
+        "RELAY_BASE_URL",
         "DATABASE_URL",
         "STORAGE_TYPE"
       ]
