@@ -582,17 +582,54 @@ export default function ChatPage() {
               // This is a NEW handshake from the initiator.
               // We become the responder.
               // 
+              // RACE CONDITION HANDLING:
+              // If we're in INITIATING state (we also sent an init), we have
+              // a race condition. Use determineRole() to decide who wins.
+              // 
               // SECURITY: FSM.canAcceptInit() validates:
               // 1. No active handshake in progress
               // 2. Previous session is in terminal state
               // =========================================================
               
-              console.log('[Handshake] Received HandshakeInit, we are responder, completing...');
+              console.log('[Handshake] Received HandshakeInit from', msg.from);
 
               // FSM: Check if we can accept this init
               if (!handshakeManager.canAcceptInit(chatId)) {
-                console.warn('[Handshake] FSM: Cannot accept HandshakeInit - handshake already in progress');
-                continue; // Skip this handshake
+                // RACE CONDITION: We're already in INITIATING state
+                // Both parties sent HandshakeInit simultaneously
+                // Use deterministic role assignment to resolve
+                
+                const session = handshakeManager.getSession(chatId);
+                if (session?.state === FSMState.INITIATING) {
+                  console.log('[Handshake] RACE CONDITION: Both parties sent HandshakeInit');
+                  
+                  // Use our Ed25519 identity key vs peer's to determine role
+                  const peerIdentityEd25519 = handshakeMsg.identityPublicEd25519;
+                  const ourIdentityEd25519 = identity.ed25519.publicKey;
+                  
+                  const ourRole = determineRole(ourIdentityEd25519, peerIdentityEd25519);
+                  console.log('[Handshake] Deterministic role resolution:', ourRole);
+                  
+                  if (ourRole === 'responder') {
+                    // We should be responder - cancel our init and accept theirs
+                    console.log('[Handshake] We should be RESPONDER - canceling our init, accepting theirs');
+                    
+                    // Clear our pending init
+                    sessionStorage.removeItem(`handshake_pending_${chatId}`);
+                    
+                    // Reset FSM to IDLE so we can become responder
+                    handshakeManager.clearSession(chatId);
+                    
+                    // Now proceed as responder (fall through to normal processing)
+                  } else {
+                    // We should be initiator - ignore their init, they should respond to ours
+                    console.log('[Handshake] We should be INITIATOR - ignoring their init, waiting for their response');
+                    continue; // Skip this init, wait for their response
+                  }
+                } else {
+                  console.warn('[Handshake] FSM: Cannot accept HandshakeInit - handshake in unexpected state:', session?.state);
+                  continue; // Skip this handshake
+                }
               }
 
               // FSM: Start responder session
