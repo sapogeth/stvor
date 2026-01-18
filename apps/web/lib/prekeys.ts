@@ -391,6 +391,9 @@ export async function loadPrekeySecrets(username: string): Promise<PrekeySecrets
     bundleId: secrets.bundleId,
     x25519SecretKey: new Uint8Array(secrets.x25519SecretKey),
     mlkemSecretKey: new Uint8Array(secrets.mlkemSecretKey),
+    // Include public keys if available (needed for transcript verification)
+    x25519PublicKey: secrets.x25519PublicKey ? new Uint8Array(secrets.x25519PublicKey) : undefined,
+    mlkemPublicKey: secrets.mlkemPublicKey ? new Uint8Array(secrets.mlkemPublicKey) : undefined,
     timestamp: secrets.timestamp,
   };
 }
@@ -398,9 +401,10 @@ export async function loadPrekeySecrets(username: string): Promise<PrekeySecrets
 /**
  * Load prekey secrets with AUTO-REGENERATION fallback
  *
- * SECURITY: If secrets are missing, this will regenerate a NEW bundle locally
- * and publish it to the relay. This is the correct E2E behavior - we NEVER
- * try to "recover" or "download" private keys from the server.
+ * SECURITY: If secrets are missing OR incomplete (missing public keys),
+ * this will regenerate a NEW bundle locally and publish it to the relay.
+ * This is the correct E2E behavior - we NEVER try to "recover" or
+ * "download" private keys from the server.
  *
  * Use this in the chat poller where missing secrets should be transparent.
  */
@@ -411,13 +415,22 @@ export async function loadPrekeySecretsOrRegenerate(
   // Try to load existing secrets
   let secrets = await loadPrekeySecrets(username);
 
+  // CRITICAL: Check if secrets have public keys (needed for transcript verification)
+  // Old secrets may not have public keys - force regeneration
+  if (secrets && !secrets.mlkemPublicKey) {
+    console.warn(
+      '[Prekey][Migration] Secrets found but missing mlkemPublicKey - regenerating...'
+    );
+    secrets = null; // Force regeneration
+  }
+
   if (secrets) {
     return secrets;
   }
 
-  // Secrets not found - regenerate locally
+  // Secrets not found or incomplete - regenerate locally
   console.warn(
-    '[Prekey][Recovery] Local secrets not found for',
+    '[Prekey][Recovery] Local secrets not found or incomplete for',
     username,
     '- regenerating and re-publishing...'
   );
