@@ -663,8 +663,19 @@ export async function ensurePrekeyPublished(
       const hasSignature = !!existing.prekeySignature;
 
       if (sameIdentity && hasSignature) {
-        console.log('[Prekey] ✅ Prekey bundle already published with correct identity');
-        return;
+        // Check if local secrets have public keys (for transcript verification)
+        const localSecrets = await loadPrekeySecrets(canonical);
+        if (localSecrets && localSecrets.mlkemPublicKey && localSecrets.x25519PublicKey) {
+          console.log('[Prekey] ✅ Prekey bundle already published with correct identity');
+          console.log('[Prekey] ✅ Local secrets have public keys - ready for handshakes');
+          return;
+        }
+        
+        // CRITICAL: Local secrets are incomplete - need to regenerate
+        // This is a migration scenario from old format
+        console.warn('[Prekey] ⚠️  Local secrets missing public keys (migration needed)');
+        console.warn('[Prekey] Will regenerate bundle to update local secrets with public keys');
+        // Fall through to regeneration
       }
 
       // CRITICAL: Identity mismatch - we MUST overwrite
