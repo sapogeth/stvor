@@ -143,6 +143,9 @@ export interface HandshakeMessage {
   // SECURITY: Signal PQ support for downgrade attack detection
   // If both sides set this to true, PQ is MANDATORY - no silent fallback
   pqSupported?: boolean; // Sender claims to support PQ crypto
+  // CRITICAL: Responder's prekey ML-KEM public key used in transcript
+  // Needed for signature verification when responder's local keys have been regenerated
+  responderPrekeyMLKEM?: Uint8Array; // initiator includes responder's prekey for transcript
 }
 
 /**
@@ -399,6 +402,9 @@ export async function initiateHandshake(
 
   const pqSupported = true; // PQ support is MANDATORY
 
+  // Check if responder has PQ keys
+  const hasPQKeys = responderPrekey.mlkemPublicKey && responderPrekey.mlkemPublicKey.length > 0;
+
   const message: HandshakeMessage = {
     role: 'initiator',
     identityPublicEd25519: initiatorIdentity.ed25519.publicKey,
@@ -408,11 +414,13 @@ export async function initiateHandshake(
     ed25519Signature: new Uint8Array(0), // placeholder
     mldsaSignature: new Uint8Array(0),
     pqSupported: pqSupported, // Signal PQ capability for downgrade detection
+    // CRITICAL: Include responder's prekey ML-KEM for transcript verification
+    // This allows responder to verify signature even if local keys were regenerated
+    responderPrekeyMLKEM: hasPQKeys ? responderPrekey.mlkemPublicKey : undefined,
   };
 
   // Build partial transcript for signature (without responder message yet)
   // Include ML-KEM fields only if available (not in classical-only mode)
-  const hasPQKeys = responderPrekey.mlkemPublicKey && responderPrekey.mlkemPublicKey.length > 0;
 
   const transcriptObj: any = {
     suite: constants.SUITE_ID,
@@ -590,6 +598,11 @@ export async function completeHandshake(
   // NOTE: Both sides must encode the exact same data for signature verification
   const hasPQKeys = responderPrekeyMLKEMSecret && responderPrekeyMLKEMSecret.length === constants.ML_KEM_768_SECRET_KEY_LENGTH;
 
+  // CRITICAL FIX: Use ML-KEM prekey from initiator's message if local is not available
+  // This handles the case where responder's local keys were regenerated
+  // Priority: 1) From initiator message, 2) From local secrets, 3) None
+  const effectivePrekeyMLKEM = initiatorMsg.responderPrekeyMLKEM || responderPrekeyMLKEMPublic;
+
   const transcriptObj: any = {
     suite: constants.SUITE_ID,
     initiator: {
@@ -610,10 +623,12 @@ export async function completeHandshake(
   }
   
   // CRITICAL FIX: Include ML-KEM prekey public key in transcript
-  // This must match what initiator included when signing
-  // Without this, signature verification WILL fail
-  if (hasPQKeys && responderPrekeyMLKEMPublic && responderPrekeyMLKEMPublic.length > 0) {
-    transcriptObj.responder.prekeyML = responderPrekeyMLKEMPublic;
+  // Use the key from initiator's message (what they used for signing)
+  // This ensures transcript matches even if local keys were regenerated
+  if (hasPQKeys && effectivePrekeyMLKEM && effectivePrekeyMLKEM.length > 0) {
+    transcriptObj.responder.prekeyML = effectivePrekeyMLKEM;
+    console.log('[Handshake] Using ML-KEM prekey from:', 
+      initiatorMsg.responderPrekeyMLKEM ? 'initiator message' : 'local secrets');
   }
 
   const partialTranscriptBuffer = encode(transcriptObj);

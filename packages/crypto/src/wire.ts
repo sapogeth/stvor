@@ -17,6 +17,8 @@ export interface WireHandshakeMessage {
   kemCiphertext?: string;
   ed25519Sig: string;
   mldsaSig: string;
+  // CRITICAL: Responder's prekey ML-KEM for transcript verification
+  responderPrekeyMLKEM?: string; // base64, initiator includes for responder
 }
 
 export interface WireEncryptedMessage {
@@ -53,6 +55,10 @@ export function encodeHandshakeMessage(msg: HandshakeMessage): Uint8Array {
       : undefined,
     ed25519Sig: Buffer.from(msg.ed25519Signature).toString('base64'),
     mldsaSig: Buffer.from(msg.mldsaSignature).toString('base64'),
+    // CRITICAL: Include responder's prekey ML-KEM for transcript verification
+    responderPrekeyMLKEM: msg.responderPrekeyMLKEM
+      ? Buffer.from(msg.responderPrekeyMLKEM).toString('base64')
+      : undefined,
   };
 
   return encode(wire);
@@ -81,6 +87,10 @@ export function decodeHandshakeMessage(data: Uint8Array): HandshakeMessage {
       : undefined,
     ed25519Signature: Buffer.from(wire.ed25519Sig, 'base64'),
     mldsaSignature: Buffer.from(wire.mldsaSig, 'base64'),
+    // CRITICAL: Extract responder's prekey ML-KEM for transcript verification
+    responderPrekeyMLKEM: wire.responderPrekeyMLKEM
+      ? Buffer.from(wire.responderPrekeyMLKEM, 'base64')
+      : undefined,
   };
 }
 
