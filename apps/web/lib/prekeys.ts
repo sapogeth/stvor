@@ -620,6 +620,13 @@ export async function deletePrekeySecrets(username: string): Promise<void> {
  *
  * SECURITY INVARIANT: This function may regenerate keys, so it MUST NOT
  * be called during active handshake. Used during bootstrap only.
+ * 
+ * IDENTITY MISMATCH HANDLING:
+ * If the bundle on relay was signed by a DIFFERENT identity key than ours,
+ * we MUST overwrite it. This happens when:
+ * 1. User cleared IndexedDB and got new identity
+ * 2. User logged in from new device
+ * Without overwriting, peers will fail signature verification.
  */
 export async function ensurePrekeyPublished(
   username: string,
@@ -648,18 +655,29 @@ export async function ensurePrekeyPublished(
       const existing = await res.json();
 
       // Check if it's really ours and has a signature
+      const ourIdentityBase64 = Buffer.from(identity.ed25519.publicKey).toString('base64');
       const sameIdentity =
         existing.identityPublicKey &&
-        existing.identityPublicKey === Buffer.from(identity.ed25519.publicKey).toString('base64');
+        existing.identityPublicKey === ourIdentityBase64;
 
       const hasSignature = !!existing.prekeySignature;
 
       if (sameIdentity && hasSignature) {
-        console.log('[Prekey] ✅ Prekey bundle already published');
+        console.log('[Prekey] ✅ Prekey bundle already published with correct identity');
         return;
       }
 
-      console.log('[Prekey] Existing entry invalid or missing signature, will re-publish');
+      // CRITICAL: Identity mismatch - we MUST overwrite
+      if (existing.identityPublicKey && !sameIdentity) {
+        console.warn('[Prekey] ⚠️  IDENTITY MISMATCH detected!');
+        console.warn('[Prekey] Relay has bundle signed by different identity key');
+        console.warn('[Prekey] Relay identity:', existing.identityPublicKey?.slice(0, 20) + '...');
+        console.warn('[Prekey] Our identity:', ourIdentityBase64.slice(0, 20) + '...');
+        console.warn('[Prekey] This can happen after IndexedDB clear or new device login');
+        console.warn('[Prekey] Will overwrite with new bundle signed by current identity');
+      } else {
+        console.log('[Prekey] Existing entry invalid or missing signature, will re-publish');
+      }
     }
   } catch (err) {
     console.log('[Prekey] No existing entry or error fetching, will publish new one');
