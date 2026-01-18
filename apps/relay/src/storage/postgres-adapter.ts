@@ -96,6 +96,33 @@ class PostgresUserRepository implements IUserRepository {
     );
     return parseInt(result.rows[0].count);
   }
+
+  async updateUser(username: string, updates: { identityEd25519?: string; identityMLDSA?: string }): Promise<boolean> {
+    const setClauses: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+
+    if (updates.identityEd25519) {
+      setClauses.push(`identity_ed25519 = $${paramIndex++}`);
+      values.push(updates.identityEd25519);
+    }
+    if (updates.identityMLDSA) {
+      setClauses.push(`identity_mldsa = $${paramIndex++}`);
+      values.push(updates.identityMLDSA);
+    }
+
+    if (setClauses.length === 0) {
+      return false;
+    }
+
+    values.push(username);
+    const result = await this.pool.query(
+      `UPDATE users SET ${setClauses.join(', ')} WHERE username = $${paramIndex}`,
+      values
+    );
+
+    return result.rowCount !== null && result.rowCount > 0;
+  }
 }
 
 class PostgresPrekeyRepository implements IPrekeyRepository {

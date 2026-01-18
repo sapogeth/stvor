@@ -34,6 +34,25 @@ class MemoryUserRepository implements IUserRepository {
     return true;
   }
 
+  async updateUser(username: string, updates: { identityEd25519?: string; identityMLDSA?: string }): Promise<boolean> {
+    const userId = this.usernameIndex.get(username);
+    if (!userId) return false;
+
+    const user = this.users.get(userId);
+    if (!user) return false;
+
+    // Update identity keys if provided
+    if (updates.identityEd25519) {
+      user.identityEd25519 = updates.identityEd25519;
+    }
+    if (updates.identityMLDSA) {
+      user.identityMLDSA = updates.identityMLDSA;
+    }
+
+    this.users.set(userId, user);
+    return true;
+  }
+
   async getUserById(userId: string): Promise<UserIdentity | null> {
     return this.users.get(userId) || null;
   }

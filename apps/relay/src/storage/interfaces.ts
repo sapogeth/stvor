@@ -77,6 +77,13 @@ export interface IUserRepository {
   createUser(user: UserIdentity): Promise<boolean>;
 
   /**
+   * Update user identity keys
+   * This is used when a user regenerates their identity (e.g., after IndexedDB clear)
+   * SECURITY: Caller must verify signature before calling this
+   */
+  updateUser(username: string, updates: { identityEd25519?: string; identityMLDSA?: string }): Promise<boolean>;
+
+  /**
    * Get user identity by userId
    * Returns null if not found
    */

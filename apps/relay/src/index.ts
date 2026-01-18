@@ -15,6 +15,7 @@ import { type PrekeyBundle } from './storage/interfaces';
 import { normalizeUsername } from './utils/normalize';
 import { setupWebSocket } from './websocket';
 import * as crypto from 'crypto';
+import { ed25519Verify, serializePrekeyBundle, fromBase64 } from '@ilyazh/crypto';
 // DOMPurify removed - use simple text sanitization instead (server doesn't need jsdom)
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -1049,6 +1050,64 @@ fastify.post<{ Params: { username: string }, Body: DirectoryRegisterBody }>(
 
       // Update signed prekey bundle if provided (BOTH in-memory map AND storage.prekeys!)
       if (prekeyBundle && prekeySignature) {
+        // CRITICAL: Check if identity has changed and verify the new signature
+        // This is safe because only the holder of the secret key can create a valid signature
+        let effectiveIdentityEd25519 = user.identityEd25519;
+        let effectiveIdentityMLDSA = user.identityMLDSA;
+
+        if (identityEd25519 && identityEd25519 !== user.identityEd25519) {
+          console.log(`[Directory] ⚠️  Identity mismatch detected for ${username}`);
+          console.log(`[Directory]   Stored identity: ${user.identityEd25519.slice(0, 20)}...`);
+          console.log(`[Directory]   New identity: ${identityEd25519.slice(0, 20)}...`);
+
+          // Verify that the prekey bundle is signed by the NEW identity key
+          // This proves the caller owns the corresponding secret key
+          try {
+            const bundleData = serializePrekeyBundle({
+              x25519Pub: fromBase64(prekeyBundle.x25519Pub),
+              pqKemPub: prekeyBundle.pqKemPub ? fromBase64(prekeyBundle.pqKemPub) : undefined,
+              pqSigPub: prekeyBundle.pqSigPub ? fromBase64(prekeyBundle.pqSigPub) : undefined,
+            });
+
+            const signatureBytes = fromBase64(prekeySignature);
+            const newIdentityBytes = fromBase64(identityEd25519);
+
+            const isValid = ed25519Verify(signatureBytes, bundleData, newIdentityBytes);
+
+            if (isValid) {
+              console.log(`[Directory] ✅ Signature valid for new identity, updating stored identity`);
+              effectiveIdentityEd25519 = identityEd25519;
+              effectiveIdentityMLDSA = identityMLDSA || user.identityMLDSA;
+
+              // Update identity in storage
+              await storage.users.updateUser(username, {
+                identityEd25519: effectiveIdentityEd25519,
+                identityMLDSA: effectiveIdentityMLDSA,
+              });
+              console.log(`[Directory] ✅ Identity updated in storage for: ${username}`);
+              
+              // Refresh user object
+              user = await storage.users.getUserByUsername(username) || user;
+            } else {
+              console.warn(`[Directory] ❌ Signature INVALID for new identity, keeping old identity`);
+              logSecurityEvent('IDENTITY_UPDATE_REJECTED', {
+                username,
+                reason: 'invalid_signature',
+                oldIdentity: user.identityEd25519.slice(0, 20),
+                newIdentity: identityEd25519.slice(0, 20),
+                ip: request.ip,
+              });
+            }
+          } catch (err) {
+            console.error(`[Directory] Error verifying signature for identity update:`, err);
+            logSecurityEvent('IDENTITY_UPDATE_ERROR', {
+              username,
+              error: String(err),
+              ip: request.ip,
+            });
+          }
+        }
+
         SIGNED_PREKEYS.set(username, {
           x25519Pub: prekeyBundle.x25519Pub,
           pqKemPub: prekeyBundle.pqKemPub,
@@ -1075,7 +1134,7 @@ fastify.post<{ Params: { username: string }, Body: DirectoryRegisterBody }>(
         console.log(`[Directory] ✅ Updated signed prekey bundle in storage for: ${username}`);
       }
 
-      // Return existing user (immutable identity)
+      // Return user with current identity
       return {
         username: user.username,
         userId: user.userId,
