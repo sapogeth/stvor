@@ -581,12 +581,14 @@ export default function ChatPage() {
               console.log('[Handshake] Using prekey bundle:', prekeySecrets.bundleId);
 
               // Complete handshake
+              // CRITICAL: Pass ML-KEM public key for transcript verification
               const { completeHandshake } = await import('@/lib/crypto');
               const { message: responseMessage, state: handshakeState } = await completeHandshake(
                 identity,
                 prekeySecrets.x25519SecretKey,
                 prekeySecrets.mlkemSecretKey,
-                handshakeMsg
+                handshakeMsg,
+                prekeySecrets.mlkemPublicKey // CRITICAL: Needed for signature verification
               );
 
               console.log('[Handshake] Handshake completed');

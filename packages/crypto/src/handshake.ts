@@ -548,12 +548,19 @@ function validateHandshakeMessage(msg: HandshakeMessage, role: 'initiator' | 're
 
 /**
  * Responder: complete handshake and derive session keys
+ * 
+ * @param responderIdentity - Responder's identity keypair
+ * @param responderPrekeyX25519Secret - X25519 prekey secret key
+ * @param responderPrekeyMLKEMSecret - ML-KEM prekey secret key
+ * @param initiatorMsg - Incoming handshake message from initiator
+ * @param responderPrekeyMLKEMPublic - ML-KEM prekey PUBLIC key (CRITICAL for transcript)
  */
 export async function completeHandshake(
   responderIdentity: IdentityKeyPair,
   responderPrekeyX25519Secret: Uint8Array,
   responderPrekeyMLKEMSecret: Uint8Array,
-  initiatorMsg: HandshakeMessage
+  initiatorMsg: HandshakeMessage,
+  responderPrekeyMLKEMPublic?: Uint8Array
 ): Promise<{ message: HandshakeMessage; state: HandshakeState }> {
   await prim.ensureCryptoReady();
 
@@ -601,8 +608,13 @@ export async function completeHandshake(
   if (initiatorMsg.ephemeralMLKEM && initiatorMsg.ephemeralMLKEM.length > 0) {
     transcriptObj.initiator.ephML = initiatorMsg.ephemeralMLKEM;
   }
-  // Can't include ML-KEM prekey since we only have secret key (can't derive public)
-  // This is a limitation of the current API that should be addressed
+  
+  // CRITICAL FIX: Include ML-KEM prekey public key in transcript
+  // This must match what initiator included when signing
+  // Without this, signature verification WILL fail
+  if (hasPQKeys && responderPrekeyMLKEMPublic && responderPrekeyMLKEMPublic.length > 0) {
+    transcriptObj.responder.prekeyML = responderPrekeyMLKEMPublic;
+  }
 
   const partialTranscriptBuffer = encode(transcriptObj);
   // Create fresh Uint8Array for crypto operations

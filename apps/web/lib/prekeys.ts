@@ -20,13 +20,18 @@ import { getRelayUrl } from './relay-url';
 const RELAY_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
 
 /**
- * Stored prekey secrets (private keys)
+ * Stored prekey secrets (private AND public keys)
  * These are needed to complete the handshake when someone initiates with our bundle
+ * CRITICAL: Public keys are needed for transcript verification during handshake
  */
 export interface PrekeySecrets {
   bundleId: string;
   x25519SecretKey: Uint8Array;
   mlkemSecretKey: Uint8Array;
+  /** X25519 public key (needed for transcript) */
+  x25519PublicKey?: Uint8Array;
+  /** ML-KEM public key (CRITICAL: needed for transcript verification) */
+  mlkemPublicKey?: Uint8Array;
   timestamp: number;
 }
 
@@ -97,11 +102,14 @@ export async function generateAndUploadPrekeyBundle(
   console.log('[Prekey] - X25519 ephemeral public:', Buffer.from(bundle.x25519Ephemeral).toString('hex').slice(0, 32) + '...');
   console.log('[Prekey] - ML-KEM public key:', Buffer.from(bundle.mlkemPublicKey).toString('hex').slice(0, 32) + '...');
 
-  // Store secret keys in IndexedDB
+  // Store secret keys AND public keys in IndexedDB
+  // CRITICAL: Public keys are needed for transcript reconstruction during handshake
   const secrets: PrekeySecrets = {
     bundleId: bundle.bundleId,
     x25519SecretKey: bundle.x25519SecretKey,
     mlkemSecretKey: bundle.mlkemSecretKey,
+    x25519PublicKey: bundle.x25519Ephemeral,
+    mlkemPublicKey: bundle.mlkemPublicKey,
     timestamp: bundle.timestamp,
   };
 
