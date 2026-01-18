@@ -146,6 +146,10 @@ export interface HandshakeMessage {
   // CRITICAL: Responder's prekey ML-KEM public key used in transcript
   // Needed for signature verification when responder's local keys have been regenerated
   responderPrekeyMLKEM?: Uint8Array; // initiator includes responder's prekey for transcript
+  // CRITICAL: Responder's identity keys as seen by initiator (from directory)
+  // Needed for transcript reconstruction when responder's identity differs
+  responderIdentityEd25519?: Uint8Array; // initiator includes for transcript verification
+  responderIdentityMLDSA?: Uint8Array;   // initiator includes for transcript verification
 }
 
 /**
@@ -417,6 +421,10 @@ export async function initiateHandshake(
     // CRITICAL: Include responder's prekey ML-KEM for transcript verification
     // This allows responder to verify signature even if local keys were regenerated
     responderPrekeyMLKEM: hasPQKeys ? responderPrekey.mlkemPublicKey : undefined,
+    // CRITICAL: Include responder's identity keys as seen from directory
+    // This allows responder to reconstruct the exact transcript initiator signed
+    responderIdentityEd25519: responderIdentityPubEd25519,
+    responderIdentityMLDSA: responderIdentityPubMLDSA,
   };
 
   // Build partial transcript for signature (without responder message yet)
@@ -603,6 +611,22 @@ export async function completeHandshake(
   // Priority: 1) From initiator message, 2) From local secrets, 3) None
   const effectivePrekeyMLKEM = initiatorMsg.responderPrekeyMLKEM || responderPrekeyMLKEMPublic;
 
+  // CRITICAL FIX: Use responder identity from initiator message for transcript reconstruction
+  // This handles the case where responder's identity differs from what initiator fetched from directory
+  // The initiator signed the transcript using responder identity from directory - we must use same values
+  const effectiveResponderIdentityEd = initiatorMsg.responderIdentityEd25519 || responderIdentity.ed25519.publicKey;
+  const effectiveResponderIdentityML = initiatorMsg.responderIdentityMLDSA || responderIdentity.mldsa.publicKey;
+
+  // SECURITY: Warn if identity mismatch detected (indicates stale directory data)
+  if (initiatorMsg.responderIdentityEd25519) {
+    const localIdentityEd = responderIdentity.ed25519.publicKey;
+    const msgIdentityEd = initiatorMsg.responderIdentityEd25519;
+    if (localIdentityEd.length !== msgIdentityEd.length || !localIdentityEd.every((b, i) => b === msgIdentityEd[i])) {
+      console.warn('[Handshake] ⚠️  Identity mismatch: initiator has stale responder identity from directory');
+      console.warn('[Handshake] Using identity from initiator message for transcript verification');
+    }
+  }
+
   const transcriptObj: any = {
     suite: constants.SUITE_ID,
     initiator: {
@@ -611,8 +635,8 @@ export async function completeHandshake(
       ephX: initiatorMsg.ephemeralX25519,
     },
     responder: {
-      identityEd: responderIdentity.ed25519.publicKey,
-      identityML: responderIdentity.mldsa.publicKey,
+      identityEd: effectiveResponderIdentityEd,
+      identityML: effectiveResponderIdentityML,
       prekeyX: responderPrekeyX25519Pub,
     },
   };
