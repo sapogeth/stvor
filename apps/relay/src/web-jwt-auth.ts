@@ -123,6 +123,26 @@ export function verifyWebRelayJWT(token: string): WebRelayJWTPayload {
 }
 
 /**
+ * Check if a Bearer token is a valid relay JWT (for CORS bypass)
+ * Used in CORS hook to allow no-origin requests with valid JWT
+ * 
+ * @param bearerToken - Bearer token string (without "Bearer " prefix)
+ * @returns true if token is a valid relay JWT, false otherwise
+ */
+export function isValidRelayJWT(bearerToken: string | undefined): boolean {
+  if (!bearerToken || !RELAY_JWT_SECRET) {
+    return false;
+  }
+  
+  try {
+    verifyWebRelayJWT(bearerToken);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Fastify preHandler hook: Authenticate request with web JWT
  * 
  * Usage:
@@ -259,7 +279,33 @@ export async function isParticipant(
 }
 
 /**
+ * Detect if request body contains a handshake message
+ * Handshake messages are special: they CREATE the chat, so participants aren't registered yet
+ */
+function isHandshakeMessage(body: any): boolean {
+  // Method 1: Explicit type field
+  if (body?.type === 'handshake') {
+    return true;
+  }
+  
+  // Method 2: Payload structure hint
+  if (body?.payload?.kind === 'handshake') {
+    return true;
+  }
+  
+  // Method 3: Cipher metadata hint
+  if (body?.cipher?.meta?.kind === 'handshake') {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
  * Require authenticated user to be a participant of chat
+ * 
+ * CRITICAL EXCEPTION: Handshake messages are ALLOWED without participant check
+ * because handshake messages CREATE the chat (participants registered in handler)
  * 
  * Usage:
  * ```typescript
@@ -291,6 +337,14 @@ export async function requireParticipant(
       message: 'User not authenticated',
     });
     return;
+  }
+  
+  // CRITICAL: Allow handshake messages WITHOUT participant check
+  // Handshake messages establish the chat - participants are registered in handler
+  const body = (request as any).body;
+  if (isHandshakeMessage(body)) {
+    console.log('[WebJWTAuth] ✅ Allowing handshake message (creates chat):', (request.user as any).username, chatId.slice(0, 16) + '...');
+    return; // Allow handshake through
   }
   
   // Get storage from exported function (not fastify decoration)

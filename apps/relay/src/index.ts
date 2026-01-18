@@ -106,7 +106,7 @@ declare module 'fastify' {
 }
 
 // ==================== Web JWT Auth Middleware ====================
-import { requireWebAuth, requireParticipant, optionalWebAuth } from './web-jwt-auth';
+import { requireWebAuth, requireParticipant, optionalWebAuth, isValidRelayJWT } from './web-jwt-auth';
 
 // ==================== Storage Initialization ====================
 
@@ -198,23 +198,30 @@ fastify.addHook('onRequest', async (request, reply) => {
   if (!origin) {
     const apiKeyHeader = request.headers['x-api-key'] as string | undefined;
     const authHeader = request.headers.authorization;
-    const bearerKey = authHeader && authHeader.startsWith('Bearer ')
+    const bearerToken = authHeader && authHeader.startsWith('Bearer ')
       ? authHeader.slice('Bearer '.length)
       : undefined;
-    const apiKey = apiKeyHeader || bearerKey;
 
-    // If no origin and no API key, block the request
-    if (!isValidAPIKey(apiKey)) {
-      console.error(`[CORS] ❌ CRITICAL: No-origin request without valid API key`);
+    // CRITICAL FIX: Accept EITHER valid API key OR valid relay JWT
+    // This allows Next.js server-side proxy requests with JWT auth
+    const hasValidAPIKey = isValidAPIKey(apiKeyHeader);
+    const hasValidJWT = isValidRelayJWT(bearerToken);
+    
+    // If no origin and neither valid API key nor valid JWT, block the request
+    if (!hasValidAPIKey && !hasValidJWT) {
+      console.error(`[CORS] ❌ CRITICAL: No-origin request without valid auth`);
       console.error(`[CORS]    IP: ${request.ip}`);
       console.error(`[CORS]    Path: ${request.url}`);
       console.error(`[CORS]    Method: ${request.method}`);
+      console.error(`[CORS]    Has API key: ${!!apiKeyHeader}, Has Bearer: ${!!bearerToken}`);
       logSecurityEvent('CORS_NO_ORIGIN_REJECTED', { ip: request.ip, path: request.url });
 
       reply.code(403).send({
-        error: 'Forbidden: No-origin requests require X-API-Key header',
-        message: 'Mobile and server-to-server requests must provide a valid API key'
+        error: 'Forbidden: No-origin requests require valid authentication',
+        message: 'Server-to-server requests must provide valid X-API-Key or Bearer JWT'
       });
+    } else {
+      console.log(`[CORS] ✅ No-origin request authorized via ${hasValidJWT ? 'JWT' : 'API key'}`);
     }
   }
 });
