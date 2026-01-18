@@ -17,6 +17,34 @@
  * - Failed handshakes require explicit retry, no auto-healing
  * - HandshakeInit and HandshakeResponse are DISTINCT message types
  * 
+ * ============================================================================
+ * RACE CONDITION PROTOCOL (CRITICAL INVARIANTS)
+ * ============================================================================
+ * 
+ * When both parties send HandshakeInit simultaneously:
+ * 
+ * 1. Both parties call determineRole(ourKey, peerKey)
+ * 2. determineRole is ANTISYMMETRIC: if A→initiator, then B→responder
+ * 
+ * INITIATOR behavior:
+ *   - IGNORES incoming init from peer (does NOT process it)
+ *   - Waits for HandshakeResponse from RESPONDER
+ *   - Creates the ONLY session when receiving response
+ * 
+ * RESPONDER behavior:
+ *   - Cancels own pending init
+ *   - Processes INITIATOR's init
+ *   - Sends HandshakeResponse
+ *   - Does NOT create a session
+ * 
+ * Result: Exactly ONE init processed, exactly ONE response, exactly ONE session.
+ * 
+ * ❌ FORBIDDEN:
+ *   - Both parties processing each other's init (creates 4 keys)
+ *   - Both parties sending response
+ *   - INITIATOR creating "fallback" session from peer's init
+ * ============================================================================
+ * 
  * FSM TRANSITIONS:
  * 
  * Initiator flow:
@@ -526,11 +554,20 @@ class HandshakeStateManager {
 /**
  * Determine initiator/responder role deterministically
  * 
- * SECURITY: Uses lexicographic comparison of identity public keys
- * This ensures:
- * 1. Both parties agree on roles without communication
- * 2. No race conditions
- * 3. Consistent result regardless of timing
+ * SECURITY-CRITICAL: This function resolves race conditions in handshake.
+ * 
+ * PROPERTIES:
+ * 1. ANTISYMMETRIC: If A calls determineRole(A, B) = 'initiator',
+ *    then B calls determineRole(B, A) = 'responder'
+ * 2. DETERMINISTIC: Same inputs always produce same output
+ * 3. NO COMMUNICATION NEEDED: Both parties compute locally
+ * 
+ * PROTOCOL BEHAVIOR:
+ * - INITIATOR: Ignores incoming init, waits for response, creates session
+ * - RESPONDER: Processes INITIATOR's init, sends response, NO session
+ * 
+ * Uses lexicographic comparison of Ed25519 identity public keys.
+ * Lower key = INITIATOR.
  * 
  * @param ourIdentityEd25519 - Our Ed25519 public key
  * @param peerIdentityEd25519 - Peer's Ed25519 public key
@@ -572,7 +609,13 @@ export function determineRole(
 /**
  * Check if we should accept an incoming handshake based on role
  * 
- * SECURITY: Prevents race conditions where both parties send handshake
+ * SECURITY-CRITICAL: Implements correct race condition resolution.
+ * 
+ * RULE:
+ * - RESPONDER (by determineRole): Accept incoming init, process it
+ * - INITIATOR (by determineRole): IGNORE incoming init, wait for response
+ * 
+ * This ensures exactly ONE init is processed and exactly ONE session is created.
  * 
  * @returns true if we should accept (we are responder), false if we should ignore
  */
@@ -588,15 +631,18 @@ export function shouldAcceptIncomingHandshake(
     return true;
   }
   
-  // If we're the designated initiator but already sent handshake, ignore incoming
-  // (peer is violating protocol or there's network reordering)
+  // If we're the designated initiator:
+  // - If we already sent handshake: IGNORE incoming (wait for response)
+  // - If we haven't sent yet: Accept (peer was faster, we become responder)
   if (weAlreadySentHandshake) {
-    console.warn('[HandshakeFSM] Ignoring incoming handshake: we are initiator and already sent');
+    // CRITICAL: We are INITIATOR in race condition.
+    // We MUST ignore their init and wait for their response to our init.
+    console.log('[HandshakeFSM] We are INITIATOR - ignoring incoming init, waiting for response');
     return false;
   }
   
-  // If we're initiator but haven't sent yet, accept anyway
-  // (peer sent faster, we become responder for this session)
+  // We're initiator but haven't sent yet - peer was faster
+  // Accept their init (we effectively become responder for this handshake)
   return true;
 }
 

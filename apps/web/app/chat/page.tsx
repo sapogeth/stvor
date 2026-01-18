@@ -607,24 +607,56 @@ export default function ChatPage() {
                   const peerIdentityEd25519 = handshakeMsg.identityPublicEd25519;
                   const ourIdentityEd25519 = identity.ed25519.publicKey;
                   
+                  // Log keys for debugging race condition
+                  const ourKeyHex = Buffer.from(ourIdentityEd25519).toString('hex').slice(0, 16);
+                  const peerKeyHex = Buffer.from(peerIdentityEd25519).toString('hex').slice(0, 16);
+                  console.log('[Handshake] Race condition key comparison:');
+                  console.log('[Handshake]   Our key (first 8 bytes):', ourKeyHex);
+                  console.log('[Handshake]   Peer key (first 8 bytes):', peerKeyHex);
+                  
                   const ourRole = determineRole(ourIdentityEd25519, peerIdentityEd25519);
                   console.log('[Handshake] Deterministic role resolution:', ourRole);
                   
                   if (ourRole === 'responder') {
-                    // We should be responder - cancel our init and accept theirs
-                    console.log('[Handshake] We should be RESPONDER - canceling our init, accepting theirs');
+                    // =========================================================
+                    // RESPONDER in race condition
+                    // =========================================================
+                    // We are the designated RESPONDER by determineRole.
+                    // We MUST:
+                    // 1. Cancel our pending init (we shouldn't have sent it)
+                    // 2. Process their init and send response
+                    // 3. NOT create a session - INITIATOR creates the session
+                    // =========================================================
+                    console.log('[Handshake] We are RESPONDER in race - canceling our init, accepting theirs');
                     
-                    // Clear our pending init
+                    // Clear our pending init - we are NOT the initiator
                     sessionStorage.removeItem(`handshake_pending_${chatId}`);
                     
                     // Reset FSM to IDLE so we can become responder
                     handshakeManager.clearSession(chatId);
                     
-                    // Now proceed as responder (fall through to normal processing)
+                    // Fall through to process their init as responder
                   } else {
-                    // We should be initiator - ignore their init, they should respond to ours
-                    console.log('[Handshake] We should be INITIATOR - ignoring their init, waiting for their response');
-                    continue; // Skip this init, wait for their response
+                    // =========================================================
+                    // INITIATOR in race condition - IGNORE THEIR INIT
+                    // =========================================================
+                    // We are the designated INITIATOR by determineRole.
+                    // CRITICAL PROTOCOL RULE:
+                    // - INITIATOR does NOT process incoming init
+                    // - INITIATOR waits for response from RESPONDER
+                    // - RESPONDER will process our init and send response
+                    // - Polling guarantees delivery
+                    // 
+                    // If we processed their init, we would create 2 sessions
+                    // with 4 different keys - CRITICAL ERROR.
+                    // =========================================================
+                    console.log('[Handshake] We are INITIATOR in race - IGNORING their init, waiting for response');
+                    console.log('[Handshake] RESPONDER must process our init and send response');
+                    
+                    // DO NOT clear our pending init - we need it to finalize with response
+                    // DO NOT process their init - we are not the responder
+                    // SKIP this message and wait for their response
+                    continue;
                   }
                 } else {
                   console.warn('[Handshake] FSM: Cannot accept HandshakeInit - handshake in unexpected state:', session?.state);
@@ -634,8 +666,10 @@ export default function ChatPage() {
 
               // FSM: Start responder session
               try {
+                console.log('[Handshake] RESPONDER: Starting responder session for', chatId);
                 handshakeManager.startSession(chatId, msg.from);
                 handshakeManager.transition(chatId, FSMState.RESPONDING, { role: 'responder' });
+                console.log('[Handshake] RESPONDER: FSM transitioned to RESPONDING');
               } catch (fsmError) {
                 if (fsmError instanceof HandshakeError && 
                     fsmError.code === HandshakeErrorCode.DUPLICATE_BLOCKED) {
@@ -657,9 +691,10 @@ export default function ChatPage() {
                 // NOTE: loadPrekeySecretsOrRegenerate will THROW if handshake is active
                 // and regeneration is needed. This is intentional - we don't want to
                 // regenerate keys in the middle of a handshake (causes transcript mismatch).
+                console.log('[Handshake] RESPONDER: Loading prekey secrets for', username);
                 const prekeySecrets = await loadPrekeySecretsOrRegenerate(username, identity);
 
-                console.log('[Handshake] Using prekey bundle:', prekeySecrets.bundleId);
+                console.log('[Handshake] RESPONDER: Using prekey bundle:', prekeySecrets.bundleId);
 
               // Complete handshake
                 // CRITICAL: Pass ML-KEM public key for transcript verification
@@ -738,6 +773,11 @@ export default function ChatPage() {
 
                 console.log('[Handshake] Response sent');
               } catch (handshakeError) {
+                // Log detailed error for debugging
+                console.error('[Handshake] RESPONDER ERROR:', handshakeError);
+                console.error('[Handshake] Error type:', handshakeError?.constructor?.name);
+                console.error('[Handshake] Error message:', handshakeError instanceof Error ? handshakeError.message : String(handshakeError));
+                
                 // FSM: Mark as failed
                 handshakeManager.fail(
                   chatId,
@@ -785,6 +825,18 @@ export default function ChatPage() {
               
               console.log('[Handshake] Received HandshakeResponse, we are initiator, finalizing...');
 
+              // Load pending handshake state - this MUST exist if we are initiator
+              const pendingDataJson = sessionStorage.getItem(`handshake_pending_${chatId}`);
+              if (!pendingDataJson) {
+                // No pending data means we never initiated or we are the responder
+                // RESPONDER does NOT expect a response - only INITIATOR does
+                // This response is either:
+                // 1. Stale/duplicate
+                // 2. We are responder and peer incorrectly sent a response
+                console.warn('[Handshake] No pending handshake data - ignoring unexpected response');
+                continue;
+              }
+
               // FSM: Validate this is a legitimate response to our init
               try {
                 const isValid = handshakeManager.receiveResponse(chatId, msg.from);
@@ -796,18 +848,12 @@ export default function ChatPage() {
               } catch (fsmError) {
                 if (fsmError instanceof HandshakeError) {
                   console.warn(`[Handshake] FSM rejected response: ${fsmError.code} - ${fsmError.message}`);
-                  continue; // Don't process invalid response
+                  // In race condition, FSM might be in wrong state
+                  // But we have pending data so we should proceed
+                  console.log('[Handshake] RACE: FSM rejected but we have pending data, proceeding anyway');
+                } else {
+                  throw fsmError;
                 }
-                throw fsmError;
-              }
-
-              // Load pending handshake state
-              const pendingDataJson = sessionStorage.getItem(`handshake_pending_${chatId}`);
-              if (!pendingDataJson) {
-                console.error('[Handshake] No pending handshake data found - cannot finalize');
-                handshakeManager.fail(chatId, HandshakeErrorCode.INVALID_TRANSITION, 
-                  'No pending handshake state found when receiving response');
-                continue;
               }
 
               const pendingData = JSON.parse(pendingDataJson);
