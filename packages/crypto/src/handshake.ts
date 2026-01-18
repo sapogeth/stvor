@@ -461,6 +461,19 @@ export async function initiateHandshake(
   // Create a fresh Uint8Array to ensure liboqs type validation passes
   const partialTranscript = new Uint8Array(partialTranscriptBuffer);
 
+  // DEBUG: Log transcript structure for comparison with responder
+  console.log('[Handshake] INITIATOR transcript signed:', {
+    transcriptLength: partialTranscript.length,
+    transcriptHashFirst16: toHex(partialTranscript.slice(0, 16)),
+    hasPQKeys,
+    responderIdentityEdFirst8: toHex(responderIdentityPubEd25519.slice(0, 8)),
+    responderPrekeyXFirst8: toHex(responderPrekey.x25519Ephemeral.slice(0, 8)),
+    responderPrekeyMLFirst8: hasPQKeys ? toHex(responderPrekey.mlkemPublicKey.slice(0, 8)) : 'none',
+    initiatorIdentityEdFirst8: toHex(message.identityPublicEd25519.slice(0, 8)),
+    initiatorEphXFirst8: toHex(message.ephemeralX25519.slice(0, 8)),
+    initiatorEphMLFirst8: message.ephemeralMLKEM ? toHex(message.ephemeralMLKEM.slice(0, 8)) : 'none',
+  });
+
   message.ed25519Signature = prim.ed25519Sign(partialTranscript, initiatorIdentity.ed25519.secretKey);
 
   // Try to sign with ML-DSA, fall back to empty signature if PQ unavailable
@@ -609,11 +622,15 @@ export async function completeHandshake(
 
   // Match the transcript structure from initiateHandshake
   // NOTE: Both sides must encode the exact same data for signature verification
-  const hasPQKeys = responderPrekeyMLKEMSecret && responderPrekeyMLKEMSecret.length === constants.ML_KEM_768_SECRET_KEY_LENGTH;
+  
+  // CRITICAL FIX: Check if initiator included ML-KEM prekey in message
+  // This tells us what was in the transcript that initiator signed
+  // We MUST NOT use local secret key presence to determine transcript structure
+  const initiatorIncludedPrekeyMLKEM = initiatorMsg.responderPrekeyMLKEM && initiatorMsg.responderPrekeyMLKEM.length > 0;
 
-  // CRITICAL FIX: Use ML-KEM prekey from initiator's message if local is not available
+  // CRITICAL FIX: Use ML-KEM prekey from initiator's message if available
   // This handles the case where responder's local keys were regenerated
-  // Priority: 1) From initiator message, 2) From local secrets, 3) None
+  // Priority: 1) From initiator message (what was signed), 2) From local secrets, 3) None
   const effectivePrekeyMLKEM = initiatorMsg.responderPrekeyMLKEM || responderPrekeyMLKEMPublic;
 
   // CRITICAL FIX: Use X25519 prekey from initiator's message for transcript reconstruction
@@ -665,13 +682,16 @@ export async function completeHandshake(
     transcriptObj.initiator.ephML = initiatorMsg.ephemeralMLKEM;
   }
   
-  // CRITICAL FIX: Include ML-KEM prekey public key in transcript
-  // Use the key from initiator's message (what they used for signing)
-  // This ensures transcript matches even if local keys were regenerated
-  if (hasPQKeys && effectivePrekeyMLKEM && effectivePrekeyMLKEM.length > 0) {
+  // CRITICAL FIX: Include ML-KEM prekey public key in transcript ONLY IF initiator included it
+  // We MUST replicate the exact transcript structure that initiator signed
+  // If initiator included responderPrekeyMLKEM in message, they included it in transcript
+  if (initiatorIncludedPrekeyMLKEM && effectivePrekeyMLKEM && effectivePrekeyMLKEM.length > 0) {
     transcriptObj.responder.prekeyML = effectivePrekeyMLKEM;
-    console.log('[Handshake] Using ML-KEM prekey from:', 
-      initiatorMsg.responderPrekeyMLKEM ? 'initiator message' : 'local secrets');
+    console.log('[Handshake] Including ML-KEM prekey in transcript (from initiator message)');
+  } else if (effectivePrekeyMLKEM && effectivePrekeyMLKEM.length > 0) {
+    // Fallback: initiator didn't include it in message but we have it locally
+    // This means initiator didn't have our ML-KEM prekey, so it wasn't in their transcript
+    console.log('[Handshake] ML-KEM prekey available locally but NOT including in transcript (initiator did not have it)');
   }
 
   const partialTranscriptBuffer = encode(transcriptObj);
@@ -681,12 +701,17 @@ export async function completeHandshake(
   // DEBUG: Log transcript structure for signature verification debugging
   console.log('[Handshake] Transcript verification data:', {
     transcriptLength: partialTranscript.length,
+    transcriptHashFirst16: toHex(partialTranscript.slice(0, 16)),
     hasResponderIdentityFromMsg: !!initiatorMsg.responderIdentityEd25519,
     hasResponderPrekeyX25519FromMsg: !!initiatorMsg.responderPrekeyX25519,
     hasResponderPrekeyMLKEMFromMsg: !!initiatorMsg.responderPrekeyMLKEM,
-    effectiveIdentityEdFirst8: Array.from(effectiveResponderIdentityEd.slice(0, 8)),
-    effectivePrekeyXFirst8: Array.from(effectivePrekeyX25519.slice(0, 8)),
-    initiatorIdentityEdFirst8: Array.from(initiatorMsg.identityPublicEd25519.slice(0, 8)),
+    initiatorIncludedPrekeyMLKEM,
+    effectiveIdentityEdFirst8: toHex(effectiveResponderIdentityEd.slice(0, 8)),
+    effectivePrekeyXFirst8: toHex(effectivePrekeyX25519.slice(0, 8)),
+    effectivePrekeyMLFirst8: effectivePrekeyMLKEM ? toHex(effectivePrekeyMLKEM.slice(0, 8)) : 'none',
+    initiatorIdentityEdFirst8: toHex(initiatorMsg.identityPublicEd25519.slice(0, 8)),
+    initiatorEphXFirst8: toHex(initiatorMsg.ephemeralX25519.slice(0, 8)),
+    initiatorEphMLFirst8: initiatorMsg.ephemeralMLKEM ? toHex(initiatorMsg.ephemeralMLKEM.slice(0, 8)) : 'none',
   });
 
   // CRITICAL: Check for dev mode keys and REJECT
