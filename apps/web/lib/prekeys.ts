@@ -6,6 +6,12 @@
  * - Uploading to relay server
  * - Fetching peer prekey bundles
  * - Managing prekey secrets in IndexedDB
+ *
+ * SECURITY INVARIANTS:
+ * 1. Private keys are NEVER uploaded to the server
+ * 2. Prekey regeneration is BLOCKED during active handshake
+ * 3. Public keys are stored alongside private keys for transcript verification
+ * 4. Missing secrets require explicit regeneration, not silent download
  */
 
 import type { IdentityKeyPair, PrekeyBundle } from '@ilyazh/crypto';
@@ -16,6 +22,7 @@ import { keystore } from './keystore';
 import { getCryptoOrThrow } from './runtime/crypto-safe';
 import { createAuthHeaders } from './identity';
 import { getRelayUrl } from './relay-url';
+import { handshakeManager, HandshakeError, HandshakeErrorCode } from './handshake-state-machine';
 
 const RELAY_API_KEY = process.env.RELAY_API_KEY || 'dev-key-change-in-production';
 
@@ -74,11 +81,20 @@ function normalizePeerDirectory(raw: any) {
  * - Signs with identity Ed25519 private key
  * - Uploads signed bundle to relay /directory/:username
  * - Stores secret keys in IndexedDB
+ *
+ * SECURITY INVARIANT: This function MUST NOT be called during active handshake
+ * Use handshakeManager.assertCanMutatePrekeys() to enforce this
  */
 export async function generateAndUploadPrekeyBundle(
   username: string,
-  identity: IdentityKeyPair
+  identity: IdentityKeyPair,
+  options?: { skipHandshakeCheck?: boolean }
 ): Promise<void> {
+  // CRITICAL SAFETY CHECK: Block regeneration during active handshake
+  // Skip only in test scenarios or during initial bootstrap
+  if (!options?.skipHandshakeCheck) {
+    handshakeManager.assertCanMutatePrekeys();
+  }
   // Canonicalize username immediately
   const canonical = (username ?? "").toLowerCase().trim();
   if (!canonical) {
@@ -401,12 +417,15 @@ export async function loadPrekeySecrets(username: string): Promise<PrekeySecrets
 /**
  * Load prekey secrets with AUTO-REGENERATION fallback
  *
- * SECURITY: If secrets are missing OR incomplete (missing public keys),
- * this will regenerate a NEW bundle locally and publish it to the relay.
- * This is the correct E2E behavior - we NEVER try to "recover" or
- * "download" private keys from the server.
+ * SECURITY INVARIANT: If secrets are missing OR incomplete (missing public keys),
+ * this function will attempt regeneration. However, regeneration is BLOCKED
+ * if any handshake is currently in progress, to prevent transcript mismatch.
+ *
+ * SECURITY: We NEVER try to "recover" or "download" private keys from the server.
  *
  * Use this in the chat poller where missing secrets should be transparent.
+ *
+ * @throws HandshakeError if secrets are missing and regeneration is blocked
  */
 export async function loadPrekeySecretsOrRegenerate(
   username: string,
@@ -428,6 +447,25 @@ export async function loadPrekeySecretsOrRegenerate(
     return secrets;
   }
 
+  // SECURITY CHECK: Block regeneration during active handshake
+  // This prevents the bug where responder regenerates NEW keys during handshake,
+  // causing transcript mismatch because initiator used the OLD keys
+  if (handshakeManager.isAnyHandshakeActive()) {
+    console.error(
+      '[Prekey][BLOCKED] Cannot regenerate prekeys during active handshake!'
+    );
+    console.error(
+      '[Prekey][BLOCKED] This would cause transcript mismatch and verification failure.'
+    );
+    throw new HandshakeError(
+      HandshakeErrorCode.PREKEY_MISSING,
+      `Prekey secrets not found for ${username} and regeneration is blocked during active handshake. ` +
+      'Wait for handshake to complete or fail, then retry.',
+      undefined,
+      true // Recoverable: user can retry after handshake completes
+    );
+  }
+
   // Secrets not found or incomplete - regenerate locally
   console.warn(
     '[Prekey][Recovery] Local secrets not found or incomplete for',
@@ -438,8 +476,8 @@ export async function loadPrekeySecretsOrRegenerate(
     '[Prekey][Recovery] This is normal E2E behavior - private keys are NEVER downloaded from server'
   );
 
-  // Generate new bundle and upload
-  await generateAndUploadPrekeyBundle(username, identity);
+  // Generate new bundle and upload (skip handshake check - we already verified)
+  await generateAndUploadPrekeyBundle(username, identity, { skipHandshakeCheck: true });
 
   // Load the newly generated secrets
   secrets = await loadPrekeySecrets(username);
@@ -549,6 +587,9 @@ function generateCanonicalPrekeyKeys(userId: string): string[] {
 /**
  * Delete used prekey secrets after handshake completion
  * Should generate a new bundle immediately after
+ *
+ * SECURITY: This is safe to call even during handshake (it only deletes,
+ * doesn't regenerate). New bundle generation should be done AFTER handshake.
  */
 export async function deletePrekeySecrets(username: string): Promise<void> {
   console.log('[Prekey] Deleting used prekey secrets for:', username);
@@ -576,11 +617,17 @@ export async function deletePrekeySecrets(username: string): Promise<void> {
  * Ensure prekey bundle is published to relay
  * Checks if relay has a valid signed bundle for this user
  * If not, generates and uploads a new signed bundle
+ *
+ * SECURITY INVARIANT: This function may regenerate keys, so it MUST NOT
+ * be called during active handshake. Used during bootstrap only.
  */
 export async function ensurePrekeyPublished(
   username: string,
   identity: IdentityKeyPair
 ): Promise<void> {
+  // SAFETY: Check if regeneration is allowed
+  // This is called during bootstrap, so handshake should not be active
+  handshakeManager.assertCanMutatePrekeys();
   // Canonicalize username immediately
   const canonical = (username ?? "").toLowerCase().trim();
   if (!canonical) {

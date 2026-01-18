@@ -31,6 +31,14 @@ import {
   ensurePrekeyPublished,
   type PrekeySecrets,
 } from '@/lib/prekeys';
+import {
+  handshakeManager,
+  HandshakeState as FSMState,
+  HandshakeError,
+  HandshakeErrorCode,
+  determineRole,
+  shouldAcceptIncomingHandshake,
+} from '@/lib/handshake-state-machine';
 import { keystore } from '@/lib/keystore';
 import {
   getSessionSecurity,
@@ -569,87 +577,124 @@ export default function ChatPage() {
               // We are the responder (Bob), complete the handshake
               console.log('[Handshake] We are responder, completing handshake...');
 
-              // Load our prekey secrets with auto-regeneration fallback
-              // SECURITY: If secrets are missing, loadPrekeySecretsOrRegenerate will:
-              // 1. Generate NEW keys locally (never download from server)
-              // 2. Publish new bundle to relay
-              // 3. Return the newly generated secrets
-              // This prevents crashes while maintaining E2E security.
-              // CRITICAL: Use username (NOT Clerk ID) for all crypto operations
-              const prekeySecrets = await loadPrekeySecretsOrRegenerate(username, identity);
-
-              console.log('[Handshake] Using prekey bundle:', prekeySecrets.bundleId);
-
-              // Complete handshake
-              // CRITICAL: Pass ML-KEM public key for transcript verification
-              const { completeHandshake } = await import('@/lib/crypto');
-              const { message: responseMessage, state: handshakeState } = await completeHandshake(
-                identity,
-                prekeySecrets.x25519SecretKey,
-                prekeySecrets.mlkemSecretKey,
-                handshakeMsg,
-                prekeySecrets.mlkemPublicKey // CRITICAL: Needed for signature verification
-              );
-
-              console.log('[Handshake] Handshake completed');
-              logInfo('handshake', 'Handshake completed', { sessionId: redactSessionId(handshakeState.sessionId), role: handshakeState.role });;
-              console.log('[Handshake] - Role:', handshakeState.role);
-
-              // Update state
-              currentRatchetState = handshakeState;
-              setRatchetState(handshakeState);
-
-              // Save session to IndexedDB
-              await keystore.init();
-              await keystore.saveSession(handshakeState.sessionId, msg.from, handshakeState);
-
-              // Delete used prekey secrets
-              // CRITICAL: Use username (NOT Clerk ID) for all crypto operations
-              await deletePrekeySecrets(username);
-
-              // Generate new prekey bundle for future sessions
-              console.log('[Handshake] Generating new prekey bundle...');
-              await generateAndUploadPrekeyBundle(username, identity);
-
-              // Send response handshake
-              const { encodeHandshakeMessage } = await import('@/lib/crypto');
-              const responseWireData = encodeHandshakeMessage(responseMessage);
-              const responseData = Buffer.from(responseWireData).toString('base64');
-
-              const headers = await createAuthHeaders(username);
-              const handshakeRes = await fetch(getRelayUrlForBrowser(`message/${chatId}`), {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
-                  type: 'handshake',
-                  from: username,
-                  blob: responseData,
-                }),
-              });
-
-              // Handle 409 correctly: if relay returns 409, the handshake response already exists
-              // This is normal in dev/re-init scenarios - session is already saved above
-              if (handshakeRes.status === 409) {
-                console.warn('[Handshake] Relay returned 409 (handshake response already exists), but session is saved locally');
-              } else if (!handshakeRes.ok) {
-                // CRITICAL: ABORT on any error (401, 403, 500)
-                console.error('[Handshake] ❌ Handshake response failed:', handshakeRes.status);
-                const errorData = await handshakeRes.json().catch(() => ({ error: 'Unknown error' }));
-                
-                // Mark relay auth as FAILED
-                const { relayAuthController } = await import('@/lib/relay-auth-controller');
-                relayAuthController.markFailed(
-                  `Handshake response failed: ${errorData.error || handshakeRes.statusText}`,
-                  handshakeRes.status as 401 | 403
-                );
-                
-                throw new Error(
-                  `Cannot complete handshake: relay returned ${handshakeRes.status}. ` +
-                  `Please check your authentication and try again.`
-                );
+              // FSM: Start responder session
+              try {
+                handshakeManager.startSession(chatId, msg.from);
+                handshakeManager.transition(chatId, FSMState.RESPONDING, { role: 'responder' });
+              } catch (fsmError) {
+                if (fsmError instanceof HandshakeError && 
+                    fsmError.code === HandshakeErrorCode.DUPLICATE_BLOCKED) {
+                  console.warn('[Handshake] FSM: Duplicate handshake blocked for', chatId);
+                  continue; // Skip this handshake
+                }
+                throw fsmError;
               }
 
-              console.log('[Handshake] Response sent');
+              try {
+                // Load our prekey secrets with auto-regeneration fallback
+                // SECURITY: If secrets are missing, loadPrekeySecretsOrRegenerate will:
+                // 1. Generate NEW keys locally (never download from server)
+                // 2. Publish new bundle to relay
+                // 3. Return the newly generated secrets
+                // This prevents crashes while maintaining E2E security.
+                // CRITICAL: Use username (NOT Clerk ID) for all crypto operations
+                //
+                // NOTE: loadPrekeySecretsOrRegenerate will THROW if handshake is active
+                // and regeneration is needed. This is intentional - we don't want to
+                // regenerate keys in the middle of a handshake (causes transcript mismatch).
+                const prekeySecrets = await loadPrekeySecretsOrRegenerate(username, identity);
+
+                console.log('[Handshake] Using prekey bundle:', prekeySecrets.bundleId);
+
+              // Complete handshake
+                // CRITICAL: Pass ML-KEM public key for transcript verification
+                const { completeHandshake } = await import('@/lib/crypto');
+                const { message: responseMessage, state: handshakeState } = await completeHandshake(
+                  identity,
+                  prekeySecrets.x25519SecretKey,
+                  prekeySecrets.mlkemSecretKey,
+                  handshakeMsg,
+                  prekeySecrets.mlkemPublicKey // CRITICAL: Needed for signature verification
+                );
+
+                console.log('[Handshake] Handshake completed');
+                logInfo('handshake', 'Handshake completed', { sessionId: redactSessionId(handshakeState.sessionId), role: handshakeState.role });;
+                console.log('[Handshake] - Role:', handshakeState.role);
+
+                // FSM: Mark as ESTABLISHED
+                handshakeManager.transition(chatId, FSMState.ESTABLISHED);
+
+                // Update state
+                currentRatchetState = handshakeState;
+                setRatchetState(handshakeState);
+
+                // Save session to IndexedDB
+                await keystore.init();
+                await keystore.saveSession(handshakeState.sessionId, msg.from, handshakeState);
+
+                // Delete used prekey secrets
+                // CRITICAL: Use username (NOT Clerk ID) for all crypto operations
+                await deletePrekeySecrets(username);
+
+                // FSM: Session established, safe to clear and regenerate prekeys
+                handshakeManager.clearSession(chatId);
+
+                // Generate new prekey bundle for future sessions
+                console.log('[Handshake] Generating new prekey bundle...');
+                await generateAndUploadPrekeyBundle(username, identity);
+
+                // Send response handshake
+                const { encodeHandshakeMessage } = await import('@/lib/crypto');
+                const responseWireData = encodeHandshakeMessage(responseMessage);
+                const responseData = Buffer.from(responseWireData).toString('base64');
+
+                const headers = await createAuthHeaders(username);
+                const handshakeRes = await fetch(getRelayUrlForBrowser(`message/${chatId}`), {
+                  method: 'POST',
+                  headers,
+                  body: JSON.stringify({
+                    type: 'handshake',
+                    from: username,
+                    blob: responseData,
+                  }),
+                });
+
+                // Handle 409 correctly: if relay returns 409, the handshake response already exists
+                // This is normal in dev/re-init scenarios - session is already saved above
+                if (handshakeRes.status === 409) {
+                  console.warn('[Handshake] Relay returned 409 (handshake response already exists), but session is saved locally');
+                } else if (!handshakeRes.ok) {
+                  // CRITICAL: ABORT on any error (401, 403, 500)
+                  console.error('[Handshake] ❌ Handshake response failed:', handshakeRes.status);
+                  const errorData = await handshakeRes.json().catch(() => ({ error: 'Unknown error' }));
+                  
+                  // Mark relay auth as FAILED
+                  const { relayAuthController } = await import('@/lib/relay-auth-controller');
+                  relayAuthController.markFailed(
+                    `Handshake response failed: ${errorData.error || handshakeRes.statusText}`,
+                    handshakeRes.status as 401 | 403
+                  );
+                  
+                  throw new Error(
+                    `Cannot complete handshake: relay returned ${handshakeRes.status}. ` +
+                    `Please check your authentication and try again.`
+                  );
+                }
+
+                console.log('[Handshake] Response sent');
+              } catch (handshakeError) {
+                // FSM: Mark as failed
+                handshakeManager.fail(
+                  chatId,
+                  handshakeError instanceof HandshakeError
+                    ? handshakeError.code
+                    : HandshakeErrorCode.KEM_FAILED,
+                  handshakeError instanceof Error
+                    ? handshakeError.message
+                    : 'Unknown handshake error'
+                );
+                throw handshakeError;
+              }
 
               // Show completion message
               setMessages((prev) => [
@@ -673,6 +718,13 @@ export default function ChatPage() {
               // We are the initiator (Alice), finalize the handshake
               console.log('[Handshake] We are initiator, finalizing handshake...');
 
+              // FSM: Verify we are in INITIATING state
+              const session = handshakeManager.getSession(chatId);
+              if (!session || session.state !== FSMState.INITIATING) {
+                console.warn('[Handshake] FSM: Unexpected responder message - no INITIATING session');
+                // Still try to finalize if we have pending data (backward compat)
+              }
+
               // Load pending handshake state
               const pendingDataJson = sessionStorage.getItem(`handshake_pending_${chatId}`);
               if (!pendingDataJson) {
@@ -691,61 +743,81 @@ export default function ChatPage() {
                 throw new Error('Incomplete handshake pending data - missing ephemeral secrets or initiator message');
               }
 
-              // Reconstruct ephemeral secrets from stored arrays
-              const ephemeralX25519Secret = new Uint8Array(pendingData.ephemeralX25519Secret);
-              // Handle classical-only mode where ML-KEM secret may be undefined
-              const ephemeralMLKEMSecret = pendingData.ephemeralMLKEMSecret
-                ? new Uint8Array(pendingData.ephemeralMLKEMSecret)
-                : new Uint8Array(0);
+              try {
+                // Reconstruct ephemeral secrets from stored arrays
+                const ephemeralX25519Secret = new Uint8Array(pendingData.ephemeralX25519Secret);
+                // Handle classical-only mode where ML-KEM secret may be undefined
+                const ephemeralMLKEMSecret = pendingData.ephemeralMLKEMSecret
+                  ? new Uint8Array(pendingData.ephemeralMLKEMSecret)
+                  : new Uint8Array(0);
 
-              // Reconstruct initiator message from stored arrays
-              const initiatorMsg = {
-                ...pendingData.initiatorMessage,
-                ephemeralX25519: new Uint8Array(pendingData.initiatorMessage.ephemeralX25519),
-                ephemeralMLKEM: pendingData.initiatorMessage.ephemeralMLKEM
-                  ? new Uint8Array(pendingData.initiatorMessage.ephemeralMLKEM)
-                  : undefined,
-                identityPublicEd25519: new Uint8Array(pendingData.initiatorMessage.identityPublicEd25519),
-                identityPublicMLDSA: new Uint8Array(pendingData.initiatorMessage.identityPublicMLDSA),
-                ed25519Signature: new Uint8Array(pendingData.initiatorMessage.ed25519Signature),
-                mldsaSignature: new Uint8Array(pendingData.initiatorMessage.mldsaSignature),
-              };
+                // Reconstruct initiator message from stored arrays
+                const initiatorMsg = {
+                  ...pendingData.initiatorMessage,
+                  ephemeralX25519: new Uint8Array(pendingData.initiatorMessage.ephemeralX25519),
+                  ephemeralMLKEM: pendingData.initiatorMessage.ephemeralMLKEM
+                    ? new Uint8Array(pendingData.initiatorMessage.ephemeralMLKEM)
+                    : undefined,
+                  identityPublicEd25519: new Uint8Array(pendingData.initiatorMessage.identityPublicEd25519),
+                  identityPublicMLDSA: new Uint8Array(pendingData.initiatorMessage.identityPublicMLDSA),
+                  ed25519Signature: new Uint8Array(pendingData.initiatorMessage.ed25519Signature),
+                  mldsaSignature: new Uint8Array(pendingData.initiatorMessage.mldsaSignature),
+                };
 
-              const { finalizeHandshake } = await import('@/lib/crypto');
-              const finalState = await finalizeHandshake(
-                ephemeralX25519Secret,
-                ephemeralMLKEMSecret,
-                initiatorMsg,
-                handshakeMsg
-              );
+                const { finalizeHandshake } = await import('@/lib/crypto');
+                const finalState = await finalizeHandshake(
+                  ephemeralX25519Secret,
+                  ephemeralMLKEMSecret,
+                  initiatorMsg,
+                  handshakeMsg
+                );
 
-              console.log('[Handshake] Handshake finalized!');
-              logInfo('handshake', 'Handshake completed', { sessionId: redactSessionId(finalState.sessionId), role: finalState.role });
+                console.log('[Handshake] Handshake finalized!');
+                logInfo('handshake', 'Handshake completed', { sessionId: redactSessionId(finalState.sessionId), role: finalState.role });
 
-              // Update state
-              currentRatchetState = finalState;
-              setRatchetState(finalState);
+                // FSM: Mark as ESTABLISHED
+                handshakeManager.transition(chatId, FSMState.ESTABLISHED);
 
-              // Save session to IndexedDB
-              await keystore.init();
-              await keystore.saveSession(finalState.sessionId, msg.from, finalState);
+                // Update state
+                currentRatchetState = finalState;
+                setRatchetState(finalState);
 
-              // Clear pending handshake
-              sessionStorage.removeItem(`handshake_pending_${chatId}`);
+                // Save session to IndexedDB
+                await keystore.init();
+                await keystore.saveSession(finalState.sessionId, msg.from, finalState);
 
-              console.log('[Handshake] Session saved to IndexedDB');
+                // Clear pending handshake
+                sessionStorage.removeItem(`handshake_pending_${chatId}`);
 
-              // Show completion message
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: msg.id,
-                  sender: 'system',
-                  text: `🔐 Handshake finalized! Secure session active with ${msg.from}.`,
-                  timestamp: Date.now(),
-                  encrypted: true,
-                },
-              ]);
+                // FSM: Session established, clear session
+                handshakeManager.clearSession(chatId);
+
+                console.log('[Handshake] Session saved to IndexedDB');
+
+                // Show completion message
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: msg.id,
+                    sender: 'system',
+                    text: `🔐 Handshake finalized! Secure session active with ${msg.from}.`,
+                    timestamp: Date.now(),
+                    encrypted: true,
+                  },
+                ]);
+              } catch (finalizeError) {
+                // FSM: Mark as failed
+                handshakeManager.fail(
+                  chatId,
+                  finalizeError instanceof HandshakeError
+                    ? finalizeError.code
+                    : HandshakeErrorCode.SIGNATURE_INVALID,
+                  finalizeError instanceof Error
+                    ? finalizeError.message
+                    : 'Unknown finalize error'
+                );
+                throw finalizeError;
+              }
 
               // Update max index if entry has one
               const entryIndex2 = typeof entry.index !== 'undefined' ? entry.index : -1;
@@ -1673,36 +1745,56 @@ export default function ChatPage() {
 
       console.log('[Handshake] Initiating handshake with verified peer bundle...');
 
+      // FSM: Register initiator session
+      try {
+        handshakeManager.startSession(canonicalChatId, recipientCanonical);
+        handshakeManager.transition(canonicalChatId, FSMState.INTENT_REGISTERED, { role: 'initiator' });
+      } catch (fsmError) {
+        if (fsmError instanceof HandshakeError && 
+            fsmError.code === HandshakeErrorCode.DUPLICATE_BLOCKED) {
+          console.warn('[Handshake] FSM: Duplicate handshake blocked for', canonicalChatId);
+          throw new Error('Handshake already in progress with this user. Please wait.');
+        }
+        throw fsmError;
+      }
+
       // 6. Initiate handshake (we are Alice)
-      const { initiateHandshake } = await import('@/lib/crypto');
-      const { message: handshakeMessage, ephemeralX25519Secret, ephemeralMLKEMSecret } = await initiateHandshake(
-        identity,
-        peerIdentity.ed25519.publicKey,
-        peerIdentity.mldsa.publicKey,
-        peerBundle as any // Type mismatch - needs proper handling
-      );
+      try {
+        const { initiateHandshake } = await import('@/lib/crypto');
+        const { message: handshakeMessage, ephemeralX25519Secret, ephemeralMLKEMSecret } = await initiateHandshake(
+          identity,
+          peerIdentity.ed25519.publicKey,
+          peerIdentity.mldsa.publicKey,
+          peerBundle as any // Type mismatch - needs proper handling
+        );
 
-      console.log('[Handshake] Handshake initiated (message created)');
+        console.log('[Handshake] Handshake initiated (message created)');
 
-      // 7. Store pending handshake data in sessionStorage (for finalization)
-      // Use the canonical chatId we got from relay earlier
-      sessionStorage.setItem(`handshake_pending_${canonicalChatId}`, JSON.stringify({
-        initiatorMessage: {
-          ...handshakeMessage,
-          ephemeralX25519: Array.from(handshakeMessage.ephemeralX25519),
-          ephemeralMLKEM: handshakeMessage.ephemeralMLKEM ? Array.from(handshakeMessage.ephemeralMLKEM) : undefined,
-          identityPublicEd25519: Array.from(handshakeMessage.identityPublicEd25519),
-          identityPublicMLDSA: Array.from(handshakeMessage.identityPublicMLDSA),
-          ed25519Signature: Array.from(handshakeMessage.ed25519Signature),
-          mldsaSignature: Array.from(handshakeMessage.mldsaSignature),
-        },
-        ephemeralX25519Secret: Array.from(ephemeralX25519Secret),
-        ephemeralMLKEMSecret: ephemeralMLKEMSecret ? Array.from(ephemeralMLKEMSecret) : undefined,
-      }));
+        // FSM: Transition to INITIATING
+        handshakeManager.transition(canonicalChatId, FSMState.INITIATING, {
+          ephemeralX25519Secret,
+          ephemeralMLKEMSecret,
+        });
 
-      // 8. Encode and send handshake message
-      const { encodeHandshakeMessage } = await import('@/lib/crypto');
-      const wireData = encodeHandshakeMessage(handshakeMessage);
+        // 7. Store pending handshake data in sessionStorage (for finalization)
+        // Use the canonical chatId we got from relay earlier
+        sessionStorage.setItem(`handshake_pending_${canonicalChatId}`, JSON.stringify({
+          initiatorMessage: {
+            ...handshakeMessage,
+            ephemeralX25519: Array.from(handshakeMessage.ephemeralX25519),
+            ephemeralMLKEM: handshakeMessage.ephemeralMLKEM ? Array.from(handshakeMessage.ephemeralMLKEM) : undefined,
+            identityPublicEd25519: Array.from(handshakeMessage.identityPublicEd25519),
+            identityPublicMLDSA: Array.from(handshakeMessage.identityPublicMLDSA),
+            ed25519Signature: Array.from(handshakeMessage.ed25519Signature),
+            mldsaSignature: Array.from(handshakeMessage.mldsaSignature),
+          },
+          ephemeralX25519Secret: Array.from(ephemeralX25519Secret),
+          ephemeralMLKEMSecret: ephemeralMLKEMSecret ? Array.from(ephemeralMLKEMSecret) : undefined,
+        }));
+
+        // 8. Encode and send handshake message
+        const { encodeHandshakeMessage } = await import('@/lib/crypto');
+        const wireData = encodeHandshakeMessage(handshakeMessage);
       const data = Buffer.from(wireData).toString('base64');
 
       console.log('[Handshake] Sending handshake message to relay...');
@@ -1768,6 +1860,20 @@ export default function ChatPage() {
           },
         ];
       });
+
+      } catch (initError) {
+        // FSM: Mark as failed
+        handshakeManager.fail(
+          canonicalChatId,
+          initError instanceof HandshakeError
+            ? initError.code
+            : HandshakeErrorCode.RELAY_ERROR,
+          initError instanceof Error
+            ? initError.message
+            : 'Unknown handshake initiation error'
+        );
+        throw initError;
+      }
 
       setHandshakeInProgress(false);
     } catch (err) {
