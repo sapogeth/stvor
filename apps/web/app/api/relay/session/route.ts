@@ -19,9 +19,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import jwt from 'jsonwebtoken';
-import { getUsernameByUserId } from '../../profiles/storage';
+import { getUsernameByUserId, setProfile } from '../../profiles/storage';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -54,19 +54,60 @@ export async function POST(req: NextRequest) {
     // Chat participants are stored as usernames (e.g., 'edf', 'fde')
     // If we use email ('izhaisenbaev@gmail.com') the participant check will fail
     console.log('[RelaySession] Looking up username for userId:', userId);
-    const username = await getUsernameByUserId(userId);
+    let username = await getUsernameByUserId(userId);
     
     if (!username) {
-      console.error('[RelaySession] ❌ User has no registered profile', { userId });
-      console.error('[RelaySession] User must complete profile setup before using relay');
-      console.error('[RelaySession] This may indicate:');
-      console.error('[RelaySession]   1. Profile was not created yet');
-      console.error('[RelaySession]   2. Supabase replication delay');
-      console.error('[RelaySession]   3. Profile creation failed silently');
-      return NextResponse.json(
-        { error: 'Profile not found', detail: 'Please complete profile setup first' },
-        { status: 400 }
-      );
+      // AUTO-CREATE PROFILE: If user has Clerk account but no profile,
+      // create one automatically using Clerk username or email prefix
+      console.log('[RelaySession] ⚠️ No profile found, attempting auto-creation...');
+      
+      const clerkUser = await currentUser();
+      if (!clerkUser) {
+        console.error('[RelaySession] ❌ Cannot get Clerk user for auto-profile creation');
+        return NextResponse.json(
+          { error: 'Profile not found', detail: 'Please complete profile setup first' },
+          { status: 400 }
+        );
+      }
+      
+      // Derive username from Clerk data (priority: username > email prefix)
+      let derivedUsername = clerkUser.username;
+      if (!derivedUsername && clerkUser.emailAddresses?.[0]?.emailAddress) {
+        derivedUsername = clerkUser.emailAddresses[0].emailAddress.split('@')[0];
+      }
+      
+      if (!derivedUsername) {
+        console.error('[RelaySession] ❌ Cannot derive username from Clerk data');
+        return NextResponse.json(
+          { error: 'Profile not found', detail: 'Please complete profile setup first' },
+          { status: 400 }
+        );
+      }
+      
+      // Sanitize username (lowercase, alphanumeric + underscore only)
+      derivedUsername = derivedUsername.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20);
+      
+      if (derivedUsername.length < 3) {
+        derivedUsername = `user_${userId.slice(-8)}`;
+      }
+      
+      console.log('[RelaySession] Auto-creating profile:', { userId, derivedUsername });
+      
+      try {
+        const displayName = clerkUser.firstName 
+          ? `${clerkUser.firstName}${clerkUser.lastName ? ' ' + clerkUser.lastName : ''}`
+          : derivedUsername;
+        
+        await setProfile(derivedUsername, userId, displayName);
+        username = derivedUsername;
+        console.log('[RelaySession] ✅ Profile auto-created successfully:', username);
+      } catch (profileError) {
+        console.error('[RelaySession] ❌ Failed to auto-create profile:', profileError);
+        return NextResponse.json(
+          { error: 'Profile creation failed', detail: 'Please try again or contact support' },
+          { status: 500 }
+        );
+      }
     }
 
     // Canonicalize username (lowercase, trim)
