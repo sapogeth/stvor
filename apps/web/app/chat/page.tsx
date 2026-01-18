@@ -36,6 +36,7 @@ import {
   HandshakeState as FSMState,
   HandshakeError,
   HandshakeErrorCode,
+  HandshakeMessageType,
   determineRole,
   shouldAcceptIncomingHandshake,
 } from '@/lib/handshake-state-machine';
@@ -574,8 +575,25 @@ export default function ChatPage() {
               console.log('[Handshake] Received handshake message, role:', handshakeMsg.role);
 
             if (handshakeMsg.role === 'initiator' && !currentRatchetState) {
-              // We are the responder (Bob), complete the handshake
-              console.log('[Handshake] We are responder, completing handshake...');
+              // =========================================================
+              // HANDSHAKE INIT HANDLING (Responder receives init)
+              // =========================================================
+              // 
+              // This is a NEW handshake from the initiator.
+              // We become the responder.
+              // 
+              // SECURITY: FSM.canAcceptInit() validates:
+              // 1. No active handshake in progress
+              // 2. Previous session is in terminal state
+              // =========================================================
+              
+              console.log('[Handshake] Received HandshakeInit, we are responder, completing...');
+
+              // FSM: Check if we can accept this init
+              if (!handshakeManager.canAcceptInit(chatId)) {
+                console.warn('[Handshake] FSM: Cannot accept HandshakeInit - handshake already in progress');
+                continue; // Skip this handshake
+              }
 
               // FSM: Start responder session
               try {
@@ -715,20 +733,44 @@ export default function ChatPage() {
               }
               continue;
             } else if (handshakeMsg.role === 'responder') {
-              // We are the initiator (Alice), finalize the handshake
-              console.log('[Handshake] We are initiator, finalizing handshake...');
+              // =========================================================
+              // HANDSHAKE RESPONSE HANDLING (Initiator receives response)
+              // =========================================================
+              // 
+              // This is NOT a duplicate handshake!
+              // This is the expected response to our HandshakeInit.
+              // 
+              // SECURITY: FSM.receiveResponse() validates:
+              // 1. Session exists (we initiated)
+              // 2. Session is in INITIATING state
+              // 3. Response is from expected peer
+              // =========================================================
+              
+              console.log('[Handshake] Received HandshakeResponse, we are initiator, finalizing...');
 
-              // FSM: Verify we are in INITIATING state
-              const session = handshakeManager.getSession(chatId);
-              if (!session || session.state !== FSMState.INITIATING) {
-                console.warn('[Handshake] FSM: Unexpected responder message - no INITIATING session');
-                // Still try to finalize if we have pending data (backward compat)
+              // FSM: Validate this is a legitimate response to our init
+              try {
+                const isValid = handshakeManager.receiveResponse(chatId, msg.from);
+                if (!isValid) {
+                  // Not an error, just a duplicate - skip silently
+                  console.log('[Handshake] Ignoring duplicate/late HandshakeResponse');
+                  continue;
+                }
+              } catch (fsmError) {
+                if (fsmError instanceof HandshakeError) {
+                  console.warn(`[Handshake] FSM rejected response: ${fsmError.code} - ${fsmError.message}`);
+                  continue; // Don't process invalid response
+                }
+                throw fsmError;
               }
 
               // Load pending handshake state
               const pendingDataJson = sessionStorage.getItem(`handshake_pending_${chatId}`);
               if (!pendingDataJson) {
-                throw new Error('No pending handshake state found');
+                console.error('[Handshake] No pending handshake data found - cannot finalize');
+                handshakeManager.fail(chatId, HandshakeErrorCode.INVALID_TRANSITION, 
+                  'No pending handshake state found when receiving response');
+                continue;
               }
 
               const pendingData = JSON.parse(pendingDataJson);
@@ -740,7 +782,9 @@ export default function ChatPage() {
                   hasSecret: !!pendingData.ephemeralX25519Secret,
                   hasMessage: !!pendingData.initiatorMessage,
                 });
-                throw new Error('Incomplete handshake pending data - missing ephemeral secrets or initiator message');
+                handshakeManager.fail(chatId, HandshakeErrorCode.INVALID_TRANSITION,
+                  'Incomplete handshake pending data');
+                continue;
               }
 
               try {

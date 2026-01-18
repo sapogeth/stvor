@@ -8,12 +8,28 @@
  * 2. Duplicate/concurrent handshakes for same chat
  * 3. Race conditions in role determination
  * 4. Silent failures and undefined states
+ * 5. Confusion between HandshakeInit and HandshakeResponse
  * 
  * Protocol Safety Notes:
  * - State transitions are atomic and guarded
  * - Prekey mutation is BLOCKED while handshake is in progress
  * - Role (initiator/responder) is deterministic based on identity comparison
  * - Failed handshakes require explicit retry, no auto-healing
+ * - HandshakeInit and HandshakeResponse are DISTINCT message types
+ * 
+ * FSM TRANSITIONS:
+ * 
+ * Initiator flow:
+ *   IDLE → INTENT_REGISTERED → INITIATING → (receive HandshakeResponse) → ESTABLISHED
+ * 
+ * Responder flow:
+ *   IDLE → (receive HandshakeInit) → RESPONDING → (send HandshakeResponse) → ESTABLISHED
+ * 
+ * ATTACK PREVENTION:
+ * - Duplicate HandshakeInit: Blocked if session exists (any state except IDLE)
+ * - HandshakeResponse without INITIATING state: Rejected as invalid
+ * - HandshakeResponse from wrong peer: Rejected as identity mismatch
+ * - HandshakeInit when INITIATING: Race condition - use deterministic role
  * 
  * @module handshake-state-machine
  */
@@ -21,6 +37,23 @@
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
+
+/**
+ * Handshake message types
+ * 
+ * CRITICAL: These MUST be distinguished by the FSM
+ * - INIT: Sent by initiator to start handshake
+ * - RESPONSE: Sent by responder to complete handshake
+ * 
+ * Mixing these up causes the "duplicate blocked" bug
+ */
+export enum HandshakeMessageType {
+  /** Initial handshake message (from initiator) */
+  INIT = 'handshake_init',
+  
+  /** Response handshake message (from responder) */
+  RESPONSE = 'handshake_response',
+}
 
 /**
  * Handshake states
@@ -136,6 +169,12 @@ export enum HandshakeErrorCode {
   /** Duplicate handshake blocked */
   DUPLICATE_BLOCKED = 'DUPLICATE_BLOCKED',
   
+  /** Received response when not in INITIATING state */
+  UNEXPECTED_RESPONSE = 'UNEXPECTED_RESPONSE',
+  
+  /** Response from unexpected peer */
+  WRONG_PEER = 'WRONG_PEER',
+  
   /** Invalid state transition attempted */
   INVALID_TRANSITION = 'INVALID_TRANSITION',
   
@@ -221,7 +260,11 @@ class HandshakeStateManager {
   }
   
   /**
-   * Start a new handshake session
+   * Start a new handshake session (for INITIATOR or RESPONDER starting fresh)
+   * 
+   * SECURITY: Only call this for NEW handshakes (HandshakeInit)
+   * For HandshakeResponse, use receiveResponse() instead
+   * 
    * @throws HandshakeError if handshake already in progress
    */
   startSession(chatId: string, peerUsername: string): HandshakeSession {
@@ -293,6 +336,100 @@ class HandshakeStateManager {
     this.updatePrekeyLock();
     
     return updatedSession;
+  }
+  
+  /**
+   * Handle incoming HandshakeResponse message
+   * 
+   * SECURITY-CRITICAL: This method handles the "initiator receives response" case
+   * 
+   * PRECONDITIONS:
+   * 1. Session MUST exist (we initiated the handshake)
+   * 2. Session MUST be in INITIATING state
+   * 3. Response MUST be from the expected peer
+   * 
+   * This is NOT a duplicate - it's the expected response to our init!
+   * 
+   * ATTACK PREVENTION:
+   * - Replay: Response is only accepted once (INITIATING → ESTABLISHED)
+   * - Reflection: Response must come from peerUsername we specified
+   * - Race: If we're not INITIATING, we reject
+   * 
+   * @param chatId - Chat identifier
+   * @param fromPeer - Username of the peer who sent the response
+   * @returns true if response is valid and should be processed
+   * @throws HandshakeError if response is invalid
+   */
+  receiveResponse(chatId: string, fromPeer: string): boolean {
+    const session = this.sessions.get(chatId);
+    
+    // Case 1: No session exists - we never initiated
+    if (!session) {
+      console.warn(`[HandshakeFSM] receiveResponse: No session for ${chatId.slice(0, 16)}... - ignoring`);
+      throw new HandshakeError(
+        HandshakeErrorCode.UNEXPECTED_RESPONSE,
+        `Received HandshakeResponse but no session exists for chat ${chatId.slice(0, 16)}...`,
+        chatId,
+        false
+      );
+    }
+    
+    // Case 2: Session exists but not in INITIATING state
+    if (session.state !== HandshakeState.INITIATING) {
+      console.warn(`[HandshakeFSM] receiveResponse: Session not in INITIATING state (${session.state})`);
+      
+      // Special case: If already ESTABLISHED, this is a duplicate response - ignore silently
+      if (session.state === HandshakeState.ESTABLISHED) {
+        console.log(`[HandshakeFSM] Ignoring duplicate HandshakeResponse (session already ESTABLISHED)`);
+        return false; // Not an error, just ignore
+      }
+      
+      throw new HandshakeError(
+        HandshakeErrorCode.UNEXPECTED_RESPONSE,
+        `Received HandshakeResponse but session is in ${session.state} state, not INITIATING`,
+        chatId,
+        false
+      );
+    }
+    
+    // Case 3: Response from unexpected peer (potential attack)
+    if (session.peerUsername && session.peerUsername !== fromPeer) {
+      console.error(`[HandshakeFSM] SECURITY: Response from wrong peer! Expected ${session.peerUsername}, got ${fromPeer}`);
+      throw new HandshakeError(
+        HandshakeErrorCode.WRONG_PEER,
+        `HandshakeResponse from ${fromPeer} but expected from ${session.peerUsername}. Possible attack.`,
+        chatId,
+        false
+      );
+    }
+    
+    // Case 4: Valid response - log and return true
+    console.log(`[HandshakeFSM] ✓ Valid HandshakeResponse from ${fromPeer} for ${chatId.slice(0, 16)}...`);
+    return true;
+  }
+  
+  /**
+   * Check if we can accept a HandshakeInit message
+   * 
+   * SECURITY: Prevents duplicate/concurrent handshakes
+   * 
+   * @returns true if we can process the init, false if we should skip
+   */
+  canAcceptInit(chatId: string): boolean {
+    const session = this.sessions.get(chatId);
+    
+    // No session - can accept
+    if (!session) return true;
+    
+    // Session in terminal state - can accept (new handshake)
+    if (session.state === HandshakeState.IDLE ||
+        session.state === HandshakeState.ESTABLISHED ||
+        session.state === HandshakeState.FAILED) {
+      return true;
+    }
+    
+    // Session active - cannot accept
+    return false;
   }
   
   /**

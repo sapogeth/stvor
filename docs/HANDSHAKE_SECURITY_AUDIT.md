@@ -1,64 +1,95 @@
 # Handshake Security Audit Report
 
-**Date**: 2025-01-28  
-**Version**: v0.8.1  
+**Date**: 2025-01-28 (Updated: 2026-01-18)  
+**Version**: v0.8.2  
 **Status**: ✅ COMPLETE
 
 ## Executive Summary
 
-This document describes the security-critical changes implemented to fix the handshake signature verification failure and harden the E2E protocol against related attack vectors.
+This document describes the security-critical changes implemented to fix the handshake signature verification failure and the "duplicate blocked" bug that prevented ratchet establishment.
 
-## Root Cause Analysis
+## Bug History
 
-### Original Bug: "Handshake signature verification failed"
+### Bug #1: "Handshake signature verification failed" (v0.8.0)
 
-The handshake was failing because of a **transcript mismatch** between initiator and responder:
+**Root Cause**: Prekey regeneration during handshake caused transcript mismatch.  
+**Fix**: FSM blocks prekey regeneration during active handshake.
 
-1. **Alice (initiator)** fetches Bob's prekey bundle from relay
-2. Alice creates handshake message, signs transcript that includes Bob's ML-KEM public key
-3. Alice sends handshake to Bob via relay
-4. **Bob (responder)** receives handshake, but his `loadPrekeySecretsOrRegenerate()` function **regenerates NEW keys** if secrets are missing
-5. Bob signs response with NEW keys, but Alice's transcript included the OLD keys
-6. **Result**: Signature verification fails because transcripts don't match
+### Bug #2: "Duplicate handshake blocked" (v0.8.1) - CURRENT FIX
 
-### Security Implication
+**Symptom**:
+1. Initiator sends HandshakeInit
+2. Responder replies with HandshakeResponse
+3. Initiator receives response
+4. FSM incorrectly blocks it as "duplicate handshake"
+5. No ratchet state is created
+6. Sending messages blocked: "no ratchet state"
 
-This bug could have been exploited for:
-- **Key Confusion Attack**: Force regeneration to create transcript mismatch
-- **Denial of Service**: Prevent handshake completion
-- **Protocol Downgrade**: Silent fallback to insecure state
+**Root Cause**: FSM did NOT distinguish between:
+- `HandshakeInit` (from initiator to start handshake)
+- `HandshakeResponse` (from responder to complete handshake)
+
+The FSM called `startSession()` for ALL incoming handshake messages, which blocked legitimate responses as duplicates.
 
 ## Implemented Fixes
 
-### 1. Handshake State Machine (FSM)
+### 1. Handshake Message Type Distinction (v0.8.2 - NEW)
+
+**File**: [apps/web/lib/handshake-state-machine.ts](apps/web/lib/handshake-state-machine.ts)
+
+```typescript
+export enum HandshakeMessageType {
+  INIT = 'handshake_init',      // Sent by initiator to START handshake
+  RESPONSE = 'handshake_response', // Sent by responder to COMPLETE handshake
+}
+```
+
+**New FSM Methods**:
+
+```typescript
+// For incoming HandshakeInit (creates new session)
+canAcceptInit(chatId: string): boolean
+
+// For incoming HandshakeResponse (uses EXISTING session, does NOT create new)
+receiveResponse(chatId: string, fromPeer: string): boolean
+```
+
+**Key Insight**: `receiveResponse()` validates:
+1. Session EXISTS (we initiated)
+2. Session is in `INITIATING` state
+3. Response is from expected peer
+
+This is NOT a duplicate - it's the expected response!
+
+### 2. Handshake State Machine (FSM)
 
 **File**: [apps/web/lib/handshake-state-machine.ts](apps/web/lib/handshake-state-machine.ts)
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                    HANDSHAKE STATE MACHINE                   │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│   ┌─────────┐      ┌───────────────────┐                    │
-│   │  IDLE   │─────▶│ INTENT_REGISTERED │                    │
-│   └─────────┘      └───────────────────┘                    │
-│        │                    │                                │
-│        │                    ▼                                │
-│        │           ┌────────────────┐                       │
-│        │           │  INITIATING    │──────┐                │
-│        │           └────────────────┘      │                │
-│        │                                    │                │
-│        ▼                                    ▼                │
-│  ┌────────────────┐              ┌──────────────────┐       │
-│  │  RESPONDING    │              │   ESTABLISHED    │       │
-│  └────────────────┘              └──────────────────┘       │
-│        │                                    │                │
-│        │                                    ▼                │
-│        │                         ┌──────────────────┐       │
-│        └────────────────────────▶│     FAILED       │       │
-│                                  └──────────────────┘       │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                    HANDSHAKE STATE MACHINE (v0.8.2)                  │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  INITIATOR FLOW:                                                     │
+│  ┌──────┐   ┌───────────────────┐   ┌────────────┐   ┌───────────┐  │
+│  │ IDLE │──▶│ INTENT_REGISTERED │──▶│ INITIATING │──▶│ESTABLISHED│  │
+│  └──────┘   └───────────────────┘   └────────────┘   └───────────┘  │
+│                                           │                          │
+│                                   receive HandshakeResponse          │
+│                                   (via receiveResponse())            │
+│                                                                      │
+│  RESPONDER FLOW:                                                     │
+│  ┌──────┐        receive HandshakeInit        ┌───────────┐         │
+│  │ IDLE │──────────────────────────────────▶ │ RESPONDING │         │
+│  └──────┘        (via canAcceptInit())        └───────────┘         │
+│                                                     │                │
+│                                           send HandshakeResponse     │
+│                                                     ▼                │
+│                                              ┌───────────┐          │
+│                                              │ESTABLISHED│          │
+│                                              └───────────┘          │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 **States**:
