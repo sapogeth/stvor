@@ -1,4 +1,4 @@
-# Stvor: Research Prototype of Hybrid Post-Quantum Secure Messaging
+# Stvor: Prototype of Hybrid Post-Quantum Secure Messaging
 
 **Ilyazh-Web3E2E Protocol v0.8**
 
