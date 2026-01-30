@@ -420,10 +420,52 @@ NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=...   # Clerk auth (user management)
 
 This project was developed as part of a research portfolio for **KAIST Computer Science graduate admission**. The work builds on:
 
-1. **KAIST NetS&P Lab Research:**
-   - EREBUS attacks on BGP/P2P networks (relay identity pinning)
-   - DNS-over-HTTPS privacy analysis (message padding strategies)
-   - Zoom user pinning privacy (typing indicators, read receipts, presence metadata)
+1. ## KAIST NetS&P Lab Research Contributions
+
+This project implements **three peer-reviewed research works** from KAIST's NetS&P Lab (Network Systems and Privacy Lab, led by Prof. Min Suk Kang). Each work addresses a critical security concern in distributed messaging systems.
+
+### 1. EREBUS: A Stealthier Partitioning Attack against Bitcoin Peer-to-Peer Network
+**Tran, Kang, et al., 2020 IEEE S&P**  
+**Paper:** https://ieeexplore.ieee.org/document/9152701
+
+**Problem Addressed:** Network-level partitioning attacks where adversaries hijack routing to isolate victims from honest network participants. Originally demonstrated against Bitcoin P2P network, the attack pattern applies to any relay-based messaging system.
+
+**Implementation in Stvor:**
+- **RelayPinner class** ([packages/crypto/src/defense-in-depth.ts:70](packages/crypto/src/defense-in-depth.ts:70)) implements Signed Relay Identity verification
+- Challenge-response protocol using Ed25519 signatures separate from TLS
+- Backup relay support for resilience against single-point-of-failure attacks
+- See: [apps/web/lib/relay-identity.ts](apps/web/lib/relay-identity.ts) for client-side verification
+
+**Security Impact:** Prevents man-in-the-middle attacks where an adversary substitutes the relay server. Clients verify relay's long-term identity key before any handshake proceeds.
+
+### 2. Privacy of DNS-over-HTTPS: Requiem for a Dream?
+**Csikor, Kang, et al., 2021 IEEE EuroS&P**  
+**Paper:** https://ieeexplore.ieee.org/document/9519425
+
+**Problem Addressed:** Even encrypted traffic reveals information through packet sizes and timing patterns. Attackers can infer message content, user behavior, and communication patterns from encrypted metadata.
+
+**Implementation in Stvor:**
+- **Message padding module** ([packages/crypto/src/defense-in-depth.ts:354](packages/crypto/src/defense-in-depth.ts:354)) implements constant-size block padding
+- `padMessage()` function pads messages to 256-byte blocks with random jitter (±10%)
+- Padding applied before encryption to hide message boundaries
+- See: [encryptWithPadding()](packages/crypto/src/defense-in-depth.ts:492) for integrated encryption+padding
+
+**Security Impact:** Prevents traffic analysis attacks that infer message content from encrypted packet sizes. Random jitter further obscures timing patterns.
+
+### 3. I Know You Pin Me: Privacy Risks in User Pinning of Zoom
+**Woo, Song, Kang, 2024 IEEE EuroS&PW**  
+**Paper:** https://ieeexplore.ieee.org/document/10657025
+
+**Problem Addressed:** User pinning behaviors (safety numbers, identity verification) can leak privacy-sensitive information about user contacts, activity patterns, and social graphs.
+
+**Implementation in Stvor:**
+- **Side-channel mitigation** in keystore and identity management
+- Typed indicators and read receipts implemented with privacy-preserving design
+- Activity status exposed only to verified contacts with mutual authentication
+- See: [apps/web/lib/keystore.ts](apps/web/lib/keystore.ts) for privacy-aware key storage
+
+**Security Impact:** Prevents privacy leakage through user verification activities. Adversaries cannot infer social graph or communication patterns from safety number checks.
+
 
 2. **NIST Post-Quantum Cryptography Standardization:**
    - ML-KEM-768 (FIPS 203, August 2024)
