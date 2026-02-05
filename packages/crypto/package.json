@@ -22,7 +22,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@noble/hashes": "^1.5.0",
+    "@noble/hashes": "^1.4.0",
     "@openforge-sh/liboqs": "^0.14.3",
     "cbor-x": "^1.6.0",
     "libsodium-wrappers": "^0.7.15",
