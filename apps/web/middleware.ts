@@ -69,10 +69,12 @@ const CSP = [
 // Define public routes that don't require authentication
 const isPublicRoute = createRouteMatcher([
   '/',
+  '/main',
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/benchmarks',
   '/security',
+  '/study',
   '/debug(.*)',
   '/test(.*)',
   '/reset(.*)',

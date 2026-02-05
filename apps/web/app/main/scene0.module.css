@@ -1,0 +1,98 @@
+/**
+ * Scene 0: "Black Silence" Styling
+ *
+ * CSS-based grain effect using:
+ * - SVG noise pattern (minimal file size, GPU-accelerated)
+ * - CSS animation for subtle movement
+ * - Optimized for 60fps performance
+ * - No JavaScript required for animation
+ */
+
+.container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #000000;
+  z-index: 0;
+}
+
+.canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #000000;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise" seed="42" /></filter><rect width="100" height="100" fill="%23000000" filter="url(%23noise)" opacity="0.03" /></svg>');
+  background-size: 200px 200px;
+  background-repeat: repeat;
+  z-index: 0;
+}
+
+.grain {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><filter id="perlinNoise"><feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="3" result="noise" seed="123" /></filter><rect width="256" height="256" fill="%23ffffff" filter="url(%23perlinNoise)" opacity="0.015" /></svg>');
+  background-size: 256px 256px;
+  background-attachment: fixed;
+  animation: grainShift 8s linear infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/**
+ * Subtle grain movement animation
+ * Uses 8 second cycle for barely perceptible noise movement
+ * Opacity/position changes are minimal to avoid distraction
+ * GPU-accelerated using transform (not opacity changes)
+ */
+@keyframes grainShift {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 256px 256px;
+  }
+}
+
+/**
+ * Accessibility:
+ * - prefers-reduced-motion: Disables animation for users who prefer minimal motion
+ * - High contrast grain ensures no visual issues
+ * - No flashing or seizure-inducing effects
+ */
+@media (prefers-reduced-motion: reduce) {
+  .grain {
+    animation: none;
+    opacity: 0.85;
+  }
+}
+
+/**
+ * Responsive fullscreen behavior
+ * Maintains cinematic aspect ratio across all devices
+ */
+@media (max-width: 768px) {
+  .container {
+    width: 100vw;
+    height: 100vh;
+  }
+}
+
+/**
+ * High DPI / Retina displays
+ * Slightly adjust grain for better appearance on high-density screens
+ */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .grain {
+    background-size: 512px 512px;
+  }
+}

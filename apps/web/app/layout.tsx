@@ -4,8 +4,8 @@ import { ClerkProvider } from '@clerk/nextjs';
 import { CryptoInitializer } from '@/components/CryptoInitializer';
 
 export const metadata: Metadata = {
-  title: 'Stv0r Messenger - Post-Quantum E2E Encrypted',
-  description: 'Secure messenger with Ilyazh-Web3E2E protocol (X25519 + ML-KEM-768)',
+  title: 'Stvor - Post-Quantum Secure Messaging',
+  description: 'Research-grade E2EE protocol with mandated re-encapsulation. Built for long-term confidentiality.',
 };
 
 /**
