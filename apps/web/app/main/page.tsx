@@ -805,7 +805,7 @@ function FundingSection() {
             Funding Status
           </h2>
           <p className="text-zinc-400 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed mb-3 sm:mb-4">
-            Stvor is currently raising a small pre-seed round ($50k–$100k) to continue cryptographic R&D, formal verification, and independent security auditing.
+            Stvor is currently raising a small pre-seed round ($100k–$250k) to continue cryptographic R&D, formal verification, and independent security auditing.
           </p>
           <p className="text-zinc-600 text-xs sm:text-sm">
             Actively exploring cyber / deep-tech accelerators and research-aligned investors.
