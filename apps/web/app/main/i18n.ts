@@ -782,301 +782,302 @@ export const i18n: Record<Language, I18nStrings> = {
   },
 
   // ===========================================================================
-  // OLD TURKIC (Orkhon-Yenisey style, Latin transliteration)
-  // Confidence: ~60-70%. Based on Kultegin/Bilge Kagan/Tonyukuk inscriptions.
-  // Style: brief, lapidary ("carved in stone"), ritual/epigraphic register.
+  // OLD TURKIC (Orkhon-Yenisei Unicode runes, U+10C00–U+10C4F)
+  // Uses actual Unicode Old Turkic block characters.
+  // Mapping: lingojam.com/ModernOrkhonYeniseiTurkicAlphabet
+  // Technical terms (Stvor, SDK, E2EE, etc.) kept in Latin for clarity.
   // ===========================================================================
   ot: {
     nav: {
-      products: 'Esler',
-      security: 'Quryq',
-      investors: 'Begler',
+      products: '𐰅𐰽𐰞𐰅𐰺',
+      security: '𐰴𐰆𐰺𐰖𐰴',
+      investors: '𐰉𐰅𐰏𐰞𐰅𐰺',
       github: 'GitHub',
-      openMessenger: 'Yolchi ach',
+      openMessenger: '𐰖𐰗𐰞𐰲𐰃 𐰀𐰲',
     },
     hero: {
-      badge: 'Bilge bitig quryqy',
-      titleLine1: 'Kelin quryqlugh',
-      titleLine2: 'Sab yolaghuchysy',
+      badge: '𐰉𐰃𐰞𐰏𐰅 𐰉𐰃𐱃𐰃𐰏 𐰴𐰆𐰺𐰖𐰴𐰖',
+      titleLine1: '𐰚𐰅𐰞𐰃𐰣 𐰴𐰆𐰺𐰖𐰴𐰞𐰆𐰍',
+      titleLine2: '𐰽𐰀𐰉 𐰖𐰗𐰞𐰀𐰍𐰆𐰲𐰖𐰽𐰖',
       description:
-        'Adyrylmaz qaita tughmalama buyruqlugh bilge bitig quryqy. Uzun oedh syr saqlamaqqa tezilmish — koerunchke emes.',
+        '𐰀𐰑𐰖𐰺𐰖𐰞𐰢𐰀𐰔 𐰴𐰀𐰃𐱃𐰀 𐱃𐰆𐰍𐰢𐰀𐰞𐰀𐰢𐰀 𐰉𐰆𐰖𐰺𐰆𐰴𐰞𐰆𐰍 𐰉𐰃𐰞𐰏𐰅 𐰉𐰃𐱃𐰃𐰏 𐰴𐰆𐰺𐰖𐰴𐰖. 𐰆𐰔𐰆𐰣 𐰘𐰑𐰎 𐰽𐰖𐰺 𐰽𐰀𐰴𐰞𐰀𐰢𐰀𐰴𐰴𐰀 𐱃𐰅𐰔𐰃𐰞𐰢𐰃𐱁 — 𐰚𐰘𐰺𐰆𐰣𐰲𐰚𐰅 𐰅𐰢𐰅𐰽.',
       fundingSignal:
-        'Biz shimdi kelin bitig quryqyn oezgertmeq uchun azghynaq uruq tileimiz.',
-      ctaDemo: 'Yolchi koerunchkesin koer',
-      ctaFunding: 'Uruq berilmesini koer',
-      sdkLink: 'Bitig qurallaryn koer →',
+        '𐰉𐰃𐰔 𐱁𐰃𐰢𐰑𐰃 𐰚𐰅𐰞𐰃𐰣 𐰉𐰃𐱃𐰃𐰏 𐰴𐰆𐰺𐰖𐰴𐰖𐰣 𐰘𐰔𐰏𐰅𐰺𐱃𐰢𐰅𐰴 𐰆𐰲𐰆𐰣 𐰀𐰔𐰍𐰖𐰣𐰀𐰴 𐰆𐰺𐰆𐰴 𐱃𐰃𐰞𐰅𐰃𐰢𐰃𐰔.',
+      ctaDemo: '𐰖𐰗𐰞𐰲𐰃 𐰚𐰘𐰺𐰆𐰣𐰲𐰚𐰅𐰽𐰃𐰣 𐰚𐰘𐰺',
+      ctaFunding: '𐰆𐰺𐰆𐰴 𐰉𐰅𐰺𐰃𐰞𐰢𐰅𐰽𐰃𐰣𐰃 𐰚𐰘𐰺',
+      sdkLink: '𐰉𐰃𐱃𐰃𐰏 𐰴𐰆𐰺𐰀𐰞𐰞𐰀𐰺𐰖𐰣 𐰚𐰘𐰺 →',
     },
     whyNow: {
-      title: 'Neng uchun shimdi',
+      title: '𐰣𐰅𐰭 𐰆𐰲𐰆𐰣 𐱁𐰃𐰢𐰑𐰃',
       subtitle:
-        'Kelin koechke eeshik achyq — yana qysylur',
+        '𐰚𐰅𐰞𐰃𐰣 𐰚𐰘𐰲𐰚𐰅 𐰅𐰅𐱁𐰃𐰚 𐰀𐰲𐰖𐰴 — 𐰖𐰀𐰣𐰀 𐰴𐰖𐰽𐰖𐰞𐰆𐰺',
       cards: [
         {
           year: '2024',
-          title: 'NIST kelin oelchemleri bekemlendi',
+          title: 'NIST 𐰚𐰅𐰞𐰃𐰣 𐰘𐰞𐰲𐰅𐰢𐰞𐰅𐰺𐰃 𐰉𐰅𐰚𐰅𐰢𐰞𐰅𐰣𐰑𐰃',
           description:
-            'ML-KEM, ML-DSA resmi boldular. Bitig quryq teemeli bar.',
+            'ML-KEM, ML-DSA 𐰺𐰅𐰽𐰢𐰃 𐰉𐰗𐰞𐰑𐰆𐰞𐰀𐰺. 𐰉𐰃𐱃𐰃𐰏 𐰴𐰆𐰺𐰖𐰴 𐱃𐰅𐰅𐰢𐰅𐰞𐰃 𐰉𐰀𐰺.',
         },
         {
-          year: 'Shimdi',
-          title: 'Yolchylar qaita qurmadylar',
+          year: '𐱁𐰃𐰢𐰑𐰃',
+          title: '𐰖𐰗𐰞𐰲𐰖𐰞𐰀𐰺 𐰴𐰀𐰃𐱃𐰀 𐰴𐰆𐰺𐰢𐰀𐰑𐰖𐰞𐰀𐰺',
           description:
-            'Ulugh yolchylar yamaydy — qaita qurmady. Tuurum kelin quryqy az.',
+            '𐰆𐰞𐰆𐰍 𐰖𐰗𐰞𐰲𐰖𐰞𐰀𐰺 𐰖𐰀𐰢𐰀𐰖𐰑𐰖 — 𐰴𐰀𐰃𐱃𐰀 𐰴𐰆𐰺𐰢𐰀𐰑𐰖. 𐱃𐰆𐰆𐰺𐰆𐰢 𐰚𐰅𐰞𐰃𐰣 𐰴𐰆𐰺𐰖𐰴𐰖 𐰀𐰔.',
         },
         {
-          year: 'Tirig',
-          title: 'Shimdi yigh — soenra ach',
+          year: '𐱃𐰃𐰺𐰃𐰏',
+          title: '𐱁𐰃𐰢𐰑𐰃 𐰖𐰃𐰍 — 𐰽𐰘𐰣𐰺𐰀 𐰀𐰲',
           description:
-            'Uel begleri bugun shifrlemish yollarny yighady. Qorqu tilekke emes.',
+            '𐰈𐰞 𐰉𐰅𐰏𐰞𐰅𐰺𐰃 𐰉𐰆𐰏𐰆𐰣 𐱁𐰃𐰊𐰺𐰞𐰅𐰢𐰃𐱁 𐰖𐰗𐰞𐰞𐰀𐰺𐰣𐰖 𐰖𐰃𐰍𐰀𐰑𐰖. 𐰴𐰗𐰺𐰴𐰆 𐱃𐰃𐰞𐰅𐰚𐰚𐰅 𐰅𐰢𐰅𐰽.',
         },
       ],
     },
     whatIs: {
-      title: 'Stvor neng ol',
-      subtitle: 'Kelin quryqlugh sab yiberishke bilge yanashtma',
+      title: 'Stvor 𐰣𐰅𐰭 𐰗𐰞',
+      subtitle: '𐰚𐰅𐰞𐰃𐰣 𐰴𐰆𐰺𐰖𐰴𐰞𐰆𐰍 𐰽𐰀𐰉 𐰖𐰃𐰉𐰅𐰺𐰃𐱁𐰚𐰅 𐰉𐰃𐰞𐰏𐰅 𐰖𐰀𐰣𐰀𐱁𐱃𐰢𐰀',
       block1: {
-        title: 'Neng ol',
+        title: '𐰣𐰅𐰭 𐰗𐰞',
         description:
-          'Stvor — bilge tezilmish, kelin quryqlugh sab yiberish oenyegi:',
+          'Stvor — 𐰉𐰃𐰞𐰏𐰅 𐱃𐰅𐰔𐰃𐰞𐰢𐰃𐱁, 𐰚𐰅𐰞𐰃𐰣 𐰴𐰆𐰺𐰖𐰴𐰞𐰆𐰍 𐰽𐰀𐰉 𐰖𐰃𐰉𐰅𐰺𐰃𐱁 𐰘𐰣𐰖𐰅𐰏𐰃:',
         items: [
-          'E2EE Yolchysy',
-          'Tezguuchi SDK',
-          'Quryq sinaghy quzhaty (Kenesary)',
+          'E2EE 𐰖𐰗𐰞𐰲𐰖𐰽𐰖',
+          '𐱃𐰅𐰔𐰏𐰆𐰆𐰲𐰃 SDK',
+          '𐰴𐰆𐰺𐰖𐰴 𐰽𐰃𐰣𐰀𐰍𐰖 𐰴𐰆𐰳𐰀𐱃𐰖 (Kenesary)',
         ],
       },
       block2: {
-        title: 'Neng uchun bar',
-        line1: 'Koep yolchylar tek qol tutushny quryqlaydy.',
-        line2: 'Stvor buetuen tuurum oedhin quryqlaydy.',
+        title: '𐰣𐰅𐰭 𐰆𐰲𐰆𐰣 𐰉𐰀𐰺',
+        line1: '𐰚𐰘𐰯 𐰖𐰗𐰞𐰲𐰖𐰞𐰀𐰺 𐱃𐰅𐰚 𐰴𐰗𐰞 𐱃𐰆𐱃𐰆𐱁𐰣𐰖 𐰴𐰆𐰺𐰖𐰴𐰞𐰀𐰖𐰑𐰖.',
+        line2: 'Stvor 𐰉𐰈𐱃𐰈𐰣 𐱃𐰆𐰆𐰺𐰆𐰢 𐰘𐰑𐰎𐰃𐰣 𐰴𐰆𐰺𐰖𐰴𐰞𐰀𐰖𐰑𐰖.',
         line3:
-          'Biz sab yiberish tuurumy boyuncha toqtausyz kelin quryq berip shimdi-yigh-soenra-ach qorqugha zhauap beremiz.',
+          '𐰉𐰃𐰔 𐰽𐰀𐰉 𐰖𐰃𐰉𐰅𐰺𐰃𐱁 𐱃𐰆𐰆𐰺𐰆𐰢𐰖 𐰉𐰗𐰖𐰆𐰣𐰲𐰀 𐱃𐰗𐰴𐱃𐰀𐰆𐰽𐰖𐰔 𐰚𐰅𐰞𐰃𐰣 𐰴𐰆𐰺𐰖𐰴 𐰉𐰅𐰺𐰃𐰯 𐱁𐰃𐰢𐰑𐰃-𐰖𐰃𐰍-𐰽𐰘𐰣𐰺𐰀-𐰀𐰲 𐰴𐰗𐰺𐰴𐰆𐰍𐰀 𐰳𐰀𐰆𐰀𐰯 𐰉𐰅𐰺𐰅𐰢𐰃𐰔.',
       },
       block3: {
-        title: 'Neng ayyrady',
+        title: '𐰣𐰅𐰭 𐰀𐰖𐰖𐰺𐰀𐰑𐰖',
         items: [
           {
-            bold: 'Adyrylmaz qaita tughmalama',
-            rest: '— kelin oenekler arqyly achqychny merzimlik yenilemek',
+            bold: '𐰀𐰑𐰖𐰺𐰖𐰞𐰢𐰀𐰔 𐰴𐰀𐰃𐱃𐰀 𐱃𐰆𐰍𐰢𐰀𐰞𐰀𐰢𐰀',
+            rest: '— 𐰚𐰅𐰞𐰃𐰣 𐰘𐰣𐰅𐰚𐰞𐰅𐰺 𐰀𐰺𐰴𐰖𐰞𐰖 𐰀𐰲𐰴𐰖𐰲𐰣𐰖 𐰢𐰅𐰺𐰔𐰃𐰢𐰞𐰃𐰚 𐰖𐰅𐰣𐰃𐰞𐰅𐰢𐰅𐰚',
           },
           {
-            bold: 'Qoshma kelin bitig quryqy',
-            rest: '— eski + kelin, teren quryq uchun',
+            bold: '𐰴𐰗𐱁𐰢𐰀 𐰚𐰅𐰞𐰃𐰣 𐰉𐰃𐱃𐰃𐰏 𐰴𐰆𐰺𐰖𐰴𐰖',
+            rest: '— 𐰅𐰽𐰚𐰃 + 𐰚𐰅𐰞𐰃𐰣, 𐱃𐰅𐰺𐰅𐰣 𐰴𐰆𐰺𐰖𐰴 𐰆𐰲𐰆𐰣',
           },
           {
-            bold: 'Koenguel achyq qorqu beyannamesi',
-            rest: '— biz qorqularny bitigke tueshuremiz, yoshurmaimiz',
+            bold: '𐰚𐰘𐰭𐰈𐰞 𐰀𐰲𐰖𐰴 𐰴𐰗𐰺𐰴𐰆 𐰉𐰅𐰖𐰀𐰣𐰣𐰀𐰢𐰅𐰽𐰃',
+            rest: '— 𐰉𐰃𐰔 𐰴𐰗𐰺𐰴𐰆𐰞𐰀𐰺𐰣𐰖 𐰉𐰃𐱃𐰃𐰏𐰚𐰅 𐱃𐰈𐱁𐰆𐰺𐰅𐰢𐰃𐰔, 𐰖𐰗𐱁𐰆𐰺𐰢𐰀𐰃𐰢𐰃𐰔',
           },
         ],
       },
     },
     coreProducts: {
-      title: 'Bash esler',
+      title: '𐰉𐰀𐱁 𐰅𐰽𐰞𐰅𐰺',
       subtitle:
-        'Quryqlugh sab yiberish uchun uech birleshken boeluek',
+        '𐰴𐰆𐰺𐰖𐰴𐰞𐰆𐰍 𐰽𐰀𐰉 𐰖𐰃𐰉𐰅𐰺𐰃𐱁 𐰆𐰲𐰆𐰣 𐰈𐰲 𐰉𐰃𐰺𐰞𐰅𐱁𐰚𐰅𐰣 𐰉𐰘𐰞𐰈𐰚',
       products: [
         {
-          title: 'Stvor Yolchysy',
+          title: 'Stvor 𐰖𐰗𐰞𐰲𐰖𐰽𐰖',
           description:
-            'Kelin quryqlugh tuurumlar zhane noel-bilge yoenemlenduerguch arkhiteqtuurasy birle koerguechke tuekel E2EE sab yiberish.',
+            '𐰚𐰅𐰞𐰃𐰣 𐰴𐰆𐰺𐰖𐰴𐰞𐰆𐰍 𐱃𐰆𐰆𐰺𐰆𐰢𐰞𐰀𐰺 𐰳𐰀𐰣𐰅 𐰣𐰘𐰞-𐰉𐰃𐰞𐰏𐰅 𐰖𐰘𐰣𐰅𐰢𐰞𐰅𐰣𐰑𐰈𐰺𐰏𐰆𐰲 𐰀𐰺𐰚𐰎𐰃𐱃𐰅𐰴𐱃𐰆𐰆𐰺𐰀𐰽𐰖 𐰉𐰃𐰺𐰞𐰅 𐰚𐰘𐰺𐰏𐰈𐰲𐰚𐰅 𐱃𐰈𐰚𐰅𐰞 E2EE 𐰽𐰀𐰉 𐰖𐰃𐰉𐰅𐰺𐰃𐱁.',
           features: [
-            'Koerguechke tuekel E2EE',
-            'Kelin quryqlugh tuurumlar',
-            'Noel-bilge yoenemlenduerguch',
+            '𐰚𐰘𐰺𐰏𐰈𐰲𐰚𐰅 𐱃𐰈𐰚𐰅𐰞 E2EE',
+            '𐰚𐰅𐰞𐰃𐰣 𐰴𐰆𐰺𐰖𐰴𐰞𐰆𐰍 𐱃𐰆𐰆𐰺𐰆𐰢𐰞𐰀𐰺',
+            '𐰣𐰘𐰞-𐰉𐰃𐰞𐰏𐰅 𐰖𐰘𐰣𐰅𐰢𐰞𐰅𐰣𐰑𐰈𐰺𐰏𐰆𐰲',
           ],
-          linkText: 'Yolchyny ach',
+          linkText: '𐰖𐰗𐰞𐰲𐰖𐰣𐰖 𐰀𐰲',
         },
         {
           title: 'Stvor SDK',
           description:
-            'Tezguuchiler uchun hazyr E2EE. TypeScript API arqyly X3DH + Double Ratchet kelin kengeytmeleri.',
+            '𐱃𐰅𐰔𐰏𐰆𐰆𐰲𐰃𐰞𐰅𐰺 𐰆𐰲𐰆𐰣 𐰎𐰀𐰔𐰖𐰺 E2EE. TypeScript API 𐰀𐰺𐰴𐰖𐰞𐰖 X3DH + Double Ratchet 𐰚𐰅𐰞𐰃𐰣 𐰚𐰅𐰭𐰅𐰖𐱃𐰢𐰅𐰞𐰅𐰺𐰃.',
           features: [
-            'Tezguuchiler uchun hazyr E2EE',
+            '𐱃𐰅𐰔𐰏𐰆𐰆𐰲𐰃𐰞𐰅𐰺 𐰆𐰲𐰆𐰣 𐰎𐰀𐰔𐰖𐰺 E2EE',
             'X3DH + Double Ratchet + PQ',
-            'Tuep-quryqlugh TypeScript API',
+            '𐱃𐰈𐰯-𐰴𐰆𐰺𐰖𐰴𐰞𐰆𐰍 TypeScript API',
           ],
-          linkText: 'Bitigni koer',
+          linkText: '𐰉𐰃𐱃𐰃𐰏𐰣𐰃 𐰚𐰘𐰺',
         },
         {
-          title: 'Kenesary quryq quzhaty',
+          title: 'Kenesary 𐰴𐰆𐰺𐰖𐰴 𐰴𐰆𐰳𐰀𐱃𐰖',
           description:
-            'Aniq boldamlar zhane belsenilik mertebleleri birle koep koezqarashlyq quryq sinaghy. Tuuraqaq oequy-tek sinagh.',
+            '𐰀𐰣𐰃𐰴 𐰉𐰗𐰞𐰑𐰀𐰢𐰞𐰀𐰺 𐰳𐰀𐰣𐰅 𐰉𐰅𐰞𐰽𐰅𐰣𐰃𐰞𐰃𐰚 𐰢𐰅𐰺𐱃𐰅𐰉𐰞𐰅𐰞𐰅𐰺𐰃 𐰉𐰃𐰺𐰞𐰅 𐰚𐰘𐰯 𐰚𐰘𐰔𐰴𐰀𐰺𐰀𐱁𐰞𐰖𐰴 𐰴𐰆𐰺𐰖𐰴 𐰽𐰃𐰣𐰀𐰍𐰖. 𐱃𐰆𐰆𐰺𐰀𐰴𐰀𐰴 𐰘𐰴𐰆𐰖-𐱃𐰅𐰚 𐰽𐰃𐰣𐰀𐰍.',
           features: [
-            'Koep koezqarashlyq quryq sinaghy',
-            'Aniq boldamlar zhane belsenilik mertebleleri',
-            'Tuuraqaq oequy-tek sinagh',
+            '𐰚𐰘𐰯 𐰚𐰘𐰔𐰴𐰀𐰺𐰀𐱁𐰞𐰖𐰴 𐰴𐰆𐰺𐰖𐰴 𐰽𐰃𐰣𐰀𐰍𐰖',
+            '𐰀𐰣𐰃𐰴 𐰉𐰗𐰞𐰑𐰀𐰢𐰞𐰀𐰺 𐰳𐰀𐰣𐰅 𐰉𐰅𐰞𐰽𐰅𐰣𐰃𐰞𐰃𐰚 𐰢𐰅𐰺𐱃𐰅𐰉𐰞𐰅𐰞𐰅𐰺𐰃',
+            '𐱃𐰆𐰆𐰺𐰀𐰴𐰀𐰴 𐰘𐰴𐰆𐰖-𐱃𐰅𐰚 𐰽𐰃𐰣𐰀𐰍',
           ],
-          linkText: 'Quzhatny koer',
+          linkText: '𐰴𐰆𐰳𐰀𐱃𐰣𐰖 𐰚𐰘𐰺',
         },
       ],
     },
     securityResearch: {
-      title: 'Quryq zhane bilge terenglik',
-      subtitle: 'Bilge qatanlyq iish arqyly dueniyege keldi',
+      title: '𐰴𐰆𐰺𐰖𐰴 𐰳𐰀𐰣𐰅 𐰉𐰃𐰞𐰏𐰅 𐱃𐰅𐰺𐰅𐰭𐰞𐰃𐰚',
+      subtitle: '𐰉𐰃𐰞𐰏𐰅 𐰴𐰀𐱃𐰀𐰣𐰞𐰖𐰴 𐰃𐰃𐱁 𐰀𐰺𐰴𐰖𐰞𐰖 𐰑𐰈𐰣𐰃𐰖𐰅𐰏𐰅 𐰚𐰅𐰞𐰑𐰃',
       threatModel: {
-        title: 'Qorqu uelgisi',
+        title: '𐰴𐰗𐰺𐰴𐰆 𐰈𐰞𐰏𐰃𐰽𐰃',
         dy: {
-          name: 'Dolev-Yao dushmany',
-          desc: 'Tolyq zheli bashqaruuy, sabny ustap aluy, engiizue zhane qaitalau quudireti',
+          name: '𐰑𐰗𐰞𐰅𐰋-𐰖𐰀𐰗 𐰑𐰆𐱁𐰢𐰀𐰣𐰖',
+          desc: '𐱃𐰗𐰞𐰖𐰴 𐰳𐰅𐰞𐰃 𐰉𐰀𐱁𐰴𐰀𐰺𐰆𐰆𐰖, 𐰽𐰀𐰉𐰣𐰖 𐰆𐰽𐱃𐰀𐰯 𐰀𐰞𐰆𐰖, 𐰅𐰭𐰃𐰃𐰔𐰈 𐰳𐰀𐰣𐰅 𐰴𐰀𐰃𐱃𐰀𐰞𐰀𐰆 𐰴𐰆𐰆𐰑𐰃𐰺𐰅𐱃𐰃',
         },
         q: {
-          name: 'Kelin dushmany',
-          desc: 'Shimdi-yigh-soenra-ach quudiretli kelin sanaghy bar dushman',
+          name: '𐰚𐰅𐰞𐰃𐰣 𐰑𐰆𐱁𐰢𐰀𐰣𐰖',
+          desc: '𐱁𐰃𐰢𐰑𐰃-𐰖𐰃𐰍-𐰽𐰘𐰣𐰺𐰀-𐰀𐰲 𐰴𐰆𐰆𐰑𐰃𐰺𐰅𐱃𐰞𐰃 𐰚𐰅𐰞𐰃𐰣 𐰽𐰀𐰣𐰀𐰍𐰖 𐰉𐰀𐰺 𐰑𐰆𐱁𐰢𐰀𐰣',
         },
       },
       formalVerification: {
-        title: 'Resmi teqshiruey',
+        title: '𐰺𐰅𐰽𐰢𐰃 𐱃𐰅𐰴𐱁𐰃𐰺𐰈𐰖',
         whitepaper: {
-          name: 'LaTeX aq bitig',
-          desc: 'Tuuraqaq beyannamasy zhane quryq dalilleri birle resmi oelchem',
+          name: 'LaTeX 𐰀𐰴 𐰉𐰃𐱃𐰃𐰏',
+          desc: '𐱃𐰆𐰆𐰺𐰀𐰴𐰀𐰴 𐰉𐰅𐰖𐰀𐰣𐰣𐰀𐰢𐰀𐰽𐰖 𐰳𐰀𐰣𐰅 𐰴𐰆𐰺𐰖𐰴 𐰑𐰀𐰞𐰃𐰞𐰞𐰅𐰺𐰃 𐰉𐰃𐰺𐰞𐰅 𐰺𐰅𐰽𐰢𐰃 𐰘𐰞𐰲𐰅𐰢',
         },
         gameBased: {
-          name: 'Oiyun negizindegi dalil nyzqasy',
-          desc: 'Standart bitig quryq boldamlaryna quryq tuesirmeyi',
+          name: '𐰗𐰃𐰖𐰆𐰣 𐰣𐰅𐰏𐰃𐰔𐰃𐰣𐰑𐰅𐰏𐰃 𐰑𐰀𐰞𐰃𐰞 𐰣𐰖𐰔𐰴𐰀𐰽𐰖',
+          desc: '𐰽𐱃𐰀𐰣𐰑𐰀𐰺𐱃 𐰉𐰃𐱃𐰃𐰏 𐰴𐰆𐰺𐰖𐰴 𐰉𐰗𐰞𐰑𐰀𐰢𐰞𐰀𐰺𐰖𐰣𐰀 𐰴𐰆𐰺𐰖𐰴 𐱃𐰈𐰽𐰃𐰺𐰢𐰅𐰖𐰃',
         },
         proverif: {
-          name: 'ProVerif sinaghy',
-          desc: 'Iishinalai teqsheruey — koenguel achyq, iish sueruelmekte',
+          name: 'ProVerif 𐰽𐰃𐰣𐰀𐰍𐰖',
+          desc: '𐰃𐰃𐱁𐰃𐰣𐰀𐰞𐰀𐰃 𐱃𐰅𐰴𐱁𐰅𐰺𐰈𐰖 — 𐰚𐰘𐰭𐰈𐰞 𐰀𐰲𐰖𐰴, 𐰃𐰃𐱁 𐰽𐰈𐰺𐰈𐰞𐰢𐰅𐰚𐱃𐰅',
         },
       },
-      quote: '"Qaldyq qorqular bitigke tueshurilgen, yoshurulmadylar."',
+      quote: '"𐰴𐰀𐰞𐰑𐰖𐰴 𐰴𐰗𐰺𐰴𐰆𐰞𐰀𐰺 𐰉𐰃𐱃𐰃𐰏𐰚𐰅 𐱃𐰈𐱁𐰆𐰺𐰃𐰞𐰏𐰅𐰣, 𐰖𐰗𐱁𐰆𐰺𐰆𐰞𐰢𐰀𐰑𐰖𐰞𐰀𐰺."',
     },
     cryptoStack: {
-      title: 'Bitig quryq oenyegi',
-      subtitle: 'Teren quryq uchun qoshma eski + kelin oenekler',
+      title: '𐰉𐰃𐱃𐰃𐰏 𐰴𐰆𐰺𐰖𐰴 𐰘𐰣𐰖𐰅𐰏𐰃',
+      subtitle: '𐱃𐰅𐰺𐰅𐰣 𐰴𐰆𐰺𐰖𐰴 𐰆𐰲𐰆𐰣 𐰴𐰗𐱁𐰢𐰀 𐰅𐰽𐰚𐰃 + 𐰚𐰅𐰞𐰃𐰣 𐰘𐰣𐰅𐰚𐰞𐰅𐰺',
       headers: {
-        component: 'Boeluek',
-        classical: 'Eski',
-        postQuantum: 'Kelin',
-        standard: 'Oelchem',
+        component: '𐰉𐰘𐰞𐰈𐰚',
+        classical: '𐰅𐰽𐰚𐰃',
+        postQuantum: '𐰚𐰅𐰞𐰃𐰣',
+        standard: '𐰘𐰞𐰲𐰅𐰢',
       },
     },
     performance: {
-      title: 'Koersetkishler zhane kelesuimler',
-      subtitle: 'Oelchenmish sanlar — aqtauy yoq',
+      title: '𐰚𐰘𐰺𐰽𐰅𐱃𐰚𐰃𐱁𐰞𐰅𐰺 𐰳𐰀𐰣𐰅 𐰚𐰅𐰞𐰅𐰽𐰆𐰃𐰢𐰞𐰅𐰺',
+      subtitle: '𐰘𐰞𐰲𐰅𐰣𐰢𐰃𐱁 𐰽𐰀𐰣𐰞𐰀𐰺 — 𐰀𐰴𐱃𐰀𐰆𐰖 𐰖𐰗𐰴',
       metrics: [
-        { label: 'Qol tutush keshigueluei', note: 'ARM (Apple M1)' },
-        { label: 'Sab ustemelsi', note: 'tek eski birle salystyrmaly' },
-        { label: 'Qaita tughmalama', note: 'uaqyt ya sab sany' },
+        { label: '𐰴𐰗𐰞 𐱃𐰆𐱃𐰆𐱁 𐰚𐰅𐱁𐰃𐰏𐰈𐰞𐰈𐰃', note: 'ARM (Apple M1)' },
+        { label: '𐰽𐰀𐰉 𐰆𐰽𐱃𐰅𐰢𐰅𐰞𐰽𐰃', note: '𐱃𐰅𐰚 𐰅𐰽𐰚𐰃 𐰉𐰃𐰺𐰞𐰅 𐰽𐰀𐰞𐰖𐰽𐱃𐰖𐰺𐰢𐰀𐰞𐰖' },
+        { label: '𐰴𐰀𐰃𐱃𐰀 𐱃𐰆𐰍𐰢𐰀𐰞𐰀𐰢𐰀', note: '𐰆𐰀𐰴𐰖𐱃 𐰖𐰀 𐰽𐰀𐰉 𐰽𐰀𐰣𐰖' },
       ],
       footer: {
         prefix: 'Stvor ',
-        bold: 'uzun oedh syr saqlamaghny',
-        suffix: ' az oetkuechten joghary qoyady.',
+        bold: '𐰆𐰔𐰆𐰣 𐰘𐰑𐰎 𐰽𐰖𐰺 𐰽𐰀𐰴𐰞𐰀𐰢𐰀𐰍𐰣𐰖',
+        suffix: ' 𐰀𐰔 𐰘𐱃𐰚𐰈𐰲𐱃𐰅𐰣 𐰳𐰗𐰍𐰀𐰺𐰖 𐰴𐰗𐰖𐰀𐰑𐰖.',
       },
     },
     limitations: {
-      title: 'Koenguel achyq chegermeler',
-      subtitle: 'Biz achyqlyqny quryq quudreti dep bilemiz',
+      title: '𐰚𐰘𐰭𐰈𐰞 𐰀𐰲𐰖𐰴 𐰲𐰅𐰏𐰅𐰺𐰢𐰅𐰞𐰅𐰺',
+      subtitle: '𐰉𐰃𐰔 𐰀𐰲𐰖𐰴𐰞𐰖𐰴𐰣𐰖 𐰴𐰆𐰺𐰖𐰴 𐰴𐰆𐰆𐰑𐰺𐰅𐱃𐰃 𐰑𐰅𐰯 𐰉𐰃𐰞𐰅𐰢𐰃𐰔',
       items: [
         {
-          title: 'Uest-bilig aqmaghysy',
+          title: '𐰈𐰽𐱃-𐰉𐰃𐰞𐰃𐰏 𐰀𐰴𐰢𐰀𐰍𐰖𐰽𐰖',
           description:
-            'Uaqyt, sab koelemi zhane baylanys uqsashtary yoenemlenduerguchke koerinedi. Qorqu uelgisinde bitigke tueshurilgen.',
+            '𐰆𐰀𐰴𐰖𐱃, 𐰽𐰀𐰉 𐰚𐰘𐰞𐰅𐰢𐰃 𐰳𐰀𐰣𐰅 𐰉𐰀𐰖𐰞𐰀𐰣𐰖𐰽 𐰆𐰴𐰽𐰀𐱁𐱃𐰀𐰺𐰖 𐰖𐰘𐰣𐰅𐰢𐰞𐰅𐰣𐰑𐰈𐰺𐰏𐰆𐰲𐰚𐰅 𐰚𐰘𐰺𐰃𐰣𐰅𐰑𐰃. 𐰴𐰗𐰺𐰴𐰆 𐰈𐰞𐰏𐰃𐰽𐰃𐰣𐰑𐰅 𐰉𐰃𐱃𐰃𐰏𐰚𐰅 𐱃𐰈𐱁𐰆𐰺𐰃𐰞𐰏𐰅𐰣.',
         },
         {
-          title: 'Koep quralmalyq oendashturue yoq',
+          title: '𐰚𐰘𐰯 𐰴𐰆𐰺𐰀𐰞𐰢𐰀𐰞𐰖𐰴 𐰘𐰣𐰑𐰀𐱁𐱃𐰆𐰺𐰈 𐰖𐰗𐰴',
           description:
-            'Bir quralmalyq arkhiteqtuurasy — zhobalauy boyuncha. Koep quralma achqych bashqaruuyn qiiynnlatydy.',
+            '𐰉𐰃𐰺 𐰴𐰆𐰺𐰀𐰞𐰢𐰀𐰞𐰖𐰴 𐰀𐰺𐰚𐰎𐰃𐱃𐰅𐰴𐱃𐰆𐰆𐰺𐰀𐰽𐰖 — 𐰳𐰗𐰉𐰀𐰞𐰀𐰆𐰖 𐰉𐰗𐰖𐰆𐰣𐰲𐰀. 𐰚𐰘𐰯 𐰴𐰆𐰺𐰀𐰞𐰢𐰀 𐰀𐰲𐰴𐰖𐰲 𐰉𐰀𐱁𐰴𐰀𐰺𐰆𐰆𐰖𐰣 𐰴𐰃𐰃𐰖𐰣𐰣𐰞𐰀𐱃𐰖𐰑𐰖.',
         },
         {
-          title: 'Koerguech quryq boldamlary',
+          title: '𐰚𐰘𐰺𐰏𐰈𐰲 𐰴𐰆𐰺𐰖𐰴 𐰉𐰗𐰞𐰑𐰀𐰢𐰞𐰀𐰺𐰖',
           description:
-            'Koerguech qumlyghyna, WebCrypto-gha zhane quryqlugh oeriske sueiyenedi. Joghary senimdilik orislerine jharamaydy.',
+            '𐰚𐰘𐰺𐰏𐰈𐰲 𐰴𐰆𐰢𐰞𐰖𐰍𐰖𐰣𐰀, WebCrypto-𐰍𐰀 𐰳𐰀𐰣𐰅 𐰴𐰆𐰺𐰖𐰴𐰞𐰆𐰍 𐰘𐰺𐰃𐰽𐰚𐰅 𐰽𐰈𐰃𐰖𐰅𐰣𐰅𐰑𐰃. 𐰳𐰗𐰍𐰀𐰺𐰖 𐰽𐰅𐰣𐰃𐰢𐰑𐰃𐰞𐰃𐰚 𐰗𐰺𐰃𐰽𐰞𐰅𐰺𐰃𐰣𐰅 𐰳𐰎𐰀𐰺𐰀𐰢𐰀𐰖𐰑𐰖.',
         },
         {
-          title: 'Teqsheruey kuetilmekte',
+          title: '𐱃𐰅𐰴𐱁𐰅𐰺𐰈𐰖 𐰚𐰈𐱃𐰃𐰞𐰢𐰅𐰚𐱃𐰅',
           description:
-            'Uechunchu tarap quryq teqsherueyi bitmedyi. Tuuraqaq bilge mertebede — oendiriske hazyr emes.',
+            '𐰈𐰲𐰆𐰣𐰲𐰆 𐱃𐰀𐰺𐰀𐰯 𐰴𐰆𐰺𐰖𐰴 𐱃𐰅𐰴𐱁𐰅𐰺𐰈𐰖𐰃 𐰉𐰃𐱃𐰢𐰅𐰑𐰖𐰃. 𐱃𐰆𐰆𐰺𐰀𐰴𐰀𐰴 𐰉𐰃𐰞𐰏𐰅 𐰢𐰅𐰺𐱃𐰅𐰉𐰅𐰑𐰅 — 𐰘𐰣𐰑𐰃𐰺𐰃𐰽𐰚𐰅 𐰎𐰀𐰔𐰖𐰺 𐰅𐰢𐰅𐰽.',
         },
       ],
     },
     funding: {
-      badge: 'Uruq aldy',
-      title: 'Uruq berilme jhaghday',
+      badge: '𐰆𐰺𐰆𐰴 𐰀𐰞𐰑𐰖',
+      title: '𐰆𐰺𐰆𐰴 𐰉𐰅𐰺𐰃𐰞𐰢𐰅 𐰳𐰎𐰀𐰍𐰑𐰀𐰖',
       description:
-        'Stvor shimdi bitig quryq R&D, resmi teqshiruey zhane tauselsiz quryq teqshirueyi uchun azghynaq uruq aldy tur ($100k–$250k) tapyp zhatyr.',
+        'Stvor 𐱁𐰃𐰢𐰑𐰃 𐰉𐰃𐱃𐰃𐰏 𐰴𐰆𐰺𐰖𐰴 R&D, 𐰺𐰅𐰽𐰢𐰃 𐱃𐰅𐰴𐱁𐰃𐰺𐰈𐰖 𐰳𐰀𐰣𐰅 𐱃𐰀𐰆𐰽𐰅𐰞𐰽𐰃𐰔 𐰴𐰆𐰺𐰖𐰴 𐱃𐰅𐰴𐱁𐰃𐰺𐰈𐰖𐰃 𐰆𐰲𐰆𐰣 𐰀𐰔𐰍𐰖𐰣𐰀𐰴 𐰆𐰺𐰆𐰴 𐰀𐰞𐰑𐰖 𐱃𐰆𐰺 ($100𐰚–$250𐰚) 𐱃𐰀𐰯𐰖𐰯 𐰳𐰀𐱃𐰖𐰺.',
       subtext:
-        'Kiber / teren-bilge tezlenduirguchler zhane zertteuuge baghdartalghan begler birle iish isteude.',
+        '𐰚𐰃𐰉𐰅𐰺 / 𐱃𐰅𐰺𐰅𐰣-𐰉𐰃𐰞𐰏𐰅 𐱃𐰅𐰔𐰞𐰅𐰣𐰑𐰆𐰃𐰺𐰏𐰆𐰲𐰞𐰅𐰺 𐰳𐰀𐰣𐰅 𐰔𐰅𐰺𐱃𐱃𐰅𐰆𐰆𐰏𐰅 𐰉𐰀𐰍𐰑𐰀𐰺𐱃𐰀𐰞𐰍𐰀𐰣 𐰉𐰅𐰏𐰞𐰅𐰺 𐰉𐰃𐰺𐰞𐰅 𐰃𐰃𐱁 𐰃𐰽𐱃𐰅𐰆𐰑𐰅.',
       enablesTitle:
-        'Bul uruq berilme zhobanyng oedhin 6 aiyga uzartady zhane mumkindik beredi:',
+        '𐰉𐰆𐰞 𐰆𐰺𐰆𐰴 𐰉𐰅𐰺𐰃𐰞𐰢𐰅 𐰳𐰗𐰉𐰀𐰣𐰖𐰭 𐰘𐰑𐰎𐰃𐰣 6 𐰀𐰃𐰖𐰏𐰀 𐰆𐰔𐰀𐰺𐱃𐰀𐰑𐰖 𐰳𐰀𐰣𐰅 𐰢𐰆𐰢𐰚𐰃𐰣𐰑𐰃𐰚 𐰉𐰅𐰺𐰅𐰑𐰃:',
       enables: [
         {
           title:
-            'Koep dauirlik ratcheting uchun tolyq ProVerif uuelgisin bitirmek',
+            '𐰚𐰘𐰯 𐰑𐰀𐰆𐰃𐰺𐰞𐰃𐰚 ratcheting 𐰆𐰲𐰆𐰣 𐱃𐰗𐰞𐰖𐰴 ProVerif 𐰆𐰈𐰞𐰏𐰃𐰽𐰃𐰣 𐰉𐰃𐱃𐰃𐰺𐰢𐰅𐰚',
           description:
-            'Qaita tughmalama tuuraqaghynyng resmi teqsherueyi',
+            '𐰴𐰀𐰃𐱃𐰀 𐱃𐰆𐰍𐰢𐰀𐰞𐰀𐰢𐰀 𐱃𐰆𐰆𐰺𐰀𐰴𐰀𐰍𐰖𐰣𐰖𐰭 𐰺𐰅𐰽𐰢𐰃 𐱃𐰅𐰴𐱁𐰅𐰺𐰈𐰖𐰃',
         },
         {
-          title: 'Synaq qamtuyn >70%-gha deiyin oesirmek',
+          title: '𐰽𐰖𐰣𐰀𐰴 𐰴𐰀𐰢𐱃𐰆𐰖𐰣 >70%-𐰍𐰀 𐰑𐰅𐰃𐰖𐰃𐰣 𐰘𐰽𐰃𐰺𐰢𐰅𐰚',
           description:
-            'Oenek boyyncha birlik zhane birleshme synaqlaryn qamtiu',
+            '𐰘𐰣𐰅𐰚 𐰉𐰗𐰖𐰖𐰣𐰲𐰀 𐰉𐰃𐰺𐰞𐰃𐰚 𐰳𐰀𐰣𐰅 𐰉𐰃𐰺𐰞𐰅𐱁𐰢𐰅 𐰽𐰖𐰣𐰀𐰴𐰞𐰀𐰺𐰖𐰣 𐰴𐰀𐰢𐱃𐰃𐰆',
         },
         {
-          title: 'Syrttyn bitig quryq teqsherueyi (auqymy belighlenghen)',
+          title: '𐰽𐰖𐰺𐱃𐱃𐰖𐰣 𐰉𐰃𐱃𐰃𐰏 𐰴𐰆𐰺𐰖𐰴 𐱃𐰅𐰴𐱁𐰅𐰺𐰈𐰖𐰃 (𐰀𐰆𐰴𐰖𐰢𐰖 𐰉𐰅𐰞𐰃𐰍𐰞𐰅𐰭𐰎𐰅𐰣)',
           description:
-            'Bitig quryq ishke ashyruyyn zhane tuuraqaq oezgermesterin uechunchu tarap tekserueyi',
+            '𐰉𐰃𐱃𐰃𐰏 𐰴𐰆𐰺𐰖𐰴 𐰃𐱁𐰚𐰅 𐰀𐱁𐰖𐰺𐰆𐰖𐰖𐰣 𐰳𐰀𐰣𐰅 𐱃𐰆𐰆𐰺𐰀𐰴𐰀𐰴 𐰘𐰔𐰏𐰅𐰺𐰢𐰅𐰽𐱃𐰅𐰺𐰃𐰣 𐰈𐰲𐰆𐰣𐰲𐰆 𐱃𐰀𐰺𐰀𐰯 𐱃𐰅𐰚𐰽𐰅𐰺𐰈𐰖𐰃',
         },
       ],
       investorNote:
-        'Kelin quryq infraqurylyymyna qyzyqqan begler uchun',
-      ctaButton: 'Uruq aldy / Bilge uruq berilmeyin soeylesu',
+        '𐰚𐰅𐰞𐰃𐰣 𐰴𐰆𐰺𐰖𐰴 𐰃𐰣𐰊𐰺𐰀𐰴𐰆𐰺𐰖𐰞𐰖𐰖𐰢𐰖𐰣𐰀 𐰴𐰖𐰔𐰖𐰴𐰴𐰀𐰣 𐰉𐰅𐰏𐰞𐰅𐰺 𐰆𐰲𐰆𐰣',
+      ctaButton: '𐰆𐰺𐰆𐰴 𐰀𐰞𐰑𐰖 / 𐰉𐰃𐰞𐰏𐰅 𐰆𐰺𐰆𐰴 𐰉𐰅𐰺𐰃𐰞𐰢𐰅𐰖𐰃𐰣 𐰽𐰘𐰖𐰞𐰅𐰽𐰆',
     },
     founder: {
-      title: 'Negizin qalauchy',
-      subtitle: 'Neng uchun bul kishi — neng uchun bul zhoba',
+      title: '𐰣𐰅𐰏𐰃𐰔𐰃𐰣 𐰴𐰀𐰞𐰀𐰆𐰲𐰖',
+      subtitle: '𐰣𐰅𐰭 𐰆𐰲𐰆𐰣 𐰉𐰆𐰞 𐰚𐰃𐱁𐰃 — 𐰣𐰅𐰭 𐰆𐰲𐰆𐰣 𐰉𐰆𐰞 𐰳𐰗𐰉𐰀',
       items: [
         {
-          title: 'Bitig quryqqa baghydartalghan tezguuchi',
+          title: '𐰉𐰃𐱃𐰃𐰏 𐰴𐰆𐰺𐰖𐰴𐰴𐰀 𐰉𐰀𐰍𐰖𐰑𐰀𐰺𐱃𐰀𐰞𐰍𐰀𐰣 𐱃𐰅𐰔𐰏𐰆𐰆𐰲𐰃',
           description:
-            'Qoldanbalyq bitig quryq zhane quryqlugh tuuraqaq teziminde teren tayjiribe',
+            '𐰴𐰗𐰞𐰑𐰀𐰣𐰉𐰀𐰞𐰖𐰴 𐰉𐰃𐱃𐰃𐰏 𐰴𐰆𐰺𐰖𐰴 𐰳𐰀𐰣𐰅 𐰴𐰆𐰺𐰖𐰴𐰞𐰆𐰍 𐱃𐰆𐰆𐰺𐰀𐰴𐰀𐰴 𐱃𐰅𐰔𐰃𐰢𐰃𐰣𐰑𐰅 𐱃𐰅𐰺𐰅𐰣 𐱃𐰀𐰖𐰳𐰃𐰺𐰃𐰉𐰅',
         },
         {
-          title: 'IACR ePrint basylma',
-          description: 'Kelin qol-tutush tuuraqaghy zertteuei',
+          title: 'IACR ePrint 𐰉𐰀𐰽𐰖𐰞𐰢𐰀',
+          description: '𐰚𐰅𐰞𐰃𐰣 𐰴𐰗𐰞-𐱃𐰆𐱃𐰆𐱁 𐱃𐰆𐰆𐰺𐰀𐰴𐰀𐰍𐰖 𐰔𐰅𐰺𐱃𐱃𐰅𐰈𐰃',
         },
         {
-          title: 'Tolyq E2EE oenek yalyghuz qurdy (47k+ LOC)',
+          title: '𐱃𐰗𐰞𐰖𐰴 E2EE 𐰘𐰣𐰅𐰚 𐰖𐰀𐰞𐰖𐰍𐰆𐰔 𐰴𐰆𐰺𐰑𐰖 (47𐰚+ LOC)',
           description:
-            'Yolchy, SDK, yoenemlenduerguch zhane quryq sinaghy quzhaty',
+            '𐰖𐰗𐰞𐰲𐰖, SDK, 𐰖𐰘𐰣𐰅𐰢𐰞𐰅𐰣𐰑𐰈𐰺𐰏𐰆𐰲 𐰳𐰀𐰣𐰅 𐰴𐰆𐰺𐰖𐰴 𐰽𐰃𐰣𐰀𐰍𐰖 𐰴𐰆𐰳𐰀𐱃𐰖',
         },
         {
-          title: 'Zertteu-aldy, quryq-koenguel achyq piilsipesi',
+          title: '𐰔𐰅𐰺𐱃𐱃𐰅𐰆-𐰀𐰞𐰑𐰖, 𐰴𐰆𐰺𐰖𐰴-𐰚𐰘𐰭𐰈𐰞 𐰀𐰲𐰖𐰴 𐰯𐰃𐰃𐰞𐰽𐰃𐰯𐰅𐰽𐰃',
           description:
-            'Naryqqash shyghuudan durystylyq pen achyqlyqny basymdy etedi',
+            '𐰣𐰀𐰺𐰖𐰴𐰴𐰀𐱁 𐱁𐰖𐰍𐰆𐰆𐰑𐰀𐰣 𐰑𐰆𐰺𐰖𐰽𐱃𐰖𐰞𐰖𐰴 𐰯𐰅𐰣 𐰀𐰲𐰖𐰴𐰞𐰖𐰴𐰣𐰖 𐰉𐰀𐰽𐰖𐰢𐰑𐰖 𐰅𐱃𐰅𐰑𐰃',
         },
       ],
     },
     cta: {
-      title: 'Bashla',
-      subtitle: 'Stvor dueniyesine oez yoluungny tanda',
+      title: '𐰉𐰀𐱁𐰞𐰀',
+      subtitle: 'Stvor 𐰑𐰈𐰣𐰃𐰖𐰅𐰽𐰃𐰣𐰅 𐰘𐰔 𐰖𐰗𐰞𐰆𐰆𐰭𐰣𐰖 𐱃𐰀𐰣𐰑𐰀',
       cards: [
         {
-          title: 'Yolchyny syna',
-          description: 'Koerguechungde kelin quryqlugh E2EE-ni tazhriibetle',
+          title: '𐰖𐰗𐰞𐰲𐰖𐰣𐰖 𐰽𐰖𐰣𐰀',
+          description: '𐰚𐰘𐰺𐰏𐰈𐰲𐰆𐰭𐰑𐰅 𐰚𐰅𐰞𐰃𐰣 𐰴𐰆𐰺𐰖𐰴𐰞𐰆𐰍 E2EE-𐰣𐰃 𐱃𐰀𐰳𐰺𐰃𐰃𐰉𐰅𐱃𐰞𐰅',
         },
         {
-          title: 'SDK-ny qosh',
-          description: 'Qoldanbaiyynggha E2EE bergileshdir',
+          title: 'SDK-𐰣𐰖 𐰴𐰗𐱁',
+          description: '𐰴𐰗𐰞𐰑𐰀𐰣𐰉𐰀𐰃𐰖𐰖𐰭𐰍𐰀 E2EE 𐰉𐰅𐰺𐰏𐰃𐰞𐰅𐱁𐰑𐰃𐰺',
         },
         {
-          title: 'Uruq berilmeyin soeyleshu',
-          description: 'Kelin quryq infraqurylyymynyng begleri uchun',
+          title: '𐰆𐰺𐰆𐰴 𐰉𐰅𐰺𐰃𐰞𐰢𐰅𐰖𐰃𐰣 𐰽𐰘𐰖𐰞𐰅𐱁𐰆',
+          description: '𐰚𐰅𐰞𐰃𐰣 𐰴𐰆𐰺𐰖𐰴 𐰃𐰣𐰊𐰺𐰀𐰴𐰆𐰺𐰖𐰞𐰖𐰖𐰢𐰖𐰣𐰖𐰭 𐰉𐰅𐰏𐰞𐰅𐰺𐰃 𐰆𐰲𐰆𐰣',
         },
       ],
     },
     footer: {
       tagline:
-        'Uzun oedh uchun kelin quryqlugh sab yiberish infraqurylymy.',
-      products: 'Esler',
-      resources: 'Qainar koezler',
-      contact: 'Baylanys',
-      messenger: 'Yolchy',
+        '𐰆𐰔𐰆𐰣 𐰘𐰑𐰎 𐰆𐰲𐰆𐰣 𐰚𐰅𐰞𐰃𐰣 𐰴𐰆𐰺𐰖𐰴𐰞𐰆𐰍 𐰽𐰀𐰉 𐰖𐰃𐰉𐰅𐰺𐰃𐱁 𐰃𐰣𐰊𐰺𐰀𐰴𐰆𐰺𐰖𐰞𐰖𐰢𐰖.',
+      products: '𐰅𐰽𐰞𐰅𐰺',
+      resources: '𐰴𐰀𐰃𐰣𐰀𐰺 𐰚𐰘𐰔𐰞𐰅𐰺',
+      contact: '𐰉𐰀𐰖𐰞𐰀𐰣𐰖𐰽',
+      messenger: '𐰖𐰗𐰞𐰲𐰖',
       sdk: 'SDK',
       kenesary: 'Kenesary',
-      whitepaper: 'Aq bitig',
-      securityDocs: 'Quryq biitigleri',
+      whitepaper: '𐰀𐰴 𐰉𐰃𐱃𐰃𐰏',
+      securityDocs: '𐰴𐰆𐰺𐰖𐰴 𐰉𐰃𐰃𐱃𐰃𐰏𐰞𐰅𐰺𐰃',
       bottomLeft: 'Stvor — stvor.xyz',
-      bottomRight: 'Bilge mertebde bitig quryq. Koenguel achyq bitig.',
+      bottomRight: '𐰉𐰃𐰞𐰏𐰅 𐰢𐰅𐰺𐱃𐰅𐰉𐰑𐰅 𐰉𐰃𐱃𐰃𐰏 𐰴𐰆𐰺𐰖𐰴. 𐰚𐰘𐰭𐰈𐰞 𐰀𐰲𐰖𐰴 𐰉𐰃𐱃𐰃𐰏.',
     },
   },
 };

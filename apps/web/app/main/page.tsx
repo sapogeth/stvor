@@ -966,7 +966,7 @@ export default function MainPage() {
   const { lang, setLang, t } = useLanguage();
 
   return (
-    <main className="min-h-screen bg-[#08080c] text-white antialiased selection:bg-emerald-500/30">
+    <main dir="ltr" className="min-h-screen bg-[#08080c] text-white antialiased selection:bg-emerald-500/30">
       <NavBar t={t} lang={lang} setLang={setLang} />
       <HeroSection t={t} />
       <WhyNowSection t={t} />
